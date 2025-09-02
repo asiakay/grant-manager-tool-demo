@@ -83,8 +83,7 @@ The worker includes a basic login page (credentials match the GUI: `admin/adminp
 `user/userpass`) and, once logged in, redirects to `/scored` to display the scored
 opportunities from a CSV file (`out/master.csv` by default). The data is rendered in a
 table and, when the CSV contains `Name` and `Weighted Score` columns, a bar chart is also
-shown. If the CSV can't be fetched, the worker falls back to a small built-in sample so the
-page isn't blank. Update the `CSV_URL` constant in `worker.js` if your scored CSV is hosted elsewhere.
+
 To deploy:
 
 ```bash
