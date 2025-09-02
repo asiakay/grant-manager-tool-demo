@@ -1,3 +1,6 @@
 name = "grant-demo"
 main = "worker.js"
 compatibility_date = "2024-05-29"
+
+[vars]
+CSV_URL = "https://raw.githubusercontent.com/asiakay/grant-manager-tool-demo/main/out/master.csv"
