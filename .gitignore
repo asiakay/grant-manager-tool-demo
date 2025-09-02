@@ -18,7 +18,8 @@ npm-debug.log
 
 # Project outputs
 out/
-data/
+data/*
+!data/programs.csv
 
 # Wrangler cache
 .wrangler/
