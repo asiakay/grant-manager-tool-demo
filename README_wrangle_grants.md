@@ -2,6 +2,17 @@
 
 This script merges many grant CSV/TSV files into **one clean master** with a consistent schema, normalized deadlines/money, deduplication, and a **Weighted Score** column.
 
+## Setup
+
+Requires Python 3.9+ with `pandas` and `openpyxl`.
+Create and activate a virtual environment, then install the dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## Quick Start
 
 ```bash
