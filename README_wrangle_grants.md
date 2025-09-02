@@ -13,6 +13,16 @@ mkdir -p data/csvs
 python wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
 ```
 
+## GUI Option
+
+For a basic desktop interface instead of the command line, run:
+
+```bash
+python wrangle_grants_gui.py
+```
+
+The window lets you choose folders and output paths, tweak weights, set a deadline cutoff, and run the wrangler.
+
 ## What it does (in plain English)
 
 * Scans a folder of CSV/TSV files → merges into **one clean master**

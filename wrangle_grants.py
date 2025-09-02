@@ -305,7 +305,7 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df[CANON_COLS + [c for c in df.columns if c not in CANON_COLS]]
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", type=str, required=True, help="Folder containing .csv/.tsv files")
     ap.add_argument("--out", type=str, required=True, help="Output master CSV path")
@@ -313,7 +313,8 @@ def main():
     ap.add_argument("--weights", type=float, nargs=3, default=[0.4, 0.4, 0.2], help="Weights: relevance fit ease")
     ap.add_argument("--deadline-cutoff", type=str, default="", help="Keep items with Deadline >= this date (YYYY-MM-DD) or 'today'")
     ap.add_argument("--print-summary", action="store_true", help="Print a quick summary to stdout")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+
 
     in_folder = Path(args.input)
     out_csv = Path(args.out)
