@@ -26,7 +26,13 @@ setup of the project:
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. (Optional) Install Node dependencies for the Cloudflare Worker example:
+4. (Optional) Initialize a Node project and install dependencies for the
+   Cloudflare Worker example:
+
+   ```bash
+   npm init -y
+   
+5. (Optional) Install Node dependencies for the Cloudflare Worker example:
 
    ```bash
    npm install
