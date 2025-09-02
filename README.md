@@ -50,12 +50,12 @@ setup of the project:
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. (Optional) Initialize a Node project and install dependencies for the
-   Cloudflare Worker example:
+4. (Optional) Initialize a Node project:
 
    ```bash
    npm init -y
-   
+   ```
+
 5. (Optional) Install Node dependencies for the Cloudflare Worker example:
 
    ```bash
@@ -83,15 +83,15 @@ The worker includes a basic login page (credentials match the GUI: `admin/adminp
 `user/userpass`) and, once logged in, redirects to `/scored` to display the scored
 opportunities from a CSV file (`out/master.csv` by default). The data is rendered in a
 table and, when the CSV contains `Name` and `Weighted Score` columns, a bar chart is also
-shown. Update the `CSV_URL` constant in `worker.js` if your scored CSV is hosted elsewhere.
+
 To deploy:
 
 ```bash
 npm install            # install wrangler locally
-npm run deploy        # publishes worker.js using wrangler.toml
-=======
-npm install -g wrangler  # one-time install
-wrangler publish         # deploys worker.js using wrangler.toml
+npm run deploy         # publishes worker.js using wrangler.toml
+# or with a global install:
+# npm install -g wrangler
+# wrangler publish
 ```
 
 
