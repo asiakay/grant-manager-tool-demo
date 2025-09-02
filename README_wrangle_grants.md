@@ -21,17 +21,29 @@ mkdir -p data/csvs
 # (drop files into data/csvs)
 
 # 2) Run the script (adjust paths as needed)
-`python3 wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary`
+`python3 wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary --verbose`
+(omit `--verbose` if you do not need progress logs)
 
 
 ```python3 
-wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
+wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary --verbose
 ```
 or
 
 ```python 
-wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
+wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary --verbose
 ```
+
+## Sample data
+
+Tiny demo CSVs live in `examples/grants_demo`. Run the wrangler on them to see
+parsing of money, deadlines, and scores:
+
+```bash
+python3 wrangle_grants.py --input examples/grants_demo --out out/demo.csv --print-summary
+```
+
+This merges the sample files and writes `out/demo.csv`.
 
 ## GUI Option
 

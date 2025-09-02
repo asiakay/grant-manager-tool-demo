@@ -17,8 +17,45 @@ npm-debug.log
 .DS_Store
 
 # Project outputs
-out/
-data/
+out/*
+!out/master.csv
+data/*
+!data/programs.csv
 
 # Wrangler cache
 .wrangler/
+
+# Python virtualenv
+.venv/
+env/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Logs & reports
+logs/
+reports/*.json
+reports/*.md
+*.log
+
+# Build / dist outputs
+dist/
+*.pdf
+*.pptx
+*.zip
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/
+.idea/
+
+# Data outputs
+data/*.xlsx
+data/*.csv
+!data/master.csv   # keep the master table under version control

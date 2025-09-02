@@ -1,0 +1,2 @@
+Type,Name,Sponsor,SourceURL,Region,DeadlineISO,Cadence,Benefits,Eligibility,Stage,NonDilutive,StackRequired,Relevance,Fit,Ease,StackAlignment,CadenceRecency,WeightedScore,Tags,Notes
+program,Workers Launchpad,Cloudflare,https://www.cloudflare.com/lp/workers-launchpad/,Global,,Quarterly,VC introductions; bootcamps; office hours; Demo Day,Built core infra on Cloudflare Workers,Pre-seed–Series A,No,Yes,5,5,5,1,1,,cloudflare;workers;accelerator,Prep pitch; confirm Workers usage; follow announcements
