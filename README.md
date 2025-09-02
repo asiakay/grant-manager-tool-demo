@@ -15,6 +15,18 @@ username: user    password: userpass
 
 See [README_wrangle_grants.md](README_wrangle_grants.md) for usage instructions.
 
+## Sample dataset
+
+A tiny dataset is included under `examples/grants_demo` for quick testing. Run
+the wrangler against it to see normalization and scoring in action:
+
+```bash
+python wrangle_grants.py --input examples/grants_demo --out out/demo.csv --print-summary
+```
+
+This command merges the demo files, computes weighted scores, and writes the
+result to `out/demo.csv`.
+
 ## Browser visualization
 
 For a quick way to explore wrangled data in your browser, run the small Flask
