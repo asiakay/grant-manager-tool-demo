@@ -126,57 +126,5 @@ def scored():
     )
 
 
-@app.route("/scored", methods=["GET", "POST"])
-def scored():
-    """Display and allow editing of scored opportunities."""
-
-    data_path = Path("out/master.csv")
-    if data_path.exists():
-        df = pd.read_csv(data_path)
-    else:
-        df = pd.DataFrame(
-            {
-                "Program": ["Sample Program A", "Sample Program B"],
-                "Weighted Score": [0.5, 0.75],
-            }
-        )
-
-    if request.method == "POST":
-        columns = list(df.columns)
-        for i in range(len(df)):
-            for j, col in enumerate(columns):
-                df.at[i, col] = request.form.get(f"cell_{i}_{j}", "")
-        data_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(data_path, index=False)
-        return redirect(url_for("scored"))
-
-    table_html = "<table border='1'><tr>" + "".join(
-        f"<th>{col}</th>" for col in df.columns
-    ) + "</tr>"
-    for i, row in df.iterrows():
-        table_html += "<tr>"
-        for j, col in enumerate(df.columns):
-            value = "" if pd.isna(row[col]) else row[col]
-            table_html += f"<td><input name='cell_{i}_{j}' value='{value}'/></td>"
-        table_html += "</tr>"
-    table_html += "</table>"
-
-    return render_template_string(
-        """
-        <html>
-            <head><title>Scored Opportunities</title></head>
-            <body>
-                <h1>Scored Opportunities</h1>
-                <form method="post">
-                    {{ table|safe }}
-                    <p><button type="submit">Save</button></p>
-                </form>
-            </body>
-        </html>
-        """,
-        table=table_html,
-    )
-
-
 if __name__ == "__main__":
     app.run(debug=True)
