@@ -68,7 +68,9 @@ def run_wrangler():
         try:
             wrangle_grants.main(argv)
             messagebox.showinfo("Grant Wrangler", "Wrangling complete.")
-        except Exception as e:  # pragma: no cover - GUI message for errors
+        except SystemExit as e:  # pragma: no cover - surfaced from wrangler
+            messagebox.showerror("Grant Wrangler", str(e))
+        except Exception as e:  # pragma: no cover - unexpected errors
             messagebox.showerror("Grant Wrangler", str(e))
 
     threading.Thread(target=task, daemon=True).start()
