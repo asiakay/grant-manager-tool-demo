@@ -315,6 +315,7 @@ def main(argv=None):
     ap.add_argument("--print-summary", action="store_true", help="Print a quick summary to stdout")
     args = ap.parse_args(argv)
 
+
     in_folder = Path(args.input)
     out_csv = Path(args.out)
     out_xlsx = Path(args.xlsx) if args.xlsx else None
