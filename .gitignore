@@ -1,0 +1,24 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+
+# Node artifacts
+node_modules/
+npm-debug.log
+
+# Environment files
+.env
+.venv/
+
+# macOS
+.DS_Store
+
+# Project outputs
+out/
+data/
+
+# Wrangler cache
+.wrangler/

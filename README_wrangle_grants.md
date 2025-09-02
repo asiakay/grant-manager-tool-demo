@@ -2,6 +2,17 @@
 
 This script merges many grant CSV/TSV files into **one clean master** with a consistent schema, normalized deadlines/money, deduplication, and a **Weighted Score** column.
 
+## Setup
+
+Requires Python 3.9+ with `pandas` and `openpyxl`.
+Create and activate a virtual environment, then install the dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## Quick Start
 
 ```bash
@@ -10,6 +21,8 @@ mkdir -p data/csvs
 # (drop files into data/csvs)
 
 # 2) Run the script (adjust paths as needed)
+`python3 wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary`
+
 
 ```python3 
 wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
@@ -44,4 +57,3 @@ The window lets you choose folders and output paths, tweak weights, set a deadli
 * Sorts by **Weighted Score (desc)** then **Deadline (asc)**
 * Exports **CSV** (and optional **Excel**)
 
-## Notes
