@@ -10,5 +10,18 @@
   },
   "devDependencies": {
     "wrangler": "^3.0.0"
-  }
+  },
+  "description": "Utility repository containing `wrangle_grants.py` for merging and normalizing grant CSV/TSV files. An optional `wrangle_grants_gui.py` provides a minimal Tkinter interface to run the wrangler without the command line.",
+  "main": "worker.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asiakay/grant-manager-tool-demo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/asiakay/grant-manager-tool-demo/issues"
+  },
+  "homepage": "https://github.com/asiakay/grant-manager-tool-demo#readme"
 }
