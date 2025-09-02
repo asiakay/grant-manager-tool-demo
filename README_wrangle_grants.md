@@ -10,7 +10,14 @@ mkdir -p data/csvs
 # (drop files into data/csvs)
 
 # 2) Run the script (adjust paths as needed)
-python3 wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
+
+```python3 
+wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
+```
+or
+
+```python 
+wrangle_grants.py --input data/csvs --out out/master.csv --xlsx out/master.xlsx --weights 0.4 0.4 0.2 --deadline-cutoff today --print-summary
 ```
 
 ## GUI Option
@@ -19,6 +26,9 @@ For a basic desktop interface instead of the command line, run:
 
 ```bash
 python3 wrangle_grants_gui.py
+
+```python 
+wrangle_grants_gui.py
 ```
 
 The window lets you choose folders and output paths, tweak weights, set a deadline cutoff, and run the wrangler.
@@ -35,6 +45,3 @@ The window lets you choose folders and output paths, tweak weights, set a deadli
 * Exports **CSV** (and optional **Excel**)
 
 ## Notes
-
-* It already recognizes lots of messy header names (e.g., “Opportunity Title,” “Award Ceiling,” “Close Date”).
-* If you spot columns it didn’t map, tell me the exact header text and I’ll add them to the alias list so your next run is perfect.
