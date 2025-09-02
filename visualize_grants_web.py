@@ -10,10 +10,6 @@ Run with ``python visualize_grants_web.py`` and open http://localhost:5000.
 
 from pathlib import Path
 
-import pandas as pd
-import plotly.express as px
-from flask import Flask, render_template_string
-
 app = Flask(__name__)
 
 
