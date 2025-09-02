@@ -78,7 +78,10 @@ pip install -r requirements.txt
 ## Cloudflare Worker demo
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
-To deploy:
+The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
+`user/userpass`) and, once logged in, shows sample grant data in a timeline table plus a
+bar chart of funding amounts. It can be extended to invoke the Python wrangler or serve a
+richer UI. To deploy:
 
 ```bash
 npm install            # install wrangler locally
@@ -87,8 +90,5 @@ npm run deploy        # publishes worker.js using wrangler.toml
 npm install -g wrangler  # one-time install
 wrangler publish         # deploys worker.js using wrangler.toml
 ```
-
-The worker responds with a simple HTML page confirming that the service is alive.
-It can be extended to invoke the Python wrangler or serve a richer UI.
 
 
