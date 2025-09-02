@@ -21,6 +21,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+import logging
+
+try:
+    from tqdm import tqdm  # type: ignore
+except Exception:  # pragma: no cover - tqdm is optional
+    def tqdm(x, **kwargs):
+        return x
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def error(msg: str) -> None:
@@ -294,10 +304,14 @@ def read_csv_safe(path: Path) -> pd.DataFrame:
 
 def load_folder(folder: Path) -> List[pd.DataFrame]:
     frames: List[pd.DataFrame] = []
-    for p in folder.rglob("*"):
+    for p in tqdm(folder.rglob("*"), desc="Loading files"):
         if p.suffix.lower() in {".csv", ".tsv", ".tab"}:
             df = read_csv_safe(p)
+            rows = len(df) if df is not None else 0
+            logger.info("Loaded %s (%d rows)", p, rows)
+            if df is not None and rows:
             if len(df):
+ main
                 df["_source_file"] = str(p)
                 frames.append(df)
     return frames
@@ -310,7 +324,9 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df[CANON_COLS + [c for c in df.columns if c not in CANON_COLS]]
 
 
-def main(argv=None):
+def 
+
+(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--input",
@@ -328,6 +344,7 @@ def main(argv=None):
     ap.add_argument("--weights", type=float, nargs=3, default=[0.4, 0.4, 0.2], help="Weights: relevance fit ease")
     ap.add_argument("--deadline-cutoff", type=str, default="", help="Keep items with Deadline >= this date (YYYY-MM-DD) or 'today'")
     ap.add_argument("--print-summary", action="store_true", help="Print a quick summary to stdout")
+    ap.add_argument("--verbose", action="store_true", help="Show debug logging")
     args = ap.parse_args(argv)
 
     default_in = Path("data/csvs")
@@ -357,13 +374,20 @@ def main(argv=None):
     if out_xlsx:
         out_xlsx.parent.mkdir(parents=True, exist_ok=True)
 
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
     frames = load_folder(in_folder)
     if not frames:
         error(f"No CSV/TSV files found in {in_folder}")
 
     # Map each to canonical, then concat
     mapped_frames = []
-    for df in frames:
+    for df in tqdm(frames, desc="Mapping columns"):
+        src = df["_source_file"].iloc[0] if "_source_file" in df.columns else "<unknown>"
+        logger.info("Mapping %s (%d rows)", src, len(df))
         m = map_columns(df)
         mapped_frames.append(m)
 
