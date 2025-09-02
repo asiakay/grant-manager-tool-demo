@@ -22,6 +22,11 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
+
+def error(msg: str) -> None:
+    """Log ``msg`` and abort the program."""
+    raise SystemExit(f"ERROR: {msg}")
+
 # -------------------- Configuration --------------------
 
 # Canonical schema
@@ -276,7 +281,7 @@ def filter_deadlines(df: pd.DataFrame, cutoff: Optional[str]) -> pd.DataFrame:
         return df
 
 
-def read_csv_safe(path: Path) -> Optional[pd.DataFrame]:
+def read_csv_safe(path: Path) -> pd.DataFrame:
     try:
         return pd.read_csv(path)
     except Exception:
@@ -284,7 +289,7 @@ def read_csv_safe(path: Path) -> Optional[pd.DataFrame]:
         try:
             return pd.read_csv(path, sep="\t")
         except Exception:
-            return None
+            error(f"Could not read file: {path}")
 
 
 def load_folder(folder: Path) -> List[pd.DataFrame]:
@@ -292,7 +297,7 @@ def load_folder(folder: Path) -> List[pd.DataFrame]:
     for p in folder.rglob("*"):
         if p.suffix.lower() in {".csv", ".tsv", ".tab"}:
             df = read_csv_safe(p)
-            if df is not None and len(df):
+            if len(df):
                 df["_source_file"] = str(p)
                 frames.append(df)
     return frames
@@ -326,7 +331,7 @@ def main(argv=None):
 
     frames = load_folder(in_folder)
     if not frames:
-        raise SystemExit(f"No CSV/TSV files found in {in_folder}")
+        error(f"No CSV/TSV files found in {in_folder}")
 
     # Map each to canonical, then concat
     mapped_frames = []
