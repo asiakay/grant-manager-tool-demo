@@ -10,21 +10,6 @@ Run with ``python visualize_grants_web.py`` and open http://localhost:5000.
 
 from pathlib import Path
 
-try:
-    import pandas as pd
-except ImportError as exc:  # pragma: no cover - dependency guard
-    raise SystemExit("pandas is required to run this script. Install via 'pip install pandas'.") from exc
-
-try:
-    import plotly.express as px
-except ImportError as exc:  # pragma: no cover - dependency guard
-    raise SystemExit("plotly is required to run this script. Install via 'pip install plotly'.") from exc
-
-try:
-    from flask import Flask, render_template_string
-except ImportError as exc:  # pragma: no cover - dependency guard
-    raise SystemExit("Flask is required to run this script. Install via 'pip install flask'.") from exc
-
 app = Flask(__name__)
 
 
