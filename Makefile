@@ -1,5 +1,10 @@
-run-grants:
-	@echo 'Run grant scoring stub'
+wrangle:
+	python wrangle_grants.py --input data/csvs --out out/master.csv
 
-watch-programs:
-	@echo 'Run ProgramWatcher stub'
+visualize:
+	python visualize_grants_web.py
+
+deploy:
+	wrangler publish
+
+.PHONY: wrangle visualize deploy
