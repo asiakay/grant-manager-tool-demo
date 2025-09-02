@@ -31,6 +31,10 @@ setup of the project:
 
    ```bash
    npm init -y
+   
+5. (Optional) Install Node dependencies for the Cloudflare Worker example:
+
+   ```bash
    npm install
    ```
 
