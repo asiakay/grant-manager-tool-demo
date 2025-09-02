@@ -42,7 +42,10 @@ function loginPage() {
 </html>`;
 }
 
-function dashboardPage(grants) {
+// Render a simple table (and optional bar chart) of scored grant data.
+// The page name now reflects that it specifically visualizes the scored CSV
+// rather than being a generic dashboard.
+function scoredPage(grants) {
   const headers = grants.length ? Object.keys(grants[0]) : [];
   const headerRow = headers.map((h) => `<th>${h}</th>`).join('');
   const rows = grants
@@ -83,11 +86,11 @@ function dashboardPage(grants) {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Grant Dashboard</title>
+  <title>Scored Grants</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>Grant Dashboard</h1>
+  <h1>Scored Grants</h1>
   <a href="/logout">Logout</a>
   <table border="1">
     <tr>${headerRow}</tr>
@@ -111,7 +114,7 @@ export default {
       if (users[user] === pass) {
         return new Response('', {
           status: 302,
-          headers: { 'Set-Cookie': 'session=active; Path=/', Location: '/dashboard' }
+          headers: { 'Set-Cookie': 'session=active; Path=/', Location: '/scored' }
         });
       }
       return new Response('Unauthorized', { status: 401 });
@@ -122,7 +125,17 @@ export default {
         return new Response('', { status: 302, headers: { Location: '/' } });
       }
       const grants = await fetchGrantsFromCsv();
-      return new Response(dashboardPage(grants), {
+      return new Response(scoredPage(grants), {
+        headers: { 'content-type': 'text/html; charset=UTF-8' }
+      });
+    }
+
+    if (url.pathname === '/scored') {
+      if (!loggedIn) {
+        return new Response('', { status: 302, headers: { Location: '/' } });
+      }
+      const grants = await fetchGrantsFromCsv();
+      return new Response(scoredPage(grants), {
         headers: { 'content-type': 'text/html; charset=UTF-8' }
       });
     }

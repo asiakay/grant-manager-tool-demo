@@ -80,10 +80,11 @@ pip install -r requirements.txt
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
 The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
-`user/userpass`) and, once logged in, loads scored opportunities from a CSV file
-(`out/master.csv` by default). The data is rendered in a table and, when the CSV
-contains `Name` and `Weighted Score` columns, a bar chart is also shown. Update the
-`CSV_URL` constant in `worker.js` if your scored CSV is hosted elsewhere. To deploy:
+`user/userpass`) and, once logged in, redirects to `/scored` to display the scored
+opportunities from a CSV file (`out/master.csv` by default). The data is rendered in a
+table and, when the CSV contains `Name` and `Weighted Score` columns, a bar chart is also
+shown. Update the `CSV_URL` constant in `worker.js` if your scored CSV is hosted elsewhere.
+To deploy:
 
 ```bash
 npm install            # install wrangler locally
