@@ -24,7 +24,12 @@ To deploy:
 ```bash
 npm install            # install wrangler locally
 npm run deploy        # publishes worker.js using wrangler.toml
+=======
+npm install -g wrangler  # one-time install
+wrangler publish         # deploys worker.js using wrangler.toml
 ```
 
 The worker responds with a simple HTML page confirming that the service is alive.
 It can be extended to invoke the Python wrangler or serve a richer UI.
+
+
