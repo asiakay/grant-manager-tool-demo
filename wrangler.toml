@@ -1,3 +1,7 @@
 name = "grant-demo"
 main = "worker.js"
 compatibility_date = "2024-05-29"
+
+[vars]
+# Replace with the URL of your real grant/partnership JSON API
+GRANT_DATA_URL = "https://example.com/api/grants"

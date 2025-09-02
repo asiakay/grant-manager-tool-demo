@@ -54,7 +54,8 @@ setup of the project:
 
    ```bash
    npm init -y
-   
+   ```
+
 5. (Optional) Install Node dependencies for the Cloudflare Worker example:
 
    ```bash
@@ -78,17 +79,24 @@ pip install -r requirements.txt
 ## Cloudflare Worker demo
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
-To deploy:
+The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
+`user/userpass`) and, once logged in, shows sample grant data in a timeline table plus a
+bar chart of funding amounts. It can be extended to invoke the Python wrangler or serve a
+richer UI. To deploy:
 
 ```bash
 npm install            # install wrangler locally
 npm run deploy        # publishes worker.js using wrangler.toml
-=======
+
+# or, if wrangler is installed globally
 npm install -g wrangler  # one-time install
 wrangler publish         # deploys worker.js using wrangler.toml
 ```
 
-The worker responds with a simple HTML page confirming that the service is alive.
-It can be extended to invoke the Python wrangler or serve a richer UI.
+To connect the dashboard to your own grant or partnership data, set the
+`GRANT_DATA_URL` variable in `wrangler.toml` to a JSON API endpoint returning an
+array of grant objects with `title`, `amount`, `start`, and `end` fields. The
+worker will fetch this URL at runtime and fall back to sample data if the fetch
+fails.
 
 
