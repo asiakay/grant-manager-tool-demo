@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node worker.js",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node --test"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"
