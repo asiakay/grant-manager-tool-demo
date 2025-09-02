@@ -2,6 +2,16 @@
 
 Utility repository containing `wrangle_grants.py` for merging and normalizing grant CSV/TSV files.
 An optional `wrangle_grants_gui.py` provides a minimal Tkinter interface to run the wrangler without the command line.
+The GUI now starts with a simple login screen demonstrating "admin" and
+"user" roles.  The admin account can adjust weighting and deadline fields
+while the standard user can only choose files and run the wrangler.
+
+Default credentials:
+
+```
+username: admin   password: adminpass
+username: user    password: userpass
+```
 
 See [README_wrangle_grants.md](README_wrangle_grants.md) for usage instructions.
 
