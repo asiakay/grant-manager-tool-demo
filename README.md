@@ -97,7 +97,9 @@ A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
 The worker includes a basic login page configured via the `USER_HASHES`
 environment variable. After logging in, the `/dashboard` view renders the
 program data schema table, with links to `/schema` (JSON) and `/data` (CSV)
-for alternate views.
+for alternate views. Authenticated requests to `/api/grants` return the grant
+rows scored with weights from the user's profile stored in the `USER_PROFILES`
+KV namespace.
 
 The Worker relies on a D1 database. Run the migration before deploying:
 
@@ -105,6 +107,9 @@ The Worker relies on a D1 database. Run the migration before deploying:
 cd worker
 wrangler d1 migrations apply EQORE_DB
 ```
+
+Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace
+to control how grants are scored.
 
 ## Developer guide
 

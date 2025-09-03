@@ -9,3 +9,7 @@ USER_HASHES = '{"admin":"713bfda78870bf9d1b261f565286f85e97ee614efe5f0faf7c34e7c
 binding = "DB"
 database_name = "EQORE_DB"
 database_id = "EQORE_DB"
+
+[[kv_namespaces]]
+binding = "USER_PROFILES"
+id = "USER_PROFILES"
