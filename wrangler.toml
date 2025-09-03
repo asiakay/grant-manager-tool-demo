@@ -8,7 +8,8 @@ USER_HASHES = '{"admin":"713bfda78870bf9d1b261f565286f85e97ee614efe5f0faf7c34e7c
 [[d1_databases]]
 binding = "DB"
 database_name = "EQORE_DB"
-database_id = "EQORE_DB"
+database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
+
 
 
 [[kv_namespaces]]
