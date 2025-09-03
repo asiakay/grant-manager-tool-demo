@@ -100,7 +100,12 @@ export default {
         rows = results.map((r) => columns.map((c) => r[c] ?? ""));
       }
       let profile = {};
-      const profileRaw = await env.USER_PROFILES.get(username);
+      let profileRaw = null;
+      if (env.USER_PROFILES) {
+        profileRaw = await env.USER_PROFILES.get(username);
+      } else {
+        console.warn("USER_PROFILES binding is not configured");
+      }
       if (profileRaw) {
         try {
           profile = JSON.parse(profileRaw);
@@ -169,7 +174,13 @@ export default {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const profileRaw = await env.USER_PROFILES.get(username);
+      let profileRaw = null;
+      if (env.USER_PROFILES) {
+        profileRaw = await env.USER_PROFILES.get(username);
+      } else {
+        console.warn("USER_PROFILES binding is not configured");
+        return new Response("USER_PROFILES binding not configured", { status: 500 });
+      }
       let profile = {};
       if (profileRaw) {
         try {
