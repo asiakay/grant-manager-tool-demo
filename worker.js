@@ -18,6 +18,10 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
+async function ensureProgramsTable(db) {
+  await db.exec("CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY)");
+}
+
 async function newSchemaPage(db) {
   const columns = await getColumns(db);
   const inputs = columns
@@ -43,6 +47,7 @@ export default {
     const cookie = request.headers.get("Cookie") || "";
     const loggedIn = cookie.includes("session=active");
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
+    await ensureProgramsTable(env.EQORE_DB);
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
@@ -83,21 +88,14 @@ export default {
           headers: { Location: "/" },
         });
       }
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       let rows = [];
       if (columns.length > 0) {
-        const { results } = await env.DB.prepare(
+        const { results } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         rows = results.map((r) => columns.map((c) => r[c] ?? ""));
       }
-      const columnSql = columns.length
-        ? columns.map((c) => `"${c}"`).join(",")
-        : "*";
-      const { results } = await env.DB.prepare(
-        `SELECT ${columnSql} FROM programs`
-      ).all();
- main
       return new Response(renderDashboardPage(columns, rows), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
@@ -111,12 +109,12 @@ export default {
         });
       }
       if (request.method === "POST") {
-        const columns = await getColumns(env.DB);
+        const columns = await getColumns(env.EQORE_DB);
         const form = await request.formData();
         const values = columns.map((c) => form.get(c) || "");
         const placeholders = columns.map(() => "?").join(",");
         const cols = columns.map((c) => `"${c}"`).join(",");
-        await env.DB.prepare(
+        await env.EQORE_DB.prepare(
           `INSERT OR REPLACE INTO programs (${cols}) VALUES (${placeholders})`
         )
           .bind(...values)
@@ -126,23 +124,23 @@ export default {
           headers: { Location: "/dashboard" },
         });
       }
-      return new Response(await newSchemaPage(env.DB), {
+      return new Response(await newSchemaPage(env.EQORE_DB), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
 
     if (url.pathname === "/schema") {
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       return new Response(JSON.stringify(columns), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (url.pathname === "/data") {
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       let body = "";
       if (columns.length > 0) {
-        const { results } = await env.DB.prepare(
+        const { results } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         body = [
@@ -150,14 +148,6 @@ export default {
           ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
         ].join("\n");
       }
-      const columnSql = columns.length
-        ? columns.map((c) => `"${c}"`).join(",")
-        : "*";
-      const { results } = await env.DB.prepare(
-        `SELECT ${columnSql} FROM programs`
-      ).all();
-      
- main
       return new Response(body, {
         headers: { "content-type": "text/csv; charset=UTF-8" },
       });
