@@ -69,3 +69,13 @@ The window lets you choose folders and output paths, tweak weights, set a deadli
 * Sorts by **Weighted Score (desc)** then **Deadline (asc)**
 * Exports **CSV** (and optional **Excel**)
 
+## Configuration file
+
+You can supply a JSON or YAML config to set weights, dedupe columns, and extra header aliases:
+
+```bash
+python3 wrangle_grants.py --config examples/wrangle_config.yaml --input data/csvs --out out/master.csv
+```
+
+See `examples/wrangle_config.json` and `examples/wrangle_config.yaml` for templates.
+
