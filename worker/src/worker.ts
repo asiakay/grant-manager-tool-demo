@@ -1,11 +1,15 @@
+import { Ai } from '@cloudflare/ai';
+
 export interface Env {
   PDF_BUCKET: R2Bucket;
+  AI: Ai;
+  CHAT_API_KEY: string;
 }
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization'
 };
 
 export default {
@@ -44,6 +48,37 @@ export default {
       }
       const score = value * 2;
       return new Response(JSON.stringify({ score }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' }
+      });
+    }
+
+    if (url.pathname === '/api/chat') {
+      if (request.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+      }
+      const auth = request.headers.get('Authorization');
+      if (auth !== `Bearer ${env.CHAT_API_KEY}`) {
+        return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+      }
+      let data: any;
+      try {
+        data = await request.json();
+      } catch {
+        return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'content-type': 'application/json' }
+        });
+      }
+      const prompt = data?.prompt;
+      if (typeof prompt !== 'string') {
+        return new Response(JSON.stringify({ error: '`prompt` must be a string' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'content-type': 'application/json' }
+        });
+      }
+      const ai = new Ai(env.AI);
+      const result = await ai.run('@cf/meta/llama-3-8b-instruct', { prompt });
+      return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'content-type': 'application/json' }
       });
     }

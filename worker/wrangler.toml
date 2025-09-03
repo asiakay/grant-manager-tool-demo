@@ -4,6 +4,12 @@ name = "grant-demo"
 main = "src/worker.ts"
 compatibility_date = "2024-05-29"
 
+[vars]
+CHAT_API_KEY = ""
+
+[[ai]]
+binding = "AI"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "EQORE_DB"
