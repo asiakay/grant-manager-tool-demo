@@ -10,6 +10,7 @@ binding = "DB"
 database_name = "EQORE_DB"
 database_id = "EQORE_DB"
 
+
 [[kv_namespaces]]
 binding = "USER_PROFILES"
-id = "USER_PROFILES"
+id = "065f64c71e0747079a2e3d86b292770d"
