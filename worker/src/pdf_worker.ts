@@ -32,7 +32,7 @@ export default {
         if (!resp.ok) {
           throw new Error(`summarizer status ${resp.status}`);
         }
-        const { csv, markdown } = await resp.json();
+        const { csv, markdown } = await resp.json<{ csv: string; markdown: string }>();
         const base = key.replace(/\.pdf$/i, '');
         await env.PDF_BUCKET.put(`${base}.csv`, csv);
         await env.PDF_BUCKET.put(`${base}.md`, markdown);
