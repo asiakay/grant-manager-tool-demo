@@ -1,33 +1,26 @@
+import { renderDashboardPage } from "./templates/dashboard.js";
+import { renderLoginPage } from "./templates/login.js";
 
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 5 * 60 * 1000;
 
-const schemaColumns = [
-  "Type",
-  "Name",
-  "Sponsor",
-  "Source URL",
-  "Region / Eligibility",
-  "Deadline / Next Cohort",
-  "Cadence",
-  "Benefits",
-  "Eligibility (key conditions)",
-  "Stage",
-  "Non-dilutive?",
-  "Stack Required?",
-  "Relevance",
-  "Fit",
-  "Ease",
-  "Weighted Score",
-  "Notes / Actions",
-];
+async function hashPassword(pass) {
+  const data = new TextEncoder().encode(pass);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
-const programsCsv =
-  "Type,Name,Sponsor,Source URL,Region / Eligibility,Deadline / Next Cohort,Cadence,Benefits,Eligibility (key conditions),Stage,Non-dilutive?,Stack Required?,Relevance,Fit,Ease,Weighted Score,Notes / Actions\n" +
-  "program,Workers Launchpad,Cloudflare,https://www.cloudflare.com/lp/workers-launchpad/,Global; startups built on Workers,Quarterly cohorts; Demo Days; rolling intake,Quarterly,VC intros (40+ firms); founder bootcamps; Cloudflare engineering office hours; PM previews; community & Demo Day,Built core infra on Cloudflare Workers,Pre-seed–Series A,No (VC intros; not a grant),Yes (Workers required),5,5,5,,Confirm Workers usage; prepare 5-min pitch + traction bullets; follow cohort announcements";
+async function getColumns(db) {
+  const { results } = await db.prepare("PRAGMA table_info(programs)").all();
+  return results.map((r) => r.name);
+}
 
-
-
-function newSchemaPage() {
-  const inputs = schemaColumns
+async function newSchemaPage(db) {
+  const columns = await getColumns(db);
+  const inputs = columns
     .map((c) => `<label>${c} <input name="${c}" /></label><br />`)
     .join("\n");
   return `<!DOCTYPE html>
@@ -90,7 +83,12 @@ export default {
           headers: { Location: "/" },
         });
       }
-      return new Response(renderDashboardPage(schemaColumns, programRows), {
+      const columns = await getColumns(env.DB);
+      const { results } = await env.DB.prepare(
+        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+      ).all();
+      const rows = results.map((r) => columns.map((c) => r[c] ?? ""));
+      return new Response(renderDashboardPage(columns, rows), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
@@ -103,27 +101,43 @@ export default {
         });
       }
       if (request.method === "POST") {
+        const columns = await getColumns(env.DB);
         const form = await request.formData();
-        const entry = schemaColumns.map((c) => form.get(c) || "");
-        schemaEntries.push(entry);
+        const values = columns.map((c) => form.get(c) || "");
+        const placeholders = columns.map(() => "?").join(",");
+        const cols = columns.map((c) => `"${c}"`).join(",");
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO programs (${cols}) VALUES (${placeholders})`
+        )
+          .bind(...values)
+          .run();
         return new Response("", {
           status: 302,
           headers: { Location: "/dashboard" },
         });
       }
-      return new Response(newSchemaPage(), {
+      return new Response(await newSchemaPage(env.DB), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
 
     if (url.pathname === "/schema") {
-      return new Response(JSON.stringify(schemaColumns), {
+      const columns = await getColumns(env.DB);
+      return new Response(JSON.stringify(columns), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (url.pathname === "/data") {
-      return new Response(programsCsv, {
+      const columns = await getColumns(env.DB);
+      const { results } = await env.DB.prepare(
+        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+      ).all();
+      const body = [
+        columns.join(","),
+        ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
+      ].join("\n");
+      return new Response(body, {
         headers: { "content-type": "text/csv; charset=UTF-8" },
       });
     }
@@ -144,3 +158,4 @@ export default {
     });
   },
 };
+
