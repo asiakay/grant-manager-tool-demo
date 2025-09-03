@@ -7,9 +7,15 @@
     "doc": "docs",
     "example": "examples"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "typescript": "^5.0.0",
+    "@cloudflare/workers-types": "^4.20250408.0"
+  },
   "scripts": {
-    "test": "python -m unittest discover -s tests"
+    "test": "pytest grant_summarizer",
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy"
   },
   "repository": {
     "type": "git",
