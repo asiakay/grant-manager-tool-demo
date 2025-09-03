@@ -6,11 +6,17 @@ The GUI now starts with a simple login screen demonstrating "admin" and
 "user" roles. The admin account can adjust weighting and deadline fields
 while the standard user can only choose files and run the wrangler.
 
-Default credentials:
+Credentials are supplied via a `USER_HASHES` environment variable containing
+SHA-256 password hashes. Example:
 
 ```
-username: admin   password: adminpass
-username: user    password: userpass
+export USER_HASHES='{"admin":"<sha256 hash>","user":"<sha256 hash>"}'
+```
+
+Hashes can be generated with tools such as `sha256sum`:
+
+```
+echo -n "adminpass" | sha256sum
 ```
 
 See [README_wrangle_grants.md](README_wrangle_grants.md) for usage instructions.
@@ -88,10 +94,10 @@ pip install -r requirements.txt
 ## Cloudflare Worker demo
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
-The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
-`user/userpass`).
-After logging in, the `/dashboard` view renders the program data schema table, with
-links to `/schema` (JSON) and `/data` (CSV) for alternate views.
+The worker includes a basic login page configured via the `USER_HASHES`
+environment variable. After logging in, the `/dashboard` view renders the
+program data schema table, with links to `/schema` (JSON) and `/data` (CSV)
+for alternate views.
 
 ## Developer guide
 
