@@ -1,0 +1,27 @@
+version: '3.9'
+services:
+  grant-manager:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./out:/app/out
+      - shared-data:/shared
+    ports:
+      - '5000:5000'
+
+  presentation:
+    build: https://github.com/asiakay/presentation.git
+    volumes:
+      - shared-data:/shared
+    depends_on:
+      - grant-manager
+
+  funding-pipeline:
+    build: https://github.com/asiakay/funding-pipline.git
+    volumes:
+      - shared-data:/shared
+    depends_on:
+      - grant-manager
+
+volumes:
+  shared-data:
