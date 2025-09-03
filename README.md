@@ -52,7 +52,7 @@ app:
 ```bash
 python visualize_grants_web.py
 ```
-
+It opens with a minimal login form (`client` / `demo`) before showing the data.
 The page includes a dataset selector letting you switch between
 `out/master.csv` (default) and `data/programs.csv`. If the chosen CSV is
 missing, the app falls back to tiny sample data so the visualization can still
