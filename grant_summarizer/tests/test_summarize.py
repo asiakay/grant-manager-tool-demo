@@ -8,9 +8,10 @@ def sample_row() -> CleanRow:
         sponsor_org="Org",
         award_max="$5M",
         app_deadline="Jan 1, 2025",
+        timeline_summary="45 months",
+        partners_notes="State agencies",
         industries="Tech",
         match_req_pct="0%",
-        timeline_summary="45 months",
         reimb_pct="80%",
         reporting_schema="Quarterly",
         extra_notes="Notes",
@@ -33,5 +34,14 @@ def test_one_pager_md():
     text = one_pager_md(sample_row())
     word_count = len(text.split())
     assert 250 <= word_count <= 400
-    assert "Funding" in text
-    assert "Deadline" in text
+    for heading in [
+        "Funding",
+        "Deadline",
+        "Period",
+        "Eligibility",
+        "Industries",
+        "Reimbursement",
+        "Reporting",
+    ]:
+        assert f"## {heading}" in text
+    assert "lorem" not in text

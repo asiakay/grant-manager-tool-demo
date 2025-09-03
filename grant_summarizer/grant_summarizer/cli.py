@@ -6,6 +6,7 @@ from .extract import extract_text, extract_text_from_link, find_field_windows
 from .normalize import normalize_fields
 from .summarize import brief_bullets, one_pager_md, slide_bullets
 from .utils import write_json, write_csv
+from .grants_api import search_grants
 
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,6 @@ def main(
         False, help="Allow downloading remote URLs (insecure)"
     ),
     search: str = typer.Option(None, help="Keyword to search on grants.gov"),
-  
- main
 ) -> None:
     """CLI entry point for the grant summarizer."""
     provided = [arg for arg in (pdf, url) if arg]
@@ -37,7 +36,7 @@ def main(
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
 
-main
+    handler: logging.FileHandler | None = None
     if debug:
         typer.echo("Debug mode enabled")
         log_file = out / "run.log"
