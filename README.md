@@ -95,10 +95,11 @@ pip install -r requirements.txt
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
 The worker includes a basic login page configured via the `USER_HASHES`
-environment variable. After logging in, the `/dashboard` view renders the
-program data schema table, with links to `/schema` (JSON) and `/data` (CSV)
-for alternate views. Authenticated requests to `/api/grants` return the grant
-rows scored with weights from the user's profile stored in the `USER_PROFILES`
+environment variable. After logging in, users land on a profile page that lets
+them run the data‑wrangling tool. Enter a folder of messy CSV files and the
+desired output path and the worker invokes `wrangle_grants.py` to produce a
+clean CSV. Authenticated requests to `/api/grants` still return scored grant
+rows using weights from the user's profile stored in the `USER_PROFILES`
 KV namespace.
 
 The Worker relies on a D1 database. Run the migration before deploying:

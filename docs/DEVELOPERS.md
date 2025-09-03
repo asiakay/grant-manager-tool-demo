@@ -19,7 +19,7 @@ This project combines Python tools for grant wrangling with a minimal web UI and
    - Add unit tests with `pytest` and run `pytest` before committing changes.
 4. **APIs & workers**
    - Cloudflare worker code lives in `worker.js` and `workers/`. Use `npm run dev` for local development and `npm run deploy` to publish.
-   - After logging in, the demo dashboard shows a program data schema table and exposes `/schema` (JSON) and `/data` (CSV) for alternative views.
+   - After logging in, users are taken to a profile page where they can run the CSV wrangler. The worker invokes `wrangle_grants.py` on the chosen folder and output path. `/schema` (JSON) and `/data` (CSV) remain available for direct access if needed.
 
 5. **PDF upload workflow**
    - `POST /upload` stores a PDF in an R2 bucket bound as `PDF_BUCKET`. Send a multipart form with a `file` field or JSON `{"name":"file.pdf","data":"<base64>"}`.
