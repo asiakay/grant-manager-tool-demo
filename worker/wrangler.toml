@@ -29,3 +29,4 @@ service = "pdf-worker"
 
 [services]
 main = "src/pdf_worker.ts"
+
