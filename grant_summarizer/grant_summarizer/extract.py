@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict
 import re
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import tempfile
 from html.parser import HTMLParser
 
@@ -54,16 +54,24 @@ def _html_to_text(html: str) -> str:
 
 def extract_text_from_link(link: str) -> str:
     """Fetch a URL (PDF or HTML) and return extracted plain text."""
+    req = Request(link, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(req) as resp:
+        data = resp.read()
+        content_type = resp.headers.get("content-type", "")
+        charset = resp.headers.get_content_charset("utf-8")
+
     with urlopen(link) as resp:
         data = resp.read()
         content_type = resp.headers.get("content-type", "")
+ main
     if "pdf" in content_type or link.lower().endswith(".pdf"):
         with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
             tmp.write(data)
             tmp.flush()
             return extract_text(tmp.name)
     else:
-        text = data.decode("utf-8", errors="ignore")
+        text = data.decode(charset, errors="ignore")
+main
         return _html_to_text(text)
 
 
