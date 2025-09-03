@@ -10,5 +10,16 @@ bucket = "./public"
 [observability.logs]
 enabled = false
 
+[[r2_buckets]]
+binding = "PDF_BUCKET"
+bucket_name = "PDF_BUCKET"
+
+[[queues.consumers]]
+queue = "PDF_INGEST"
+script = "pdf-worker"
+
+[workers.pdf-worker]
+main = "src/pdf_worker.ts"
+
 
 
