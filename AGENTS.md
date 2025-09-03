@@ -16,6 +16,7 @@ This file describes the automation agents, their goals, inputs, outputs, run com
 | GrantScorer    | Serve scored grants for logged-in users         | `USER_PROFILES` KV and D1 `programs` table | JSON array of scored grants                  | `npx wrangler dev --local`          | On demand           | `worker.js`                         |
 | Visualizer     | Local web server to explore the master dataset  | `out/master.csv`                           | Interactive web page                         | `make visualize`                    | After data updates  | `visualize_grants_web.py`           |
 | GrantFinder    | Query Grants.gov with keywords and filters      | CLI args                                   | CSV/TSV file and printed summary             | `python search_grants.py education` | On demand           | `search_grants.py`                  |
+| WrangleAPI     | Serve wrangled grants via HTTP                  | `data/csvs/`                               | JSON master dataset                          | `python wrangle_api.py`             | On demand           | `wrangle_api.py` |
 
 # AGENTS.md (for `ui/` components)
 
