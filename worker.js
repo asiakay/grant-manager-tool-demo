@@ -43,6 +43,9 @@ export default {
     const cookie = request.headers.get("Cookie") || "";
     const loggedIn = cookie.includes("session=active");
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
+    await env.DB.exec(
+      "CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY)"
+    );
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
@@ -91,13 +94,6 @@ export default {
         ).all();
         rows = results.map((r) => columns.map((c) => r[c] ?? ""));
       }
-      const columnSql = columns.length
-        ? columns.map((c) => `"${c}"`).join(",")
-        : "*";
-      const { results } = await env.DB.prepare(
-        `SELECT ${columnSql} FROM programs`
-      ).all();
- main
       return new Response(renderDashboardPage(columns, rows), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
@@ -150,18 +146,10 @@ export default {
           ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
         ].join("\n");
       }
-      const columnSql = columns.length
-        ? columns.map((c) => `"${c}"`).join(",")
-        : "*";
-      const { results } = await env.DB.prepare(
-        `SELECT ${columnSql} FROM programs`
-      ).all();
-      
- main
-      return new Response(body, {
-        headers: { "content-type": "text/csv; charset=UTF-8" },
-      });
-    }
+        return new Response(body, {
+          headers: { "content-type": "text/csv; charset=UTF-8" },
+        });
+      }
 
     if (url.pathname === "/logout") {
       return new Response("", {

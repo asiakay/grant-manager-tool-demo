@@ -63,7 +63,6 @@ def extract_text_from_link(link: str) -> str:
     with urlopen(link) as resp:
         data = resp.read()
         content_type = resp.headers.get("content-type", "")
- main
     if "pdf" in content_type or link.lower().endswith(".pdf"):
         with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
             tmp.write(data)
@@ -71,7 +70,6 @@ def extract_text_from_link(link: str) -> str:
             return extract_text(tmp.name)
     else:
         text = data.decode(charset, errors="ignore")
-main
         return _html_to_text(text)
 
 
