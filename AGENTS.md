@@ -2,6 +2,12 @@
 
 This file describes the automation agents, their goals, inputs, outputs, and schedules.
 
+## Contributing
+
+- Update the table whenever a new agent is added or when an existing agent's goal, inputs, outputs, or schedule changes.
+- Keep entries concise: use capitalized agent names, wrap file paths and commands in backticks, and limit each column to a single sentence.
+- Run `npm test` before committing to verify repository checks pass.
+
 | Agent | Goal | Inputs | Outputs | Schedule |
 |-------|------|--------|---------|----------|
 | GrantWrangler | Merge raw grant CSV files into a master dataset | `data/csvs/` | `out/master.csv` | Run `make wrangle` when new data arrives |
