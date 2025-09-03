@@ -11,6 +11,8 @@ def main(
     pdf: str = typer.Option(None, help="Path to a grant PDF"),
     url: str = typer.Option(None, help="URL pointing to a grant page or PDF"),
     output_format: str = typer.Option("all", "--format", help="Output format: json, csv, md, or all"),
+    format: str = "all",
+  main
     outdir: str = "./dist",
     debug: bool = False,
 ) -> None:
