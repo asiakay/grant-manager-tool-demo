@@ -59,18 +59,13 @@ def extract_text_from_link(link: str) -> str:
         data = resp.read()
         content_type = resp.headers.get("content-type", "")
         charset = resp.headers.get_content_charset("utf-8")
-
-    with urlopen(link) as resp:
-        data = resp.read()
-        content_type = resp.headers.get("content-type", "")
     if "pdf" in content_type or link.lower().endswith(".pdf"):
         with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
             tmp.write(data)
             tmp.flush()
             return extract_text(tmp.name)
-    else:
-        text = data.decode(charset, errors="ignore")
-        return _html_to_text(text)
+    text = data.decode(charset, errors="ignore")
+    return _html_to_text(text)
 
 
 def find_field_windows(text: str) -> Dict[str, str]:
