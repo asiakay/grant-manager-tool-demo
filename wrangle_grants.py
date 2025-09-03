@@ -15,7 +15,7 @@ Notes:
 import argparse
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -143,6 +143,69 @@ ALIASES: Dict[str, str] = {
 MONEY_COLS = {"Award max", "Award min", "Total funding"}
 
 
+@dataclass
+class WrangleConfig:
+    weights: Tuple[float, float, float] = (0.4, 0.4, 0.2)
+    dedupe: List[str] = field(
+        default_factory=lambda: ["Grant name", "Sponsor org"]
+    )
+    column_aliases: Dict[str, str] = field(default_factory=dict)
+
+
+def load_config(path: Path) -> WrangleConfig:
+    if not path.exists():
+        error(f"Config file not found: {path}")
+    ext = path.suffix.lower()
+    if ext in {".yaml", ".yml"}:
+        try:
+            import yaml  # type: ignore
+        except Exception:
+            error(
+                "PyYAML is required for YAML config files. Install with `pip install pyyaml`."
+            )
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    elif ext == ".json":
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        error("Unsupported config format. Use .json or .yaml")
+
+    if not isinstance(data, dict):
+        error("Config file must be a mapping")
+
+    cfg = WrangleConfig()
+
+    if "weights" in data:
+        w = data["weights"]
+        if not (isinstance(w, (list, tuple)) and len(w) == 3):
+            error("Config 'weights' must be a list of three numbers")
+        cfg.weights = tuple(float(x) for x in w)  # type: ignore
+
+    if "dedupe" in data:
+        d = data["dedupe"]
+        if not (
+            isinstance(d, list)
+            and d
+            and all(isinstance(c, str) for c in d)
+        ):
+            error("Config 'dedupe' must be a non-empty list of column names")
+        cfg.dedupe = d
+
+    if "column_aliases" in data:
+        ca = data["column_aliases"]
+        if not isinstance(ca, dict):
+            error("Config 'column_aliases' must be a mapping")
+        for canon in ca.values():
+            if canon not in CANON_COLS:
+                error(
+                    f"Unknown canonical column in column_aliases: {canon}"
+                )
+        cfg.column_aliases = ca
+
+    return cfg
+
+
 def norm_header(h: str) -> str:
     return re.sub(r"\s+", " ", h.strip().lower())
 
@@ -241,19 +304,14 @@ def add_deadline_helpers(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
-    # Simple key: Grant name + Sponsor org (case-insensitive)
-    key_cols = []
-    for c in ["Grant name", "Sponsor org"]:
+def deduplicate(df: pd.DataFrame, key_cols: List[str]) -> pd.DataFrame:
+    # Simple key from requested columns (case-insensitive)
+    key_series = None
+    for c in key_cols:
         if c not in df.columns:
             df[c] = pd.NA
-        key_cols.append(c)
-
-    key_series = (
-        df["Grant name"].astype(str).str.strip().str.lower().fillna("")
-        + " | "
-        + df["Sponsor org"].astype(str).str.strip().str.lower().fillna("")
-    )
+        s = df[c].astype(str).str.strip().str.lower().fillna("")
+        key_series = s if key_series is None else (key_series + " | " + s)
     # Keep the first occurrence (prefer non-null rows by sorting)
     sort_cols = []
     if "Deadline" in df.columns:
@@ -310,8 +368,6 @@ def load_folder(folder: Path) -> List[pd.DataFrame]:
             rows = len(df) if df is not None else 0
             logger.info("Loaded %s (%d rows)", p, rows)
             if df is not None and rows:
-            if len(df):
- main
                 df["_source_file"] = str(p)
                 frames.append(df)
     return frames
@@ -324,9 +380,7 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df[CANON_COLS + [c for c in df.columns if c not in CANON_COLS]]
 
 
-def 
-
-(argv=None):
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--input",
@@ -345,6 +399,7 @@ def
     ap.add_argument("--deadline-cutoff", type=str, default="", help="Keep items with Deadline >= this date (YYYY-MM-DD) or 'today'")
     ap.add_argument("--print-summary", action="store_true", help="Print a quick summary to stdout")
     ap.add_argument("--verbose", action="store_true", help="Show debug logging")
+    ap.add_argument("--config", type=str, default="", help="Path to JSON or YAML config file")
     args = ap.parse_args(argv)
 
     default_in = Path("data/csvs")
@@ -379,6 +434,11 @@ def
     else:
         logger.setLevel(logging.INFO)
 
+    config = WrangleConfig()
+    if args.config:
+        config = load_config(Path(args.config))
+        ALIASES.update({norm_header(k): v for k, v in config.column_aliases.items()})
+
     frames = load_folder(in_folder)
     if not frames:
         error(f"No CSV/TSV files found in {in_folder}")
@@ -398,12 +458,12 @@ def
     all_df = normalize_deadline(all_df)
 
     # Compute weights
-    w_rel, w_fit, w_ease = args.weights
-    all_df = compute_weighted(all_df, w_rel, w_fit, w_ease)
+    weights = config.weights if args.config else tuple(args.weights)
+    all_df = compute_weighted(all_df, *weights)
 
     # Helpers
     all_df = add_deadline_helpers(all_df)
-    all_df = deduplicate(all_df)
+    all_df = deduplicate(all_df, config.dedupe)
     all_df = filter_deadlines(all_df, args.deadline_cutoff)
 
     # Ensure canonical columns are present and ordered
