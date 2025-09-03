@@ -4,6 +4,11 @@ name = "grant-demo"
 main = "src/worker.ts"
 compatibility_date = "2024-05-29"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "EQORE_DB"
+database_id = "EQORE_DB"
+
 [site]
 bucket = "./public"
 

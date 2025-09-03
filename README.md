@@ -99,6 +99,13 @@ environment variable. After logging in, the `/dashboard` view renders the
 program data schema table, with links to `/schema` (JSON) and `/data` (CSV)
 for alternate views.
 
+The Worker relies on a D1 database. Run the migration before deploying:
+
+```bash
+cd worker
+wrangler d1 migrations apply EQORE_DB
+```
+
 ## Developer guide
 
 For guidelines on extending the backend, Cloudflare worker, or UI, see
