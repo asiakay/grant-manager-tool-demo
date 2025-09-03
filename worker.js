@@ -68,11 +68,12 @@ export default {
       const hashed = await hashPassword(pass || "");
       if (users[user] && users[user] === hashed) {
         loginAttempts.delete(ip);
+        const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {
           status: 302,
           headers: {
             "Set-Cookie":
-              `session=${encodeURIComponent(user)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+              `session=${encodeURIComponent(user)}; Path=/; HttpOnly; SameSite=Lax${secure}`,
             Location: "/dashboard",
           },
         });
@@ -98,7 +99,16 @@ export default {
         ).all();
         rows = results.map((r) => columns.map((c) => r[c] ?? ""));
       }
-      return new Response(renderDashboardPage(columns, rows), {
+      let profile = {};
+      const profileRaw = await env.USER_PROFILES.get(username);
+      if (profileRaw) {
+        try {
+          profile = JSON.parse(profileRaw);
+        } catch {
+          profile = {};
+        }
+      }
+      return new Response(renderDashboardPage(columns, rows, username, profile), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
@@ -191,14 +201,19 @@ export default {
     }
 
     if (url.pathname === "/logout") {
+      const secure = url.protocol === "https:" ? "; Secure" : "";
       return new Response("", {
         status: 302,
         headers: {
           "Set-Cookie":
-            "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax",
+            `session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${secure}`,
           Location: "/",
         },
       });
+    }
+
+    if (url.pathname === "/" && loggedIn) {
+      return new Response("", { status: 302, headers: { Location: "/dashboard" } });
     }
 
     return new Response(renderLoginPage(), {
