@@ -84,10 +84,13 @@ export default {
         });
       }
       const columns = await getColumns(env.DB);
-      const { results } = await env.DB.prepare(
-        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
-      ).all();
-      const rows = results.map((r) => columns.map((c) => r[c] ?? ""));
+      let rows = [];
+      if (columns.length > 0) {
+        const { results } = await env.DB.prepare(
+          `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+        ).all();
+        rows = results.map((r) => columns.map((c) => r[c] ?? ""));
+      }
       return new Response(renderDashboardPage(columns, rows), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
@@ -130,13 +133,16 @@ export default {
 
     if (url.pathname === "/data") {
       const columns = await getColumns(env.DB);
-      const { results } = await env.DB.prepare(
-        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
-      ).all();
-      const body = [
-        columns.join(","),
-        ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
-      ].join("\n");
+      let body = "";
+      if (columns.length > 0) {
+        const { results } = await env.DB.prepare(
+          `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+        ).all();
+        body = [
+          columns.join(","),
+          ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
+        ].join("\n");
+      }
       return new Response(body, {
         headers: { "content-type": "text/csv; charset=UTF-8" },
       });
