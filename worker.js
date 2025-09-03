@@ -45,7 +45,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const cookie = request.headers.get("Cookie") || "";
-    const loggedIn = cookie.includes("session=active");
+    const sessionMatch = cookie.match(/session=([^;]+)/);
+    const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
+    const loggedIn = !!username;
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
     await ensureProgramsTable(env.DB);
 
@@ -70,7 +72,7 @@ export default {
           status: 302,
           headers: {
             "Set-Cookie":
-              "session=active; Path=/; HttpOnly; Secure; SameSite=Lax",
+              `session=${encodeURIComponent(user)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
             Location: "/dashboard",
           },
         });
@@ -150,6 +152,41 @@ export default {
       }
       return new Response(body, {
         headers: { "content-type": "text/csv; charset=UTF-8" },
+      });
+    }
+
+    if (url.pathname === "/api/grants") {
+      if (!loggedIn) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const profileRaw = await env.USER_PROFILES.get(username);
+      let profile = {};
+      if (profileRaw) {
+        try {
+          profile = JSON.parse(profileRaw);
+        } catch (err) {
+          profile = {};
+        }
+      }
+      const columns = await getColumns(env.DB);
+      let results = [];
+      if (columns.length > 0) {
+        const { results: rows } = await env.DB.prepare(
+          `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+        ).all();
+        results = rows
+          .map((r) => {
+            let score = 0;
+            for (const [field, weight] of Object.entries(profile)) {
+              const val = Number(r[field]) || 0;
+              score += val * Number(weight);
+            }
+            return { ...r, score };
+          })
+          .sort((a, b) => b.score - a.score);
+      }
+      return new Response(JSON.stringify(results), {
+        headers: { "content-type": "application/json" },
       });
     }
 
