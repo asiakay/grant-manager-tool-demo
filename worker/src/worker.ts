@@ -1,4 +1,6 @@
-export interface Env {}
+export interface Env {
+  PDF_BUCKET: R2Bucket;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,7 +9,7 @@ const corsHeaders = {
 };
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -43,6 +45,51 @@ export default {
       const score = value * 2;
       return new Response(JSON.stringify({ score }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' }
+      });
+    }
+
+    if (url.pathname === '/upload') {
+      if (request.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+      }
+      const contentType = request.headers.get('content-type') || '';
+      let name: string;
+      if (contentType.includes('multipart/form-data')) {
+        const form = await request.formData();
+        const file = form.get('file');
+        if (!(file instanceof File)) {
+          return new Response('File not provided', { status: 400, headers: corsHeaders });
+        }
+        name = form.get('name')?.toString() || file.name;
+        await env.PDF_BUCKET.put(name, file.stream());
+      } else {
+        let data: any;
+        try {
+          data = await request.json();
+        } catch {
+          return new Response('Invalid JSON', { status: 400, headers: corsHeaders });
+        }
+        name = data?.name;
+        const base64 = data?.data;
+        if (typeof name !== 'string' || typeof base64 !== 'string') {
+          return new Response('`name` and `data` are required', { status: 400, headers: corsHeaders });
+        }
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        await env.PDF_BUCKET.put(name, bytes);
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' }
+      });
+    }
+
+    const pdfMatch = url.pathname.match(/^\/pdf\/(.+)$/);
+    if (pdfMatch) {
+      const object = await env.PDF_BUCKET.get(pdfMatch[1]);
+      if (!object) {
+        return new Response('Not found', { status: 404, headers: corsHeaders });
+      }
+      return new Response(object.body, {
+        headers: { ...corsHeaders, 'content-type': 'application/pdf' }
       });
     }
 

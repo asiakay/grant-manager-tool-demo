@@ -21,6 +21,10 @@ This project combines Python tools for grant wrangling with a minimal web UI and
    - Cloudflare worker code lives in `worker.js` and `workers/`. Use `npm run dev` for local development and `npm run deploy` to publish.
    - After logging in, the demo dashboard shows a program data schema table and exposes `/schema` (JSON) and `/data` (CSV) for alternative views.
 
+5. **PDF upload workflow**
+   - `POST /upload` stores a PDF in an R2 bucket bound as `PDF_BUCKET`. Send a multipart form with a `file` field or JSON `{"name":"file.pdf","data":"<base64>"}`.
+   - `GET /pdf/:name` streams the stored PDF back to the client. For example: `curl https://<worker>/pdf/example.pdf --output example.pdf`.
+
 ## Front‑end development
 1. **Setup**
    - Install Node.js and run `npm install` to fetch dependencies.
