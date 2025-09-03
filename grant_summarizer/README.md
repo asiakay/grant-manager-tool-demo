@@ -1,6 +1,6 @@
 # grant_summarizer
 
-Small CLI that extracts key fields from a grant PDF and writes a clean row and Markdown summaries.
+Small CLI that extracts key fields from a grant PDF and writes a clean row and Markdown summaries. It can also query the grants.gov API for opportunities.
 
 ## Installation
 
@@ -17,6 +17,9 @@ grant-summarizer --pdf path/to/file.pdf --format all --outdir ./dist
 
 # Or summarize directly from a URL (HTML or PDF)
 grant-summarizer --url https://example.com/grant.html --format all --outdir ./dist
+
+# Search grants.gov for opportunities
+grant-summarizer --search water --outdir ./dist
 ```
 
-This produces `clean_row.json`, `clean_row.csv`, and Markdown summary files in the output directory.
+This produces `clean_row.json`, `clean_row.csv`, and Markdown summary files in the output directory. When using `--search`, the API results are saved to `search_results.json`.

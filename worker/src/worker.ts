@@ -94,5 +94,13 @@ export default {
     }
 
     return new Response('Not found', { status: 404, headers: corsHeaders });
+  },
+
+  async scheduled(event: any, env: Env): Promise<void> {
+    const api = 'https://www.grants.gov/api/common/search2';
+    const url = `${api}?keyword=water&limit=10`;
+    const res = await fetch(url);
+    const text = await res.text();
+    await env.PDF_BUCKET.put('scheduled-search.json', text);
   }
 };
