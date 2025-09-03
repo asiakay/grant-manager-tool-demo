@@ -1,0 +1,44 @@
+from pathlib import Path
+from typing import Dict
+import re
+
+from . import rules
+
+_money_regex = re.compile(r"\$\s?[\d,]+(?:\.\d+)?")
+_percent_regex = re.compile(r"\d{1,3}\s?%")
+_date_regex = re.compile(
+    r"(?:\d{4}-\d{2}-\d{2}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s?\d{1,2},\s?\d{4})"
+)
+
+WINDOW = 300
+
+
+def extract_text(pdf_path: str) -> str:
+    """Extract text from a PDF using pdfminer; fall back to PyPDF2."""
+    from pdfminer.high_level import extract_text as pdfminer_extract
+
+    path = Path(pdf_path)
+    try:
+        return pdfminer_extract(str(path))
+    except Exception:
+        try:
+            from PyPDF2 import PdfReader  # type: ignore
+        except Exception as exc:  # pragma: no cover - PyPDF2 absent
+            raise exc
+        reader = PdfReader(str(path))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def find_field_windows(text: str) -> Dict[str, str]:
+    """Return +/-300 char windows around keyword hits defined in rules.KEYWORDS."""
+    windows: Dict[str, str] = {}
+    lowered = text.lower()
+    for field, keywords in rules.KEYWORDS.items():
+        for kw in keywords:
+            idx = lowered.find(kw.lower())
+            if idx != -1:
+                start = max(0, idx - WINDOW)
+                end = min(len(text), idx + len(kw) + WINDOW)
+                windows[field] = text[start:end]
+                break
+    return windows

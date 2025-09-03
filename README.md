@@ -92,4 +92,40 @@ pip install -r requirements.txt
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
 The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
+`user/userpass`).
+After logging in, the `/dashboard` view renders the program data schema table, with
+links to `/schema` (JSON) and `/data` (CSV) for alternate views.
 
+## Developer guide
+
+For guidelines on extending the backend, Cloudflare worker, or UI, see
+[docs/DEVELOPERS.md](docs/DEVELOPERS.md).
+
+
+## PDF summarizer CLI
+
+A standalone package under `grant_summarizer/` extracts key fields from a grant PDF and writes a clean row plus Markdown summaries.
+
+### Installation
+
+```bash
+cd grant_summarizer
+pip install -e .
+```
+
+### Usage
+
+```bash
+grant-summarizer --pdf path/to/TEGL.pdf --format all --outdir ./dist
+```
+
+This command generates `clean_row.json`, `clean_row.csv`, `brief.md`, `one_pager.md`, and `slide_bullets.md` under the chosen output directory.
+
+The resulting CSV can feed directly into the scoring pipeline:
+
+```bash
+python src/make_scoring_template.py dist/clean_row.csv --outfile data/master_from_pdf.csv
+python -m src.pipeline --input data/master_from_pdf.csv
+```
+
+See [PROMPT.md](PROMPT.md) for the full developer specification. Node dependencies such as `node_modules/` are ignored; run `npm install` locally rather than committing them.
