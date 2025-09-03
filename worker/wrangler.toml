@@ -28,3 +28,9 @@ main = "src/pdf_worker.ts"
 
 
 
+[[r2_buckets]]
+binding = "PDF_BUCKET"
+bucket_name = "pdf-bucket"
+preview_bucket_name = "pdf-bucket"
+
+
