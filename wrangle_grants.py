@@ -310,8 +310,6 @@ def load_folder(folder: Path) -> List[pd.DataFrame]:
             rows = len(df) if df is not None else 0
             logger.info("Loaded %s (%d rows)", p, rows)
             if df is not None and rows:
-            if len(df):
- main
                 df["_source_file"] = str(p)
                 frames.append(df)
     return frames
@@ -324,9 +322,7 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df[CANON_COLS + [c for c in df.columns if c not in CANON_COLS]]
 
 
-def 
-
-(argv=None):
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--input",
