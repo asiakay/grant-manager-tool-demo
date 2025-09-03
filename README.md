@@ -33,6 +33,17 @@ python wrangle_grants.py --input examples/grants_demo --out out/demo.csv --print
 This command merges the demo files, computes weighted scores, and writes the
 result to `out/demo.csv`.
 
+## Search Grants.gov
+
+Use `search_grants.py` to query Grants.gov directly and export results:
+
+```bash
+python search_grants.py education --filter opportunityStatuses=posted --output results.tsv --format tsv
+```
+
+The script writes a CSV or TSV and prints a summary table with columns such as
+**Award max**, **App deadline**, and a quick timeline for each grant.
+
 ## Browser visualization
 
 For a quick way to explore wrangled data in your browser, run the small Flask
