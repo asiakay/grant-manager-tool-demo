@@ -3,7 +3,7 @@
 Utility repository containing `wrangle_grants.py` for merging and normalizing grant CSV/TSV files.
 An optional `wrangle_grants_gui.py` provides a minimal Tkinter interface to run the wrangler without the command line.
 The GUI now starts with a simple login screen demonstrating "admin" and
-"user" roles.  The admin account can adjust weighting and deadline fields
+"user" roles. The admin account can adjust weighting and deadline fields
 while the standard user can only choose files and run the wrangler.
 
 Default credentials:
@@ -54,6 +54,7 @@ setup of the project:
    git clone https://github.com/your-org/grant-manager-tool-demo.git
    cd grant-manager-tool-demo
    ```
+
 3. Create and activate a Python virtual environment, then install the
    dependencies:
 
@@ -62,20 +63,16 @@ setup of the project:
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. (Optional) Initialize a Node project:
+
+4. (Optional) Install Node dependencies for the Worker demo:
 
    ```bash
-   npm init -y
-   ```
-
-5. (Optional) Install Node dependencies for the Cloudflare Worker example:
-
-   ```bash
+   cd worker
    npm install
    ```
 
-After these steps the `wrangle_grants.py` script and the optional Cloudflare
-Worker demo can be run using the commands shown below.
+After these steps the `wrangle_grants.py` script and the Worker demo can be run
+using the commands shown below.
 
 ## Python environment
 
@@ -100,7 +97,6 @@ links to `/schema` (JSON) and `/data` (CSV) for alternate views.
 
 For guidelines on extending the backend, Cloudflare worker, or UI, see
 [docs/DEVELOPERS.md](docs/DEVELOPERS.md).
-
 
 ## PDF summarizer CLI
 
