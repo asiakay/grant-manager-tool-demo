@@ -1,5 +1,6 @@
-import { renderDashboardPage } from "./templates/dashboard.js";
 import { renderLoginPage } from "./templates/login.js";
+import { renderProfilePage } from "./templates/profile.js";
+import { exec } from "node:child_process";
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
@@ -18,8 +19,11 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
-async function ensureProgramsTable(db) {
+async function ensureTables(db) {
   await db.exec("CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY)");
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS profiles (username TEXT PRIMARY KEY, data TEXT)"
+  );
 }
 
 async function newSchemaPage(db) {
@@ -36,7 +40,7 @@ async function newSchemaPage(db) {
     ${inputs}
     <button type="submit">Save</button>
   </form>
-  <p><a href="/dashboard">Back to dashboard</a></p>
+  <p><a href="/profile">Back to profile</a></p>
 </body>
 </html>`;
 }
@@ -49,7 +53,7 @@ export default {
     const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
     const loggedIn = !!username;
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
-    await ensureProgramsTable(env.DB);
+    await ensureTables(env.DB);
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
@@ -73,7 +77,7 @@ export default {
           headers: {
             "Set-Cookie":
               `session=${encodeURIComponent(user)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
-            Location: "/dashboard",
+            Location: "/profile",
           },
         });
       }
@@ -83,22 +87,44 @@ export default {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    if (url.pathname === "/dashboard") {
+    if (url.pathname === "/profile") {
       if (!loggedIn) {
         return new Response("", {
           status: 302,
           headers: { Location: "/" },
         });
       }
-      const columns = await getColumns(env.DB);
-      let rows = [];
-      if (columns.length > 0) {
-        const { results } = await env.DB.prepare(
-          `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
-        ).all();
-        rows = results.map((r) => columns.map((c) => r[c] ?? ""));
+      if (request.method === "POST") {
+        const form = await request.formData();
+        const input = (form.get("input") || "").toString();
+        const out = (form.get("out") || "").toString();
+        try {
+          await new Promise((resolve, reject) => {
+            exec(
+              `python3 wrangle_grants.py --input ${input} --out ${out}`,
+              (err, stdout, stderr) => {
+                if (err) {
+                  reject(stderr || err.message);
+                } else {
+                  resolve(stdout);
+                }
+              }
+            );
+          });
+          return new Response(renderProfilePage("CSV cleaned"), {
+            headers: { "content-type": "text/html; charset=UTF-8" },
+          });
+        } catch (err) {
+          return new Response(
+            renderProfilePage(`Error: ${err}`),
+            {
+              status: 500,
+              headers: { "content-type": "text/html; charset=UTF-8" },
+            }
+          );
+        }
       }
-      return new Response(renderDashboardPage(columns, rows), {
+      return new Response(renderProfilePage(), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
@@ -123,7 +149,7 @@ export default {
           .run();
         return new Response("", {
           status: 302,
-          headers: { Location: "/dashboard" },
+          headers: { Location: "/profile" },
         });
       }
       return new Response(await newSchemaPage(env.DB), {
@@ -159,7 +185,11 @@ export default {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const profileRaw = await env.USER_PROFILES.get(username);
+      const profileRaw = await env.DB.prepare(
+        "SELECT data FROM profiles WHERE username = ?"
+      )
+        .bind(username)
+        .first("data");
       let profile = {};
       if (profileRaw) {
         try {
