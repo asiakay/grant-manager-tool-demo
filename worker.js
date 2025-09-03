@@ -84,8 +84,11 @@ export default {
         });
       }
       const columns = await getColumns(env.DB);
+      const columnSql = columns.length
+        ? columns.map((c) => `"${c}"`).join(",")
+        : "*";
       const { results } = await env.DB.prepare(
-        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+        `SELECT ${columnSql} FROM programs`
       ).all();
       const rows = results.map((r) => columns.map((c) => r[c] ?? ""));
       return new Response(renderDashboardPage(columns, rows), {
@@ -130,8 +133,11 @@ export default {
 
     if (url.pathname === "/data") {
       const columns = await getColumns(env.DB);
+      const columnSql = columns.length
+        ? columns.map((c) => `"${c}"`).join(",")
+        : "*";
       const { results } = await env.DB.prepare(
-        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+        `SELECT ${columnSql} FROM programs`
       ).all();
       const body = [
         columns.join(","),
