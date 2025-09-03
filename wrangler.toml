@@ -17,7 +17,7 @@ database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
 
 
 [[kv_namespaces]]
-binding = "grant-demo-USER_PROFILES"
+binding = "USER_PROFILES"
 id = "065f64c71e0747079a2e3d86b292770d"
 
 
