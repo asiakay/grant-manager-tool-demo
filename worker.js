@@ -48,6 +48,7 @@ export default {
     const loggedIn = cookie.includes("session=active");
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
     await ensureProgramsTable(env.EQORE_DB);
+main
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
