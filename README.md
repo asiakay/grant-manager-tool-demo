@@ -105,7 +105,7 @@ pip install -r requirements.txt
 ## Cloudflare Worker demo
 
 A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
-A live demo is available at https://b0a45626-grant-demo.qxc.workers.dev/dashboard.
+A live demo is available at https://grant-demo.qxc.workers.dev/dashboard.
 The worker includes a basic login page configured via the `USER_HASHES`
 environment variable. After logging in, the `/dashboard` view renders the
 program data schema table, with links to `/schema` (JSON) and `/data` (CSV)
