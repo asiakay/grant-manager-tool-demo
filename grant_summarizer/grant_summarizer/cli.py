@@ -1,25 +1,33 @@
 from pathlib import Path
 import typer
 
-from .extract import extract_text, find_field_windows
+from .extract import extract_text, extract_text_from_link, find_field_windows
 from .normalize import normalize_fields
 from .summarize import brief_bullets, one_pager_md, slide_bullets
 from .utils import write_json, write_csv
 
 
 def main(
-    pdf: str,
+    pdf: str = typer.Option(None, help="Path to a grant PDF"),
+    url: str = typer.Option(None, help="URL pointing to a grant page or PDF"),
     format: str = "all",
     outdir: str = "./dist",
     debug: bool = False,
 ) -> None:
     """CLI entry point for the grant summarizer."""
+    if not pdf and not url:
+        raise typer.BadParameter("Either --pdf or --url must be provided")
+    if pdf and url:
+        raise typer.BadParameter("Use only one of --pdf or --url")
     if debug:
         typer.echo("Debug mode enabled")
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
 
-    text = extract_text(pdf)
+    if url:
+        text = extract_text_from_link(url)
+    else:
+        text = extract_text(pdf)
     windows = find_field_windows(text)
     row = normalize_fields(windows)
 
