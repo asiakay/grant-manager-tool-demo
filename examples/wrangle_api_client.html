@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Wrangle API Demo</title>
+</head>
+<body>
+  <button id="run">Run Wrangler</button>
+  <pre id="output"></pre>
+  <script>
+    document.getElementById('run').addEventListener('click', () => {
+      fetch('http://localhost:5000/api/wrangle')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+        })
+        .catch(err => {
+          console.error('API error', err);
+        });
+    });
+  </script>
+</body>
+</html>
