@@ -99,8 +99,8 @@ environment variable. After logging in, users land on a profile page that lets
 them run the data‑wrangling tool. Enter a folder of messy CSV files and the
 desired output path and the worker invokes `wrangle_grants.py` to produce a
 clean CSV. Authenticated requests to `/api/grants` still return scored grant
-rows using weights from the user's profile stored in the `USER_PROFILES`
-KV namespace.
+rows using weights from the user's profile stored in a `profiles` table in the
+same D1 database.
 
 The Worker relies on a D1 database. Run the migration before deploying:
 
@@ -109,8 +109,8 @@ cd worker
 wrangler d1 migrations apply EQORE_DB
 ```
 
-Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace
-to control how grants are scored.
+Store each user's weight profile as JSON in the `profiles` table to control how
+grants are scored.
 
 ## Developer guide
 

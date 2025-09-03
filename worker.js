@@ -19,8 +19,11 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
-async function ensureProgramsTable(db) {
+async function ensureTables(db) {
   await db.exec("CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY)");
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS profiles (username TEXT PRIMARY KEY, data TEXT)"
+  );
 }
 
 async function newSchemaPage(db) {
@@ -50,7 +53,7 @@ export default {
     const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
     const loggedIn = !!username;
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
-    await ensureProgramsTable(env.DB);
+    await ensureTables(env.DB);
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
@@ -182,7 +185,11 @@ export default {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const profileRaw = await env.USER_PROFILES.get(username);
+      const profileRaw = await env.DB.prepare(
+        "SELECT data FROM profiles WHERE username = ?"
+      )
+        .bind(username)
+        .first("data");
       let profile = {};
       if (profileRaw) {
         try {
