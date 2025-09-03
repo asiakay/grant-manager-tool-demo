@@ -15,11 +15,16 @@ pip install -e .
 # Summarize a local PDF
 grant-summarizer --pdf path/to/file.pdf --format all --outdir ./dist
 
-# Or summarize directly from a URL (HTML or PDF)
-grant-summarizer --url https://example.com/grant.html --format all --outdir ./dist
+# Or summarize a local HTML/PDF file via file:// URL
+grant-summarizer --url file:///path/to/grant.html --format all --outdir ./dist
+
+# Fetch a remote URL (requires network and is insecure)
+grant-summarizer --url https://example.com/grant.html --allow-online --format all --outdir ./dist
 
 # Search grants.gov for opportunities
 grant-summarizer --search water --outdir ./dist
 ```
+
+By default the tool operates offline and only accepts local paths or `file://` URLs. Using `--allow-online` enables downloading content from remote hosts, which may expose the system to malicious files or unexpected network traffic. Only use this flag if you trust the source.
 
 This produces `clean_row.json`, `clean_row.csv`, and Markdown summary files in the output directory. When using `--search`, the API results are saved to `search_results.json`.
