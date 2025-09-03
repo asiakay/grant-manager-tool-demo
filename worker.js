@@ -1,7 +1,14 @@
-const users = {
-  admin: "adminpass",
-  user: "userpass",
-};
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 5 * 60 * 1000;
+
+async function hashPassword(password) {
+  const data = new TextEncoder().encode(password);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 const schemaColumns = [
   "Type",
@@ -89,24 +96,41 @@ function newSchemaPage() {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const cookie = request.headers.get("Cookie") || "";
     const loggedIn = cookie.includes("session=active");
+    const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
       const user = form.get("username");
       const pass = form.get("password");
-      if (users[user] === pass) {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      const now = Date.now();
+      const record = loginAttempts.get(ip) || { count: 0, time: now };
+      if (now - record.time > LOCKOUT_MS) {
+        record.count = 0;
+        record.time = now;
+      }
+      if (record.count >= MAX_ATTEMPTS) {
+        return new Response("Too many attempts. Try again later.", { status: 429 });
+      }
+      const hashed = await hashPassword(pass || "");
+      if (users[user] && users[user] === hashed) {
+        loginAttempts.delete(ip);
         return new Response("", {
           status: 302,
           headers: {
-            "Set-Cookie": "session=active; Path=/",
+            "Set-Cookie":
+              "session=active; Path=/; HttpOnly; Secure; SameSite=Lax",
             Location: "/dashboard",
           },
         });
       }
+      record.count++;
+      record.time = now;
+      loginAttempts.set(ip, record);
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -159,7 +183,8 @@ export default {
       return new Response("", {
         status: 302,
         headers: {
-          "Set-Cookie": "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+          "Set-Cookie":
+            "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Lax",
           Location: "/",
         },
       });
