@@ -62,20 +62,15 @@ setup of the project:
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. (Optional) Initialize a Node project:
+4. (Optional) Install Node dependencies for the Worker demo:
 
-   ```bash
-   npm init -y
-   ```
+    ```bash
+    cd worker
+    npm install
+    ```
 
-5. (Optional) Install Node dependencies for the Cloudflare Worker example:
-
-   ```bash
-   npm install
-   ```
-
-After these steps the `wrangle_grants.py` script and the optional Cloudflare
-Worker demo can be run using the commands shown below.
+After these steps the `wrangle_grants.py` script and the Worker demo can be run
+using the commands shown below.
 
 ## Python environment
 
@@ -88,8 +83,29 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Cloudflare Worker demo
+## Live Demo (Worker)
 
-A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
-The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
+The `worker/` directory contains a small Cloudflare Worker exposing `/api/health` and
+`/api/score`, plus a minimal webpage to exercise the API. It is for demonstration only.
+
+### Run locally
+
+```bash
+cd worker
+npm install
+npx wrangler dev --local
+# open http://localhost:8787/
+```
+
+### Deploy
+
+```bash
+npx wrangler deploy
+```
+
+### Example request
+
+```bash
+curl http://localhost:8787/api/health
+```
 

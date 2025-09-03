@@ -1,5 +1,0 @@
-name = "grant-demo"
-main = "worker.js"
-compatibility_date = "2024-05-29"
-
-[vars]
