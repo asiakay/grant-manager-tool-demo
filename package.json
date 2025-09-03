@@ -8,13 +8,13 @@
     "example": "examples"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0",
+    "@cloudflare/workers-types": "^4.20250408.0",
     "typescript": "^5.0.0",
-    "@cloudflare/workers-types": "^4.20250408.0"
+    "wrangler": "^4.33.2"
   },
   "scripts": {
     "test": "pytest grant_summarizer",
-    "dev": "wrangler dev --local",
+    "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
   "repository": {
