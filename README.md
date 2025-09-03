@@ -3,7 +3,7 @@
 Utility repository containing `wrangle_grants.py` for merging and normalizing grant CSV/TSV files.
 An optional `wrangle_grants_gui.py` provides a minimal Tkinter interface to run the wrangler without the command line.
 The GUI now starts with a simple login screen demonstrating "admin" and
-"user" roles.  The admin account can adjust weighting and deadline fields
+"user" roles. The admin account can adjust weighting and deadline fields
 while the standard user can only choose files and run the wrangler.
 
 Default credentials:
@@ -54,6 +54,7 @@ setup of the project:
    git clone https://github.com/your-org/grant-manager-tool-demo.git
    cd grant-manager-tool-demo
    ```
+
 3. Create and activate a Python virtual environment, then install the
    dependencies:
 
@@ -62,12 +63,13 @@ setup of the project:
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
+
 4. (Optional) Install Node dependencies for the Worker demo:
 
-    ```bash
-    cd worker
-    npm install
-    ```
+   ```bash
+   cd worker
+   npm install
+   ```
 
 After these steps the `wrangle_grants.py` script and the Worker demo can be run
 using the commands shown below.
@@ -83,29 +85,43 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Live Demo (Worker)
+## Cloudflare Worker demo
 
-The `worker/` directory contains a small Cloudflare Worker exposing `/api/health` and
-`/api/score`, plus a minimal webpage to exercise the API. It is for demonstration only.
+A minimal Cloudflare Worker is provided for quickly publishing a demo endpoint.
+The worker includes a basic login page (credentials match the GUI: `admin/adminpass` and
+`user/userpass`).
+After logging in, the `/dashboard` view renders the program data schema table, with
+links to `/schema` (JSON) and `/data` (CSV) for alternate views.
 
-### Run locally
+## Developer guide
 
-```bash
-cd worker
-npm install
-npx wrangler dev --local
-# open http://localhost:8787/
-```
+For guidelines on extending the backend, Cloudflare worker, or UI, see
+[docs/DEVELOPERS.md](docs/DEVELOPERS.md).
 
-### Deploy
+## PDF summarizer CLI
 
-```bash
-npx wrangler deploy
-```
+A standalone package under `grant_summarizer/` extracts key fields from a grant PDF and writes a clean row plus Markdown summaries.
 
-### Example request
+### Installation
 
 ```bash
-curl http://localhost:8787/api/health
+cd grant_summarizer
+pip install -e .
 ```
 
+### Usage
+
+```bash
+grant-summarizer --pdf path/to/TEGL.pdf --format all --outdir ./dist
+```
+
+This command generates `clean_row.json`, `clean_row.csv`, `brief.md`, `one_pager.md`, and `slide_bullets.md` under the chosen output directory.
+
+The resulting CSV can feed directly into the scoring pipeline:
+
+```bash
+python src/make_scoring_template.py dist/clean_row.csv --outfile data/master_from_pdf.csv
+python -m src.pipeline --input data/master_from_pdf.csv
+```
+
+See [PROMPT.md](PROMPT.md) for the full developer specification. Node dependencies such as `node_modules/` are ignored; run `npm install` locally rather than committing them.
