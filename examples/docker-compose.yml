@@ -1,0 +1,27 @@
+version: '3.9'
+services:
+  wrangler:
+    build:
+      context: ..
+      dockerfile: Dockerfile.wrangler
+    volumes:
+      - ../data:/app/data
+      - ../out:/app/out
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../out:/app/out
+    depends_on:
+      - wrangler
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    ports:
+      - "8787:8787"
+    depends_on:
+      - wrangler
