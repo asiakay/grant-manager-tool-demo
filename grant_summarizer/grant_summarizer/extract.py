@@ -1,6 +1,9 @@
 from pathlib import Path
 from typing import Dict
 import re
+from urllib.request import Request, urlopen
+import tempfile
+from html.parser import HTMLParser
 
 from . import rules
 
@@ -27,6 +30,43 @@ def extract_text(pdf_path: str) -> str:
             raise exc
         reader = PdfReader(str(path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+class _HTMLStripper(HTMLParser):
+    """Utility HTML parser that collects text data."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:  # pragma: no cover - trivial
+        self._parts.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(self._parts)
+
+
+def _html_to_text(html: str) -> str:
+    parser = _HTMLStripper()
+    parser.feed(html)
+    return parser.get_text()
+
+
+def extract_text_from_link(link: str) -> str:
+    """Fetch a URL (PDF or HTML) and return extracted plain text."""
+    req = Request(link, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(req) as resp:
+        data = resp.read()
+        content_type = resp.headers.get("content-type", "")
+        charset = resp.headers.get_content_charset("utf-8")
+    if "pdf" in content_type or link.lower().endswith(".pdf"):
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+            tmp.write(data)
+            tmp.flush()
+            return extract_text(tmp.name)
+    else:
+        text = data.decode(charset, errors="ignore")
+        return _html_to_text(text)
 
 
 def find_field_windows(text: str) -> Dict[str, str]:

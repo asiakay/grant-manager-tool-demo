@@ -1,33 +1,41 @@
 from pathlib import Path
 import typer
 
-from .extract import extract_text, find_field_windows
+from .extract import extract_text, extract_text_from_link, find_field_windows
 from .normalize import normalize_fields
 from .summarize import brief_bullets, one_pager_md, slide_bullets
 from .utils import write_json, write_csv
 
 
 def main(
-    pdf: str,
-    format: str = "all",
+    pdf: str = typer.Option(None, help="Path to a grant PDF"),
+    url: str = typer.Option(None, help="URL pointing to a grant page or PDF"),
+    output_format: str = typer.Option("all", "--format", help="Output format: json, csv, md, or all"),
     outdir: str = "./dist",
     debug: bool = False,
 ) -> None:
     """CLI entry point for the grant summarizer."""
+    if not pdf and not url:
+        raise typer.BadParameter("Either --pdf or --url must be provided")
+    if pdf and url:
+        raise typer.BadParameter("Use only one of --pdf or --url")
     if debug:
         typer.echo("Debug mode enabled")
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
 
-    text = extract_text(pdf)
+    if url:
+        text = extract_text_from_link(url)
+    else:
+        text = extract_text(pdf)
     windows = find_field_windows(text)
     row = normalize_fields(windows)
 
-    if format in ("json", "all"):
+    if output_format in ("json", "all"):
         write_json(row, out / "clean_row.json")
-    if format in ("csv", "all"):
+    if output_format in ("csv", "all"):
         write_csv(row, out / "clean_row.csv")
-    if format in ("md", "all"):
+    if output_format in ("md", "all"):
         (out / "brief.md").write_text("\n".join(f"- {b}" for b in brief_bullets(row)) + "\n")
         (out / "one_pager.md").write_text(one_pager_md(row))
         (out / "slide_bullets.md").write_text(
