@@ -20,6 +20,12 @@ def main(
     ),
     outdir: str = "./dist",
     debug: bool = False,
+    allow_online: bool = typer.Option(
+        False, help="Allow downloading remote URLs (insecure)"
+    ),
+    search: str = typer.Option(None, help="Keyword to search on grants.gov"),
+  
+ main
 ) -> None:
     """CLI entry point for the grant summarizer."""
     provided = [arg for arg in (pdf, url) if arg]
@@ -53,7 +59,7 @@ main
 
         if url:
             logger.info("Source URL: %s", url)
-            text = extract_text_from_link(url)
+            text = extract_text_from_link(url, allow_online=allow_online)
         else:
             logger.info("Source PDF: %s", pdf)
             text = extract_text(pdf)

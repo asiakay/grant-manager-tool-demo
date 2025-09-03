@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Dict
 import re
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse, unquote
 import tempfile
 from html.parser import HTMLParser
 
@@ -52,20 +53,31 @@ def _html_to_text(html: str) -> str:
     return parser.get_text()
 
 
-def extract_text_from_link(link: str) -> str:
-    """Fetch a URL (PDF or HTML) and return extracted plain text."""
-    req = Request(link, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(req) as resp:
-        data = resp.read()
-        content_type = resp.headers.get("content-type", "")
-        charset = resp.headers.get_content_charset("utf-8")
-    if "pdf" in content_type or link.lower().endswith(".pdf"):
-        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
-            tmp.write(data)
-            tmp.flush()
-            return extract_text(tmp.name)
-    text = data.decode(charset, errors="ignore")
-    return _html_to_text(text)
+def extract_text_from_link(link: str, allow_online: bool = False) -> str:
+    """Return plain text from a local file or, if allowed, a remote URL."""
+    parsed = urlparse(link)
+    if parsed.scheme in ("", "file"):
+        path = Path(unquote(parsed.path))
+        if path.suffix.lower() == ".pdf":
+            return extract_text(str(path))
+        data = path.read_bytes()
+        return _html_to_text(data.decode("utf-8", errors="ignore"))
+    if parsed.scheme in ("http", "https"):
+        if not allow_online:
+            raise ValueError("Remote URLs require allow_online=True")
+        req = Request(link, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req) as resp:
+            data = resp.read()
+            content_type = resp.headers.get("content-type", "")
+            charset = resp.headers.get_content_charset("utf-8")
+        if "pdf" in content_type or link.lower().endswith(".pdf"):
+            with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+                tmp.write(data)
+                tmp.flush()
+                return extract_text(tmp.name)
+        text = data.decode(charset, errors="ignore")
+        return _html_to_text(text)
+    raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
 
 
 def find_field_windows(text: str) -> Dict[str, str]:

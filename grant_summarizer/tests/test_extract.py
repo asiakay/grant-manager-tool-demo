@@ -1,3 +1,5 @@
+import pytest
+
 from grant_summarizer.extract import (
     _money_regex,
     _percent_regex,
@@ -47,3 +49,8 @@ def test_extract_text_from_link_pdf(tmp_path):
     pdf_file.write_bytes(pdf_bytes.encode("latin1"))
     text = extract_text_from_link(pdf_file.as_uri())
     assert isinstance(text, str)
+
+
+def test_extract_text_from_link_disallows_http():
+    with pytest.raises(ValueError):
+        extract_text_from_link("http://example.com")
