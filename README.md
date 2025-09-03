@@ -110,7 +110,8 @@ environment variable. After logging in, the `/dashboard` view renders the
 program data schema table, with links to `/schema` (JSON) and `/data` (CSV)
 for alternate views. Authenticated requests to `/api/grants` return the grant
 rows scored with weights from the user's profile stored in the `USER_PROFILES`
-KV namespace.
+KV namespace. If that binding is missing, the Worker logs a warning and falls
+back to an empty profile, and `/api/grants` responds with an explanatory error.
 
 The Worker relies on a D1 database. Run the migration before deploying:
 
@@ -120,7 +121,8 @@ wrangler d1 migrations apply EQORE_DB
 ```
 
 Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace
-to control how grants are scored.
+to control how grants are scored. If the binding isn't configured, scoring
+defaults to zero for all grants.
 
 ## Developer guide
 
