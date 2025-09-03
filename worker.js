@@ -91,6 +91,14 @@ export default {
         ).all();
         rows = results.map((r) => columns.map((c) => r[c] ?? ""));
       }
+      const columnSql = columns.length
+        ? columns.map((c) => `"${c}"`).join(",")
+        : "*";
+      const { results } = await env.DB.prepare(
+        `SELECT ${columnSql} FROM programs`
+      ).all();
+      const rows = results.map((r) => columns.map((c) => r[c] ?? ""));
+ main
       return new Response(renderDashboardPage(columns, rows), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
@@ -143,6 +151,17 @@ export default {
           ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
         ].join("\n");
       }
+      const columnSql = columns.length
+        ? columns.map((c) => `"${c}"`).join(",")
+        : "*";
+      const { results } = await env.DB.prepare(
+        `SELECT ${columnSql} FROM programs`
+      ).all();
+      const body = [
+        columns.join(","),
+        ...results.map((r) => columns.map((c) => r[c] ?? "").join(",")),
+      ].join("\n");
+ main
       return new Response(body, {
         headers: { "content-type": "text/csv; charset=UTF-8" },
       });
