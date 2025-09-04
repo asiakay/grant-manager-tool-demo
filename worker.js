@@ -1,6 +1,7 @@
 import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
+import programsSchema from "./worker/migrations/0001_create_programs.sql?raw";
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
@@ -19,8 +20,12 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
+let ensured;
 async function ensureProgramsTable(db) {
-  await db.exec("CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY)");
+  if (!ensured) {
+    ensured = db.exec(programsSchema);
+  }
+  return ensured;
 }
 
 async function newSchemaPage(db) {
