@@ -57,6 +57,6 @@ compatibility_date = "2024-05-29"
 enabled = true
 
 [vars]
-USER_HASHES = '{"admin":{"salt":"<salt>","hash":"<bcrypt hash>"},"user":{"salt":"<salt>","hash":"<bcrypt hash>"}}'
+USER_HASHES = '{"admin":{"salt":"<salt>","hash":"<derived hash>"},"user":{"salt":"<salt>","hash":"<derived hash>"}}'
 
  */

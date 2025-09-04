@@ -1,19 +1,21 @@
 import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
-import bcrypt from "bcryptjs";
+import { randomBytes, pbkdf2Sync } from "node:crypto";
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
-const COST_FACTOR = 12;
+const HASH_ITERATIONS = 310000;
 
 async function hashPassword(pass, salt = null) {
   if (!salt) {
-    salt = await bcrypt.genSalt(COST_FACTOR);
+    salt = randomBytes(16).toString("hex");
   }
-  const hash = await bcrypt.hash(pass, salt);
+  const hash = pbkdf2Sync(pass, salt, HASH_ITERATIONS, 64, "sha512").toString(
+    "hex",
+  );
   return { salt, hash };
 }
 

@@ -7,16 +7,16 @@ The GUI now starts with a simple login screen demonstrating "admin" and
 while the standard user can only choose files and run the wrangler.
 
 Credentials are supplied via a `USER_HASHES` environment variable containing
-per-user bcrypt salts and hashes. Example:
+per-user PBKDF2 salts and hashes. Example:
 
 ```
-export USER_HASHES='{"admin":{"salt":"<salt>","hash":"<bcrypt hash>"},"user":{"salt":"<salt>","hash":"<bcrypt hash>"}}'
+export USER_HASHES='{"admin":{"salt":"<salt>","hash":"<derived hash>"},"user":{"salt":"<salt>","hash":"<derived hash>"}}'
 ```
 
-Hashes can be generated with `bcryptjs` and a cost factor of 12:
+Hashes can be generated with Node's built-in `crypto` module using 310000 PBKDF2 iterations:
 
 ```
-node -e "import bcrypt from 'bcryptjs'; bcrypt.genSalt(12).then(s=>bcrypt.hash('adminpass',s).then(h=>console.log({salt:s,hash:h})))"
+node -e "import {randomBytes, pbkdf2Sync} from 'node:crypto'; const salt=randomBytes(16).toString('hex'); const hash=pbkdf2Sync('adminpass', salt, 310000, 64, 'sha512').toString('hex'); console.log({salt, hash});"
 ```
 
 See [README_wrangle_grants.md](README_wrangle_grants.md) for usage instructions.
