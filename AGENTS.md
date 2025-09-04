@@ -7,6 +7,7 @@ This file describes the automation agents, their goals, inputs, outputs, run com
 - Update the table whenever a new agent is added or when an existing agent's goal, inputs, outputs, run command, schedule, or source path changes.
 - Keep entries concise: use capitalized agent names, wrap file paths and commands in backticks, and limit each column to a single sentence.
 - Run `npm test` before committing to verify repository checks pass.
+- `docs/data_contract.json` is the canonical reference for the D1 table schema and field definitions. Update the contract and this file together whenever schemas or scoring rules change.
 
 | Agent          | Goal                                            | Inputs                                     | Outputs                                      | Run Command                         | Schedule            | Source                              |
 | -------------- | ----------------------------------------------- | ------------------------------------------ | -------------------------------------------- | ----------------------------------- | ------------------- | ----------------------------------- |
