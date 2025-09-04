@@ -20,6 +20,7 @@ This project combines Python tools for grant wrangling with a minimal web UI and
 4. **APIs & workers**
    - Cloudflare worker code lives in `worker.js` and `workers/`. Use `npm run dev` for local development and `npm run deploy` to publish.
    - After logging in, the demo dashboard shows a program data schema table and exposes `/schema` (JSON) and `/data` (CSV) for alternative views.
+   - Passwords are stored as bcrypt hashes with per-user salts in the `USER_HASHES` environment variable. Generate entries with `node -e "import bcrypt from 'bcryptjs'; bcrypt.genSalt(12).then(s=>bcrypt.hash('newpass',s).then(h=>console.log({salt:s,hash:h})))"`.
 
 5. **PDF upload workflow**
    - `POST /upload` stores a PDF in an R2 bucket bound as `PDF_BUCKET`. Send a multipart form with a `file` field or JSON `{"name":"file.pdf","data":"<base64>"}`.

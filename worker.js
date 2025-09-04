@@ -1,17 +1,28 @@
 import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
+import bcrypt from "bcryptjs";
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
-async function hashPassword(pass) {
-  const data = new TextEncoder().encode(pass);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+const COST_FACTOR = 12;
+
+async function hashPassword(pass, salt = null) {
+  if (!salt) {
+    salt = await bcrypt.genSalt(COST_FACTOR);
+  }
+  const hash = await bcrypt.hash(pass, salt);
+  return { salt, hash };
+}
+
+async function verifyPassword(pass, stored) {
+  if (!stored || !stored.salt || !stored.hash) {
+    return false;
+  }
+  const { hash } = await hashPassword(pass, stored.salt);
+  return hash === stored.hash;
 }
 
 async function getColumns(db) {
@@ -66,8 +77,8 @@ export default {
       if (record.count >= MAX_ATTEMPTS) {
         return new Response("Too many attempts. Try again later.", { status: 429 });
       }
-      const hashed = await hashPassword(pass || "");
-      if (users[user] && users[user] === hashed) {
+      const valid = await verifyPassword(pass || "", users[user]);
+      if (valid) {
         loginAttempts.delete(ip);
         const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {

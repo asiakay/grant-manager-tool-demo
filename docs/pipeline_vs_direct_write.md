@@ -15,7 +15,7 @@ This guide summarizes the tradeoffs between running the full processing pipeline
 - Choose **direct write** for quick prototypes or small datasets where infrastructure costs must be minimal.
 
 ## Required configuration variables
-- `USER_HASHES` – credential hash mapping for the demo login.
+- `USER_HASHES` – map of usernames to bcrypt salts and hashes for the demo login.
 - `USER_PROFILES` – KV namespace storing weight profiles.
 - `PDF_BUCKET` – R2 bucket holding uploaded PDFs and generated summaries.
 - `PDF_INGEST` – queue delivering PDF keys to extraction workers.
