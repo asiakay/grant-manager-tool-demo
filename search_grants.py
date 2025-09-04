@@ -13,12 +13,12 @@ import argparse
 import json
 import logging
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 import ssl
 import certifi
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -27,20 +27,54 @@ DETAIL_URL = "https://www.grants.gov/grantsws/rest/opportunities/{id}/synopsis"
 
 
 def _get_json(url: str, params: Dict[str, str] | None = None, debug: bool = False) -> Dict:
-    """Fetch JSON data from ``url`` with optional query ``params``."""
+    """Fetch JSON data from ``url`` using ``GET`` and optional query ``params``."""
     if params:
         url = f"{url}?{urllib.parse.urlencode(params)}"
+    headers: Dict[str, str] = {"Accept": "application/json"}
     logging.debug("GET %s", url)
     context = ssl.create_default_context(cafile=certifi.where())
+    req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(url, context=context) as resp:  # noqa: S310 - network call intended
+        with urllib.request.urlopen(req, context=context) as resp:  # noqa: S310 - network call intended
             text = resp.read().decode("utf-8")
+            if resp.status != 200:
+                raise RuntimeError(f"Request to {url} failed with {resp.status}: {text[:200]}")
+    except urllib.error.HTTPError as err:  # pragma: no cover - network error handling
+        body = err.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Request to {url} failed with {err.code}: {body[:200]}") from err
     except (urllib.error.URLError, ssl.SSLError) as err:  # pragma: no cover - network error handling
-        logging.error("Failed to fetch %s: %s", url, err)
-        return {}
+        raise RuntimeError(f"Failed to fetch {url}: {err}") from err
     if debug:
         logging.debug("Response: %s", text[:1000])
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as err:  # pragma: no cover - defensive
+        raise RuntimeError(f"Invalid JSON from {url}: {err}") from err
+
+
+def _post_json(url: str, payload: Dict[str, Any], debug: bool = False) -> Dict:
+    """POST ``payload`` as JSON to ``url`` and return the decoded response."""
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    body = json.dumps(payload).encode("utf-8")
+    logging.debug("POST %s", url)
+    context = ssl.create_default_context(cafile=certifi.where())
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, context=context) as resp:  # noqa: S310 - network call intended
+            text = resp.read().decode("utf-8")
+            if resp.status != 200:
+                raise RuntimeError(f"Request to {url} failed with {resp.status}: {text[:200]}")
+    except urllib.error.HTTPError as err:  # pragma: no cover - network error handling
+        body = err.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Request to {url} failed with {err.code}: {body[:200]}") from err
+    except (urllib.error.URLError, ssl.SSLError) as err:  # pragma: no cover - network error handling
+        raise RuntimeError(f"Failed to fetch {url}: {err}") from err
+    if debug:
+        logging.debug("Response: %s", text[:1000])
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as err:  # pragma: no cover - defensive
+        raise RuntimeError(f"Invalid JSON from {url}: {err}") from err
 
 
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
@@ -48,13 +82,23 @@ def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) ->
     # The Grants.gov API expects the singular "keyword" parameter.
     params = {"keyword": keyword, "limit": "20", **filters}
     data = _get_json(SEARCH_URL, params, debug=debug)
+    payload = {"keywords": keyword, "limit": "20", **filters}
+    try:
+        data = _post_json(SEARCH_URL, payload, debug=debug)
+    except RuntimeError as err:
+        logging.error("Search request failed: %s", err)
+        return []
     return data.get("opportunities", [])
 
 
 def fetch_detail(opp_id: str, debug: bool = False) -> Dict:
     """Fetch detail JSON for a single opportunity ``opp_id``."""
     url = DETAIL_URL.format(id=opp_id)
-    data = _get_json(url, debug=debug)
+    try:
+        data = _get_json(url, debug=debug)
+    except RuntimeError as err:
+        logging.error("Detail request for %s failed: %s", opp_id, err)
+        return {}
     # Some responses nest the opportunity under "opportunity"
     return data.get("opportunity", data)
 
