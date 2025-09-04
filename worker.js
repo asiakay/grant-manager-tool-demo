@@ -1,8 +1,6 @@
 import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
-
-const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
@@ -19,26 +17,26 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
-async function ensureProgramsTable(db) {
-  await db.exec(`CREATE TABLE IF NOT EXISTS programs (
-    "Type" TEXT,
-    "Name" TEXT PRIMARY KEY,
-    "Sponsor" TEXT,
-    "Source URL" TEXT,
-    "Region / Eligibility" TEXT,
-    "Deadline / Next Cohort" TEXT,
-    "Cadence" TEXT,
-    "Benefits" TEXT,
-    "Eligibility (key conditions)" TEXT,
-    "Stage" TEXT,
-    "Non-dilutive?" TEXT,
-    "Stack Required?" TEXT,
-    "Relevance" TEXT,
-    "Fit" TEXT,
-    "Ease" TEXT,
-    "Weighted Score" TEXT,
-    "Notes / Actions" TEXT
-  );`);
+
+async function getLoginRecord(db, ip) {
+  const record = await db
+    .prepare("SELECT count, time FROM login_attempts WHERE ip = ?")
+    .bind(ip)
+    .first();
+  return record || { count: 0, time: 0 };
+}
+
+async function saveLoginRecord(db, ip, count, time) {
+  await db
+    .prepare(
+      "INSERT OR REPLACE INTO login_attempts (ip, count, time) VALUES (?, ?, ?)"
+    )
+    .bind(ip, count, time)
+    .run();
+}
+
+async function clearLoginRecord(db, ip) {
+  await db.prepare("DELETE FROM login_attempts WHERE ip = ?").bind(ip).run();
 }
 
 async function newSchemaPage(db) {
@@ -68,7 +66,6 @@ export default {
     const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
     const loggedIn = !!username;
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
-    await ensureProgramsTable(env.DB);
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
@@ -76,7 +73,7 @@ export default {
       const pass = form.get("password");
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const now = Date.now();
-      const record = loginAttempts.get(ip) || { count: 0, time: now };
+      const record = await getLoginRecord(env.DB, ip);
       if (now - record.time > LOCKOUT_MS) {
         record.count = 0;
         record.time = now;
@@ -86,7 +83,7 @@ export default {
       }
       const hashed = await hashPassword(pass || "");
       if (users[user] && users[user] === hashed) {
-        loginAttempts.delete(ip);
+        await clearLoginRecord(env.DB, ip);
         const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {
           status: 302,
@@ -99,7 +96,7 @@ export default {
       }
       record.count++;
       record.time = now;
-      loginAttempts.set(ip, record);
+      await saveLoginRecord(env.DB, ip, record.count, record.time);
       return new Response("Unauthorized", { status: 401 });
     }
 
