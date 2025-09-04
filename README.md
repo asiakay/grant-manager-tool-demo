@@ -58,6 +58,10 @@ The page includes a dataset selector letting you switch between
 missing, the app falls back to tiny sample data so the visualization can still
 be demoed.
 
+This visualization uses the optional `plotly` package for its charts. Install it
+with `pip install plotly` to enable interactive graphs; without it, the app
+runs but displays a friendly message instead of charts.
+
 ## Beginner installation
 
 If you're new to Python or Node.js, the following steps walk through a fresh

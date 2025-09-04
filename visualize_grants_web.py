@@ -11,8 +11,16 @@ Use the drop-down to switch between datasets.
 
 from pathlib import Path
 
+import logging
 import pandas as pd
-import plotly.express as px
+
+try:  # Plotly is optional for visualization
+    import plotly.express as px
+except ImportError:  # pragma: no cover - graceful degradation
+    px = None
+    logging.warning(
+        "plotly is not installed; run 'pip install plotly' to enable charts"
+    )
 from flask import (
     Flask,
     render_template_string,
@@ -62,7 +70,11 @@ def index():
     else:
         df = default_df
 
-    if {x_col, y_col}.issubset(df.columns):
+    if px is None:
+        graph_html = (
+            "<p>plotly is not installed. Install it to view interactive charts.</p>"
+        )
+    elif {x_col, y_col}.issubset(df.columns):
         fig = px.bar(df, x=x_col, y=y_col, title=title)
         graph_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
     else:
