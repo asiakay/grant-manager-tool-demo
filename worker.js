@@ -1,5 +1,6 @@
 import { renderDashboardPage } from "./templates/dashboard.js";
 import { renderLoginPage } from "./templates/login.js";
+import { renderTestEndpointsPage } from "./templates/test_endpoints.js";
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
@@ -117,6 +118,18 @@ export default {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
+
+      if (url.pathname === "/test-endpoints") {
+        if (!loggedIn) {
+          return new Response("", {
+            status: 302,
+            headers: { Location: "/" },
+          });
+        }
+        return new Response(renderTestEndpointsPage(username), {
+          headers: { "content-type": "text/html; charset=UTF-8" },
+        });
+      }
 
     if (url.pathname === "/new_schema") {
       if (!loggedIn) {
