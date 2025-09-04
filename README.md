@@ -9,4 +9,9 @@ python search_grants.py education --filter opportunityStatuses=posted --output r
 python wrangle_grants.py --input examples/grants_demo --out out/demo.csv --print-summary
 ```
 
+`search_grants.py` now queries the Grants.gov API with HTTP GET requests, sending
+keywords and filters as query parameters (e.g., `?keywords=education&limit=20`).
+If the API responds with a non-200 status, the script logs the error and returns
+no results.
+
 See [docs/README.md](docs/README.md) for detailed features and additional documentation.
