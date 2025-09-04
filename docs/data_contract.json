@@ -1,24 +1,38 @@
 {
-  "table": "programs",
-  "description": "D1 table storing scored grant programs.",
-  "fields": [
-    {"name": "Type", "type": "TEXT", "description": "Program category"},
-    {"name": "Name", "type": "TEXT", "primary_key": true, "description": "Program name"},
-    {"name": "Sponsor", "type": "TEXT", "description": "Sponsoring organization"},
-    {"name": "Source URL", "type": "TEXT", "description": "Link to program details"},
-    {"name": "Region / Eligibility", "type": "TEXT", "description": "Eligible region or requirements"},
-    {"name": "Deadline / Next Cohort", "type": "TEXT", "description": "Application deadline or next cohort date"},
-    {"name": "Cadence", "type": "TEXT", "description": "Program frequency"},
-    {"name": "Benefits", "type": "TEXT", "description": "Benefits offered"},
-    {"name": "Eligibility (key conditions)", "type": "TEXT", "description": "Key eligibility criteria"},
-    {"name": "Stage", "type": "TEXT", "description": "Target startup stage"},
-    {"name": "Non-dilutive?", "type": "TEXT", "description": "Whether funding is non-dilutive"},
-    {"name": "Stack Required?", "type": "TEXT", "description": "Whether sponsor stack is required"},
-    {"name": "Relevance", "type": "TEXT", "description": "Relevance score"},
-    {"name": "Fit", "type": "TEXT", "description": "Fit score"},
-    {"name": "Ease", "type": "TEXT", "description": "Ease score"},
-    {"name": "Weighted Score", "type": "TEXT", "description": "Combined weighted score"},
-    {"name": "Notes / Actions", "type": "TEXT", "description": "Notes or next actions"}
-  ],
-  "scoring_rules": "Relevance, Fit, and Ease are scored 0-3 and aggregated into Weighted Score. Update this contract when schemas or scoring rules change."
+  "tables": [
+    {
+      "name": "programs",
+      "description": "D1 table storing scored grant programs.",
+      "fields": [
+        {"name": "Type", "type": "TEXT", "description": "Program category"},
+        {"name": "Name", "type": "TEXT", "primary_key": true, "description": "Program name"},
+        {"name": "Sponsor", "type": "TEXT", "description": "Sponsoring organization"},
+        {"name": "Source URL", "type": "TEXT", "description": "Link to program details"},
+        {"name": "Region / Eligibility", "type": "TEXT", "description": "Eligible region or requirements"},
+        {"name": "Deadline / Next Cohort", "type": "TEXT", "description": "Application deadline or next cohort date"},
+        {"name": "Cadence", "type": "TEXT", "description": "Program frequency"},
+        {"name": "Benefits", "type": "TEXT", "description": "Benefits offered"},
+        {"name": "Eligibility (key conditions)", "type": "TEXT", "description": "Key eligibility criteria"},
+        {"name": "Stage", "type": "TEXT", "description": "Target startup stage"},
+        {"name": "Non-dilutive?", "type": "TEXT", "description": "Whether funding is non-dilutive"},
+        {"name": "Stack Required?", "type": "TEXT", "description": "Whether sponsor stack is required"},
+        {"name": "Relevance", "type": "TEXT", "description": "Relevance score"},
+        {"name": "Fit", "type": "TEXT", "description": "Fit score"},
+        {"name": "Ease", "type": "TEXT", "description": "Ease score"},
+        {"name": "Weighted Score", "type": "TEXT", "description": "Combined weighted score"},
+        {"name": "Notes / Actions", "type": "TEXT", "description": "Notes or next actions"}
+      ],
+      "scoring_rules": "Relevance, Fit, and Ease are scored 0-3 and aggregated into Weighted Score. Update this contract when schemas or scoring rules change."
+    },
+    {
+      "name": "soc_readings",
+      "description": "D1 table storing state of charge readings.",
+      "fields": [
+        {"name": "id", "type": "INTEGER", "primary_key": true, "description": "Auto-incrementing identifier"},
+        {"name": "ts", "type": "TEXT", "description": "Timestamp in ISO 8601 format"},
+        {"name": "soc", "type": "REAL", "description": "State of charge percentage"}
+      ]
+    }
+  ]
 }
+

@@ -125,6 +125,19 @@ Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace
 to control how grants are scored. If the binding isn't configured, scoring
 defaults to zero for all grants.
 
+### State of charge endpoint
+
+The Worker exposes `/api/soc` for recording battery state-of-charge readings.
+Send a `POST` request with JSON such as `{"soc": 80, "timestamp": "2024-01-01T00:00:00Z"}`
+where `soc` is a percentage between 0 and 100 and `timestamp` is optional. Each
+valid reading is written to the `soc_readings` D1 table.
+
+```bash
+curl -X POST https://your-worker.example/api/soc \
+  -H "Content-Type: application/json" \
+  -d '{"soc": 82.5}'
+```
+
 ## Developer guide
 
 For guidelines on extending the backend, Cloudflare worker, or UI, see

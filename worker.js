@@ -23,6 +23,12 @@ async function ensureProgramsTable(db) {
   await db.exec("CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY)");
 }
 
+async function ensureSocTable(db) {
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS soc_readings (id INTEGER PRIMARY KEY, ts TEXT, soc REAL)"
+  );
+}
+
 async function newSchemaPage(db) {
   const columns = await getColumns(db);
   const inputs = columns
@@ -51,6 +57,7 @@ export default {
     const loggedIn = !!username;
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
     await ensureProgramsTable(env.DB);
+    await ensureSocTable(env.DB);
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
@@ -180,6 +187,35 @@ export default {
       }
       return new Response(body, {
         headers: { "content-type": "text/csv; charset=UTF-8" },
+      });
+    }
+
+    if (url.pathname === "/api/soc") {
+      if (request.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+      let data;
+      try {
+        data = await request.json();
+      } catch {
+        return new Response("Invalid JSON", { status: 400 });
+      }
+      const soc = Number(data.soc);
+      if (Number.isNaN(soc) || soc < 0 || soc > 100) {
+        return new Response("Invalid soc", { status: 400 });
+      }
+      const ts =
+        typeof data.timestamp === "string"
+          ? data.timestamp
+          : new Date().toISOString();
+      await env.DB.prepare(
+        "INSERT INTO soc_readings (ts, soc) VALUES (?, ?)"
+      )
+        .bind(ts, soc)
+        .run();
+      return new Response(JSON.stringify({ ts, soc }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
       });
     }
 
