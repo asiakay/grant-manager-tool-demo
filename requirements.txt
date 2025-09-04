@@ -3,3 +3,4 @@ openpyxl
 flask
 plotly
 pyyaml
+certifi

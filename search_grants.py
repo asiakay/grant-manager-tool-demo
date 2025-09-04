@@ -15,6 +15,9 @@ import logging
 import sys
 import urllib.parse
 import urllib.request
+import urllib.error
+import ssl
+import certifi
 from typing import Dict, List
 
 import pandas as pd
@@ -28,8 +31,13 @@ def _get_json(url: str, params: Dict[str, str] | None = None, debug: bool = Fals
     if params:
         url = f"{url}?{urllib.parse.urlencode(params)}"
     logging.debug("GET %s", url)
-    with urllib.request.urlopen(url) as resp:  # noqa: S310 - network call intended
-        text = resp.read().decode("utf-8")
+    context = ssl.create_default_context(cafile=certifi.where())
+    try:
+        with urllib.request.urlopen(url, context=context) as resp:  # noqa: S310 - network call intended
+            text = resp.read().decode("utf-8")
+    except (urllib.error.URLError, ssl.SSLError) as err:  # pragma: no cover - network error handling
+        logging.error("Failed to fetch %s: %s", url, err)
+        return {}
     if debug:
         logging.debug("Response: %s", text[:1000])
     return json.loads(text)
