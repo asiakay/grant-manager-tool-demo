@@ -272,7 +272,7 @@ def normalize_money(df: pd.DataFrame) -> pd.DataFrame:
 def normalize_deadline(df: pd.DataFrame) -> pd.DataFrame:
     if "Deadline" not in df.columns:
         return df
-    df["Deadline"] = pd.to_datetime(df["Deadline"], errors="coerce", infer_datetime_format=True, utc=True)
+    df["Deadline"] = pd.to_datetime(df["Deadline"], errors="coerce", utc=True)
     # keep as date (no time)
     df["Deadline"] = df["Deadline"].dt.tz_convert(None)
     return df
