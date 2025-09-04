@@ -1,4 +1,3 @@
-import json
 import logging
 import sys
 from pathlib import Path
@@ -7,11 +6,11 @@ from unittest.mock import patch
 # Ensure repository root is on the import path to load search_grants.py
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from search_grants import _post_json, search_grants as do_search, fetch_detail, SEARCH_URL
+from search_grants import _get_json, search_grants as do_search, fetch_detail, SEARCH_URL
 
 
-def test_post_json_sends_body_and_headers():
-    payload = {"a": 1}
+def test_get_json_adds_params_and_headers():
+    params = {"a": "1"}
     captured = {}
 
     class FakeResponse:
@@ -31,26 +30,25 @@ def test_post_json_sends_body_and_headers():
         return FakeResponse()
 
     with patch("urllib.request.urlopen", fake_urlopen):
-        _post_json(SEARCH_URL, payload)
+        _get_json(SEARCH_URL, params)
 
     req = captured["req"]
-    assert req.headers["Content-type"] == "application/json"
     assert req.headers["Accept"] == "application/json"
-    assert json.loads(req.data.decode("utf-8")) == payload
+    assert req.full_url.endswith("?a=1")
 
 
 def test_search_grants_success():
     fake = {"opportunities": [{"id": 1}]}
-    with patch("search_grants._post_json", return_value=fake) as mock_post:
+    with patch("search_grants._get_json", return_value=fake) as mock_get:
         results = do_search("water", {"f": "v"})
     assert results == fake["opportunities"]
-    mock_post.assert_called_once_with(
+    mock_get.assert_called_once_with(
         SEARCH_URL, {"keywords": "water", "limit": "20", "f": "v"}, debug=False
     )
 
 
 def test_search_grants_failure(caplog):
-    with patch("search_grants._post_json", side_effect=RuntimeError("boom")):
+    with patch("search_grants._get_json", side_effect=RuntimeError("boom")):
         with caplog.at_level(logging.ERROR):
             results = do_search("x", {})
     assert results == []
