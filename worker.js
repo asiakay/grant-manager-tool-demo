@@ -18,28 +18,6 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
-async function ensureProgramsTable(db) {
-  await db.exec(`CREATE TABLE IF NOT EXISTS programs (
-    "Type" TEXT,
-    "Name" TEXT PRIMARY KEY,
-    "Sponsor" TEXT,
-    "Source URL" TEXT,
-    "Region / Eligibility" TEXT,
-    "Deadline / Next Cohort" TEXT,
-    "Cadence" TEXT,
-    "Benefits" TEXT,
-    "Eligibility (key conditions)" TEXT,
-    "Stage" TEXT,
-    "Non-dilutive?" TEXT,
-    "Stack Required?" TEXT,
-    "Relevance" TEXT,
-    "Fit" TEXT,
-    "Ease" TEXT,
-    "Weighted Score" TEXT,
-    "Notes / Actions" TEXT
-  );`);
-}
-
 async function newSchemaPage(db) {
   const columns = await getColumns(db);
   const inputs = columns
@@ -67,7 +45,6 @@ export default {
     const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
     const loggedIn = !!username;
     const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
-    await ensureProgramsTable(env.DB);
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
