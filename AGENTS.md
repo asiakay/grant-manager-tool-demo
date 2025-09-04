@@ -8,6 +8,29 @@ This file describes the automation agents, their goals, inputs, outputs, run com
 - Keep entries concise: use capitalized agent names, wrap file paths and commands in backticks, and limit each column to a single sentence.
 - Run `npm test` before committing to verify repository checks pass.
 
+## Deployment Order
+
+Follow this sequence to set up the system end to end:
+
+1. **Apply D1 migrations**
+   ```bash
+   wrangler d1 migrations apply
+   ```
+2. **Deploy `/upload` endpoint**
+   ```bash
+   npm run build
+   wrangler deploy
+   ```
+3. **Run the extraction queue worker**
+   ```bash
+   wrangler queues consume PDF_INGEST src/pdf_worker.ts
+   ```
+4. **Scoring**
+   - Run your scoring pipeline after extraction completes.
+
+Run `npm test` before committing to verify repository checks pass.
+
+
 | Agent          | Goal                                            | Inputs                                     | Outputs                                      | Run Command                         | Schedule            | Source                              |
 | -------------- | ----------------------------------------------- | ------------------------------------------ | -------------------------------------------- | ----------------------------------- | ------------------- | ----------------------------------- |
 | GrantWrangler  | Merge raw grant CSV files into a master dataset | `data/csvs/`                               | `out/master.csv`                             | `make wrangle`                      | On new data arrival | `wrangle_grants.py`                 |
