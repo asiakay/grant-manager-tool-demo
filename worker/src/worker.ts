@@ -1,3 +1,4 @@
+/// <reference types="@cloudflare/workers-types" />
 import { Ai } from '@cloudflare/ai';
 
 export interface Env {
