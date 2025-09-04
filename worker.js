@@ -1,6 +1,7 @@
 import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
+import programsSchema from "./worker/migrations/0001_create_programs.sql?raw";
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
@@ -18,7 +19,9 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
+let ensured;
 async function ensureProgramsTable(db) {
+
   await db.exec(`CREATE TABLE IF NOT EXISTS programs (
     "Type" TEXT,
     "Name" TEXT PRIMARY KEY,
@@ -38,6 +41,8 @@ async function ensureProgramsTable(db) {
     "Weighted Score" TEXT,
     "Notes / Actions" TEXT
   );`);
+
+  main
 }
 
 async function newSchemaPage(db) {
