@@ -7,6 +7,9 @@
     "doc": "docs",
     "example": "examples"
   },
+  "dependencies": {
+    "bcryptjs": "^2.4.3"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250408.0",
     "typescript": "^5.0.0",

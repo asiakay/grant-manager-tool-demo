@@ -7,16 +7,16 @@ The GUI now starts with a simple login screen demonstrating "admin" and
 while the standard user can only choose files and run the wrangler.
 
 Credentials are supplied via a `USER_HASHES` environment variable containing
-SHA-256 password hashes. Example:
+per-user bcrypt salts and hashes. Example:
 
 ```
-export USER_HASHES='{"admin":"<sha256 hash>","user":"<sha256 hash>"}'
+export USER_HASHES='{"admin":{"salt":"<salt>","hash":"<bcrypt hash>"},"user":{"salt":"<salt>","hash":"<bcrypt hash>"}}'
 ```
 
-Hashes can be generated with tools such as `sha256sum`:
+Hashes can be generated with `bcryptjs` and a cost factor of 12:
 
 ```
-echo -n "adminpass" | sha256sum
+node -e "import bcrypt from 'bcryptjs'; bcrypt.genSalt(12).then(s=>bcrypt.hash('adminpass',s).then(h=>console.log({salt:s,hash:h})))"
 ```
 
 See [README_wrangle_grants.md](README_wrangle_grants.md) for usage instructions.
