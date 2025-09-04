@@ -2,7 +2,6 @@ import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
 
-const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
@@ -76,7 +75,15 @@ export default {
       const pass = form.get("password");
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const now = Date.now();
-      const record = loginAttempts.get(ip) || { count: 0, time: now };
+      let record = { count: 0, time: now };
+      if (env.LOGIN_ATTEMPTS) {
+        const stored = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" });
+        if (stored) {
+          record = stored;
+        }
+      } else {
+        console.warn("LOGIN_ATTEMPTS binding is not configured");
+      }
       if (now - record.time > LOCKOUT_MS) {
         record.count = 0;
         record.time = now;
@@ -86,7 +93,9 @@ export default {
       }
       const hashed = await hashPassword(pass || "");
       if (users[user] && users[user] === hashed) {
-        loginAttempts.delete(ip);
+        if (env.LOGIN_ATTEMPTS) {
+          await env.LOGIN_ATTEMPTS.delete(ip);
+        }
         const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {
           status: 302,
@@ -99,7 +108,9 @@ export default {
       }
       record.count++;
       record.time = now;
-      loginAttempts.set(ip, record);
+      if (env.LOGIN_ATTEMPTS) {
+        await env.LOGIN_ATTEMPTS.put(ip, JSON.stringify(record));
+      }
       return new Response("Unauthorized", { status: 401 });
     }
 

@@ -20,6 +20,10 @@ database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
 binding = "USER_PROFILES"
 id = "065f64c71e0747079a2e3d86b292770d"
 
+[[kv_namespaces]]
+binding = "LOGIN_ATTEMPTS"
+id = "0d1e2f3a4b5c6d7e8f90123456789abc"
+
 
 
 
