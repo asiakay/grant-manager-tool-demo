@@ -23,6 +23,8 @@ grant-summarizer --url https://example.com/grant.html --allow-online --format al
 
 # Search grants.gov for opportunities
 grant-summarizer --search water --outdir ./dist
+
+This uses the Grants.gov API's `keyword` parameter.
 ```
 
 By default the tool operates offline and only accepts local paths or `file://` URLs. Using `--allow-online` enables downloading content from remote hosts, which may expose the system to malicious files or unexpected network traffic. Only use this flag if you trust the source.

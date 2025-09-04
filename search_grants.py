@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Search Grants.gov and export results.
 
-This CLI queries the Grants.gov search API using keywords and optional filters,
+This CLI queries the Grants.gov search API using the ``keyword`` parameter and optional filters,
 then enriches each opportunity with details from the opportunity synopsis
 endpoint. Results can be written to CSV or TSV and a curated summary table is
 printed for quick review.
@@ -45,7 +45,8 @@ def _get_json(url: str, params: Dict[str, str] | None = None, debug: bool = Fals
 
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
     """Return a list of opportunities matching ``keyword`` and ``filters``."""
-    params = {"keywords": keyword, "limit": "20", **filters}
+    # The Grants.gov API expects the singular "keyword" parameter.
+    params = {"keyword": keyword, "limit": "20", **filters}
     data = _get_json(SEARCH_URL, params, debug=debug)
     return data.get("opportunities", [])
 
