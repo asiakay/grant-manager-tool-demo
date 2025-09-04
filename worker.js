@@ -1,6 +1,6 @@
-import { renderDashboardPage } from "./templates/dashboard.js";
-import { renderLoginPage } from "./templates/login.js";
-import { renderTestEndpointsPage } from "./templates/test_endpoints.js";
+import { renderDashboardPage } from "./ui/dashboard.js";
+import { renderLoginPage } from "./ui/login.js";
+import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
 
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
