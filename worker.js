@@ -2,6 +2,7 @@ import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
 
+
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
@@ -16,6 +17,28 @@ async function hashPassword(pass) {
 async function getColumns(db) {
   const { results } = await db.prepare("PRAGMA table_info(programs)").all();
   return results.map((r) => r.name);
+}
+
+
+async function getLoginRecord(db, ip) {
+  const record = await db
+    .prepare("SELECT count, time FROM login_attempts WHERE ip = ?")
+    .bind(ip)
+    .first();
+  return record || { count: 0, time: 0 };
+}
+
+async function saveLoginRecord(db, ip, count, time) {
+  await db
+    .prepare(
+      "INSERT OR REPLACE INTO login_attempts (ip, count, time) VALUES (?, ?, ?)"
+    )
+    .bind(ip, count, time)
+    .run();
+}
+
+async function clearLoginRecord(db, ip) {
+  await db.prepare("DELETE FROM login_attempts WHERE ip = ?").bind(ip).run();
 }
 
 async function newSchemaPage(db) {
@@ -52,6 +75,7 @@ export default {
       const pass = form.get("password");
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const now = Date.now();
+      const record = await getLoginRecord(env.DB, ip);
       let record = { count: 0, time: now };
       if (env.LOGIN_ATTEMPTS) {
         const stored = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" });
@@ -70,6 +94,8 @@ export default {
       }
       const hashed = await hashPassword(pass || "");
       if (users[user] && users[user] === hashed) {
+        await clearLoginRecord(env.DB, ip);
+
         if (env.LOGIN_ATTEMPTS) {
           await env.LOGIN_ATTEMPTS.delete(ip);
         }
@@ -85,6 +111,8 @@ export default {
       }
       record.count++;
       record.time = now;
+      await saveLoginRecord(env.DB, ip, record.count, record.time);
+
       if (env.LOGIN_ATTEMPTS) {
         await env.LOGIN_ATTEMPTS.put(ip, JSON.stringify(record));
       }
