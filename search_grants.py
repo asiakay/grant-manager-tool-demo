@@ -18,7 +18,7 @@ import urllib.request
 import urllib.error
 import ssl
 import certifi
-from typing import Dict, List
+from typing import Dict, List, Any
 
 import pandas as pd
 
@@ -26,15 +26,35 @@ SEARCH_URL = "https://www.grants.gov/grantsws/rest/opportunities/search"
 DETAIL_URL = "https://www.grants.gov/grantsws/rest/opportunities/{id}/synopsis"
 
 
-def _get_json(url: str, params: Dict[str, str] | None = None, debug: bool = False) -> Dict:
-    """Fetch JSON data from ``url`` with optional query ``params``."""
-    if params:
+def _get_json(
+    url: str,
+    params: Dict[str, str] | None = None,
+    debug: bool = False,
+    *,
+    method: str = "GET",
+    data: Any | None = None,
+) -> Dict:
+    """Fetch JSON data from ``url`` using ``method`` and optional JSON ``data``."""
+    if params and method.upper() == "GET":
         url = f"{url}?{urllib.parse.urlencode(params)}"
-    logging.debug("GET %s", url)
+    headers: Dict[str, str] = {}
+    body: bytes | None = None
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    logging.debug("%s %s", method.upper(), url)
     context = ssl.create_default_context(cafile=certifi.where())
+    req = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
     try:
-        with urllib.request.urlopen(url, context=context) as resp:  # noqa: S310 - network call intended
+        with urllib.request.urlopen(req, context=context) as resp:  # noqa: S310 - network call intended
             text = resp.read().decode("utf-8")
+            if resp.status != 200:
+                logging.error("Request to %s returned %s: %s", url, resp.status, text[:200])
+                return {}
+    except urllib.error.HTTPError as err:  # pragma: no cover - network error handling
+        body = err.read().decode("utf-8", errors="replace")
+        logging.error("Request to %s failed with %s: %s", url, err.code, body[:200])
+        return {}
     except (urllib.error.URLError, ssl.SSLError) as err:  # pragma: no cover - network error handling
         logging.error("Failed to fetch %s: %s", url, err)
         return {}
@@ -45,8 +65,8 @@ def _get_json(url: str, params: Dict[str, str] | None = None, debug: bool = Fals
 
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
     """Return a list of opportunities matching ``keyword`` and ``filters``."""
-    params = {"keywords": keyword, "limit": "20", **filters}
-    data = _get_json(SEARCH_URL, params, debug=debug)
+    payload = {"keywords": keyword, "limit": "20", **filters}
+    data = _get_json(SEARCH_URL, debug=debug, method="POST", data=payload)
     return data.get("opportunities", [])
 
 
