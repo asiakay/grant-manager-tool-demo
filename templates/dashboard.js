@@ -28,6 +28,7 @@ export function renderDashboardPage(
   <p>
     <a href="/schema">View schema JSON</a> |
     <a href="/data">Sample CSV</a> |
+    <a href="/test-endpoints">Test Endpoints</a> |
     <a href="/logout">Logout</a>
   </p>
 </body>
