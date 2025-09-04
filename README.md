@@ -85,6 +85,9 @@ setup of the project:
    pip install -r requirements.txt
    ```
 
+   On Windows use `.venv\Scripts\activate` instead of `source .venv/bin/activate`.
+   Reactivate the environment in new shells with the same command.
+
 4. (Optional) Install Node dependencies for the Worker demo:
 
    ```bash
@@ -105,6 +108,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+On Windows use `.venv\Scripts\activate` instead of `source .venv/bin/activate`.
+Run the activation command whenever you open a new terminal.
 
 ## Cloudflare Worker demo
 
