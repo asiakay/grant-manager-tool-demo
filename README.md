@@ -125,6 +125,21 @@ Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace
 to control how grants are scored. If the binding isn't configured, scoring
 defaults to zero for all grants.
 
+## Pipeline vs Direct Write
+
+The project supports a queue‑based pipeline and simpler direct writes for
+loading and scoring grants. See
+[docs/pipeline_vs_direct_write.md](docs/pipeline_vs_direct_write.md) for a
+comparison of cost, grant sources, and selection criteria. The guide also
+details required configuration variables:
+
+- `USER_HASHES`
+- `USER_PROFILES`
+- `PDF_BUCKET`
+- `PDF_INGEST`
+- `SCORE_QUEUE`
+- `EQORE_DB`
+
 ## Developer guide
 
 For guidelines on extending the backend, Cloudflare worker, or UI, see
