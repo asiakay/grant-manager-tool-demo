@@ -52,14 +52,14 @@ export default {
       const pass = form.get("password");
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const now = Date.now();
-      let record = { count: 0, time: now };
+      let record;
       if (env.LOGIN_ATTEMPTS) {
-        const stored = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" });
-        if (stored) {
-          record = stored;
-        }
+        record = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" });
       } else {
         console.warn("LOGIN_ATTEMPTS binding is not configured");
+      }
+      if (!record) {
+        record = { count: 0, time: now };
       }
       if (now - record.time > LOCKOUT_MS) {
         record.count = 0;
