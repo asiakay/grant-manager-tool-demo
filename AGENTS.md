@@ -44,6 +44,7 @@ Run `npm test` before committing to verify repository checks pass.
 | UploadWorker   | Store uploaded PDFs in R2 for downstream extraction | POST to `/upload` with file or `{name,data}` | PDF object in `PDF_BUCKET`                   | `npx wrangler dev --local`          | On demand           | `worker/src/worker.ts` |
 | ExtractionWorker | Convert PDFs to summaries via grant_summarizer | Queue message `{key}` from `PDF_INGEST`    | CSV and Markdown files in `PDF_BUCKET`       | `npx wrangler dev src/pdf_worker.ts --local` | On `PDF_INGEST` message | `worker/src/pdf_worker.ts` |
 | ScoringWorker  | Score extracted rows and persist results        | Queue message `{file}` from `SCORE_QUEUE`  | Scored CSV in `PDF_BUCKET`                   | `npx wrangler dev src/score_worker.ts --local` | On `SCORE_QUEUE` message | `worker/src/score_worker.ts` |
+| SoCPipeline    | Batch SoC readings and write to R2              | POST JSON `{soc}`                          | Batched JSON in `SOC_BUCKET`                 | `npx wrangler dev workers/soc_pipeline_worker.js --local` | On demand           | `workers/soc_pipeline_worker.js` |
 
 # AGENTS.md (for `ui/` components)
 

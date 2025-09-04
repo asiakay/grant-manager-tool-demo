@@ -125,6 +125,36 @@ Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace
 to control how grants are scored. If the binding isn't configured, scoring
 defaults to zero for all grants.
 
+## SoC pipeline worker
+
+The `soc_pipeline_worker.js` batches State of Charge readings and periodically
+writes them to an R2 bucket.
+
+### Environment variables
+
+- `BATCH_SIZE` – number of readings to accumulate before writing a batch (defaults to 10).
+- `SOC_BUCKET` – R2 binding name configured in `wrangler.toml`.
+
+### Deployment
+
+1. Create the R2 bucket:
+
+   ```bash
+   wrangler r2 bucket create soc-pipeline
+   ```
+
+2. Deploy the worker:
+
+   ```bash
+   wrangler deploy soc_pipeline
+   ```
+
+3. (Optional) configure a custom batch size:
+
+   ```bash
+   wrangler secret put BATCH_SIZE
+   ```
+
 ## Developer guide
 
 For guidelines on extending the backend, Cloudflare worker, or UI, see

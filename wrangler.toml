@@ -24,3 +24,10 @@ id = "065f64c71e0747079a2e3d86b292770d"
 
 
 
+
+[soc_pipeline]
+main = "workers/soc_pipeline_worker.js"
+
+[[soc_pipeline.r2_buckets]]
+binding = "SOC_BUCKET"
+bucket_name = "soc-pipeline"
