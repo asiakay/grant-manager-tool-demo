@@ -39,16 +39,16 @@ def test_get_json_adds_params_and_headers():
 
 def test_search_grants_success():
     fake = {"opportunities": [{"id": 1}]}
-    with patch("search_grants._get_json", return_value=fake) as mock_get:
+    with patch("search_grants._post_json", return_value=fake) as mock_post:
         results = do_search("water", {"f": "v"})
     assert results == fake["opportunities"]
-    mock_get.assert_called_once_with(
+    mock_post.assert_called_once_with(
         SEARCH_URL, {"keywords": "water", "limit": "20", "f": "v"}, debug=False
     )
 
 
 def test_search_grants_failure(caplog):
-    with patch("search_grants._get_json", side_effect=RuntimeError("boom")):
+    with patch("search_grants._post_json", side_effect=RuntimeError("boom")):
         with caplog.at_level(logging.ERROR):
             results = do_search("x", {})
     assert results == []
