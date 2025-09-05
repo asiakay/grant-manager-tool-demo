@@ -1,18 +1,18 @@
 {
-	// Name of your Worker project
-	"name": "grant-demo",
-	// Entry point for your Worker code
-	"main": "worker.js",
-	// Required compatibility date for the Workers runtime
-	"compatibility_date": "2024-05-29",
-	// Deploy to workers.dev by default (set to false if using custom routes only)
-	"workers_dev": true,
-	"kv_namespaces": [
-		{
-			"binding": "LOGIN_ATTEMPTS",
-			"id": "65e462c43a2046e5bbb95391c2a6e6e9"
-		}
-	]
+  // Name of your Worker project
+  "name": "grant-demo",
+  // Entry point for your Worker code
+  "main": "worker/src/worker.ts",
+  // Required compatibility date for the Workers runtime
+  "compatibility_date": "2024-05-29",
+  // Deploy to workers.dev by default (set to false if using custom routes only)
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "LOGIN_ATTEMPTS",
+      "id": "65e462c43a2046e5bbb95391c2a6e6e9"
+    }
+  ]
 }
 /* // Optional HTTP routes
   "routes": [{ "pattern": "workers.dev/*", "script": "grant-demo" }],

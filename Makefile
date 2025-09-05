@@ -5,6 +5,6 @@ visualize:
 	python visualize_grants_web.py
 
 deploy:
-	wrangler publish
+	wrangler deploy
 
 .PHONY: wrangle visualize deploy
