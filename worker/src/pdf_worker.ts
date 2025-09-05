@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 export interface Env {
   PDF_BUCKET: R2Bucket;
   GRANT_SUMMARIZER_URL: string;
