@@ -44,7 +44,6 @@ export default {
     const sessionMatch = cookie.match(/session=([^;]+)/);
     const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
     const loggedIn = !!username;
-    // Provide a default demo login so the worker is usable out of the box.
     // Hash the password at runtime so it always matches the same algorithm
     // used for incoming login attempts. Environment-provided users may supply
     // either hashed or plain-text passwords; the latter are hashed here so the
@@ -65,6 +64,7 @@ export default {
         console.warn("Invalid USER_HASHES value", err);
       }
     }
+
     const users = { ...defaultUsers, ...envUsers };
 
     if (url.pathname === "/login" && request.method === "POST") {
