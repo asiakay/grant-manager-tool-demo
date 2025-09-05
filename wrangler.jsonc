@@ -22,10 +22,7 @@
     "API_BASE_URL": "https://api.example.com"
   },
 
-  // Build step run before uploading your Worker
-  "build": {
-    "command": "npm run build"
-  },
+  // `wrangler deploy` automatically builds your Worker
 
   // Durable Object bindings
   "durable_objects": {
