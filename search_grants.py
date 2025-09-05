@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 import ssl
 import certifi
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -52,11 +52,41 @@ def _get_json(url: str, params: Dict[str, str] | None = None, debug: bool = Fals
         raise RuntimeError(f"Invalid JSON from {url}: {err}") from err
 
 
+def _post_json(url: str, payload: Dict[str, Any], debug: bool = False) -> Dict:
+    """Send a JSON ``payload`` to ``url`` using ``POST`` and return the response."""
+    headers: Dict[str, str] = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    data = json.dumps(payload).encode("utf-8")
+    logging.debug("POST %s", url)
+    context = ssl.create_default_context(cafile=certifi.where())
+    req = urllib.request.Request(url, headers=headers, data=data, method="POST")
+    try:
+        with urllib.request.urlopen(req, context=context) as resp:  # noqa: S310 - network call intended
+            text = resp.read().decode("utf-8")
+            if resp.status != 200:
+                raise RuntimeError(
+                    f"Request to {url} failed with {resp.status}: {text[:200]}"
+                )
+    except urllib.error.HTTPError as err:  # pragma: no cover - network error handling
+        body = err.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Request to {url} failed with {err.code}: {body[:200]}") from err
+    except (urllib.error.URLError, ssl.SSLError) as err:  # pragma: no cover - network error handling
+        raise RuntimeError(f"Failed to fetch {url}: {err}") from err
+    if debug:
+        logging.debug("Response: %s", text[:1000])
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as err:  # pragma: no cover - defensive
+        raise RuntimeError(f"Invalid JSON from {url}: {err}") from err
+
+
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
     """Return a list of opportunities matching ``keyword`` and ``filters``."""
-    params = {"keywords": keyword, "limit": "20", **filters}
+    payload = {"keywords": keyword, "limit": "20", **filters}
     try:
-        data = _get_json(SEARCH_URL, params, debug=debug)
+        data = _post_json(SEARCH_URL, payload, debug=debug)
     except RuntimeError as err:
         logging.error("Search request failed: %s", err)
         return []
