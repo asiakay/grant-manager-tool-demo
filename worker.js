@@ -44,7 +44,28 @@ export default {
     const sessionMatch = cookie.match(/session=([^;]+)/);
     const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
     const loggedIn = !!username;
-    const users = env.USER_HASHES ? JSON.parse(env.USER_HASHES) : {};
+    // Provide a default demo login so the worker is usable out of the box.
+    // Hash the password at runtime so it always matches the same algorithm
+    // used for incoming login attempts. Environment-provided users may supply
+    // either hashed or plain-text passwords; the latter are hashed here so the
+    // configuration is more forgiving in development setups.
+    const demoHash = await hashPassword("demo");
+    const defaultUsers = { demo: demoHash };
+    let envUsers = {};
+    if (env.USER_HASHES) {
+      try {
+        const raw = JSON.parse(env.USER_HASHES);
+        envUsers = {};
+        for (const [u, secret] of Object.entries(raw)) {
+          envUsers[u] = /^[0-9a-f]{64}$/i.test(secret)
+            ? secret.toLowerCase()
+            : await hashPassword(secret);
+        }
+      } catch (err) {
+        console.warn("Invalid USER_HASHES value", err);
+      }
+    }
+    const users = { ...defaultUsers, ...envUsers };
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
