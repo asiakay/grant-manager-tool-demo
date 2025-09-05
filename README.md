@@ -15,3 +15,5 @@ If the API responds with a non-200 status, the script logs the error and returns
 no results.
 
 See [docs/README.md](docs/README.md) for detailed features and additional documentation.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fasiakay%2Fgrant-manager-tool-demo)
