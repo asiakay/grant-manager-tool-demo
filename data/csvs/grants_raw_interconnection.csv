@@ -1,0 +1,19 @@
+Grant Name,Sponsor,Link,Open Date,Deadline,Status
+U.S. Embassy Phnom Penh &ndash; PAS Annual Program Statement,U.S. Mission to Cambodia,https://www.grants.gov/web/grants/view-opportunity.html?oppId=348863,06/22/2023,,forecasted
+FY25 Long Range Broad Agency Announcement (BAA) for Navy and Marine Corps Science and Technology,Office of Naval Research,https://www.grants.gov/web/grants/view-opportunity.html?oppId=356605,10/01/2024,09/30/2025,posted
+Culture of Research and University Exchanges Prep program (CRUX) in One Health and Agricultural STEM,U.S. Mission to Zimbabwe,https://www.grants.gov/web/grants/view-opportunity.html?oppId=334092,06/10/2021,,forecasted
+NRL Long Range Broad Agency Announcement (BAA) for Basic and Applied Research,Naval Research Laboratory,https://www.grants.gov/web/grants/view-opportunity.html?oppId=352741,03/01/2024,09/30/2025,posted
+Air Delivered Effects,Munitions Directorate,https://www.grants.gov/web/grants/view-opportunity.html?oppId=338821,03/22/2022,03/21/2027,posted
+Bipartisan Infrastructure Law - Carbon Dioxide Transportation Infrastructure Finance and Innovation (CIFIA) Program: Future Growth Grants (Section 40304),National Energy Technology Laboratory,https://www.grants.gov/web/grants/view-opportunity.html?oppId=353946,05/02/2024,01/02/2026,posted
+"Pioneering Aerospace Capabilities, Engineering and Research (PACER)",Air Force -- Research Lab,https://www.grants.gov/web/grants/view-opportunity.html?oppId=349554,07/26/2023,05/10/2043,posted
+Energy Improvements in Rural or Remote Areas &ndash; Fiscal Year 2025 Release,Headquarters,https://www.grants.gov/web/grants/view-opportunity.html?oppId=356630,10/03/2024,08/28/2025,posted
+Defense Sciences Office (DSO) Office-wide BAA,DARPA - Defense Sciences Office,https://www.grants.gov/web/grants/view-opportunity.html?oppId=359239,06/03/2025,06/02/2026,posted
+Defense Production Act Title III Expansion of Domestic Production Capability and Capacity,Air Force -- Research Lab,https://www.grants.gov/web/grants/view-opportunity.html?oppId=318351,07/12/2019,07/12/2026,posted
+Biological Technologies,DARPA - Biological Technologies Office,https://www.grants.gov/web/grants/view-opportunity.html?oppId=356403,09/11/2024,09/10/2025,posted
+Research Interests of the Air Force Office of Scientific Research,Air Force Office of Scientific Research,https://www.grants.gov/web/grants/view-opportunity.html?oppId=359050,05/20/2025,,posted
+DEVCOM ARMY RESEARCH LABORATORY BROAD AGENCY ANNOUNCEMENT FOR FOUNDATIONAL RESEARCH,Dept of the Army -- Materiel Command,https://www.grants.gov/web/grants/view-opportunity.html?oppId=344592,11/21/2022,11/20/2027,posted
+Boosting Innovative GEOINT - Science &amp; Technology  Broad Agency Announcement (BIG-ST BAA),National Geospatial-Intelligence Agency ,https://www.grants.gov/web/grants/view-opportunity.html?oppId=351404,12/15/2023,12/14/2026,posted
+Microsystems Technology Office (MTO) Office-wide,DARPA - Microsystems Technology Office ,https://www.grants.gov/web/grants/view-opportunity.html?oppId=354134,05/09/2024,10/09/2025,posted
+
+
+(.venv) asiagrady@Asias-MacBook-Air funding-pipline % python src/fetch_grants.py "interconnection" --max 50 --outfile data/grants_raw.csv --debug
