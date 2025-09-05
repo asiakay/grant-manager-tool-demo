@@ -14,4 +14,8 @@ keywords and filters as query parameters (e.g., `?keywords=education&limit=20`).
 If the API responds with a non-200 status, the script logs the error and returns
 no results.
 
+## Configuration
+
+Cloudflare Worker deployment settings are defined in `wrangler.toml`, which serves as the single source of configuration truth after removing the outdated `wrangler.jsonc` file.
+
 See [docs/README.md](docs/README.md) for detailed features and additional documentation.
