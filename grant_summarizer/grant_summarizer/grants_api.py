@@ -11,6 +11,11 @@ API_URL = "https://www.grants.gov/grantsws/rest/opportunities/search"
 
 def search_grants(keyword: str, limit: int = 10) -> List[Dict]:
     """Search the grants.gov API for opportunities matching ``keyword``."""
+    # The API uses the singular "keyword" query parameter.
+    params = urlencode({"keyword": keyword, "limit": limit})
+    with urlopen(f"{API_URL}?{params}", timeout=10) as resp:
+        data = json.load(resp)
+    return data.get("opportunities", [])
     payload = {"keywords": keyword, "limit": limit}
     data = json.dumps(payload).encode("utf-8")
     req = Request(API_URL, data=data, headers={"Content-Type": "application/json"}, method="POST")
