@@ -19,7 +19,6 @@ Follow this sequence to set up the system end to end:
    ```
 2. **Deploy `/upload` endpoint**
    ```bash
-   npm run build
    wrangler deploy
    ```
 3. **Run the extraction queue worker**
