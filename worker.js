@@ -1,6 +1,7 @@
 import { renderDashboardPage } from "./ui/dashboard.js";
 import { renderLoginPage } from "./ui/login.js";
 import { renderTestEndpointsPage } from "./ui/test_endpoints.js";
+import programsSchema from "./worker/migrations/0001_create_programs.sql";
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
