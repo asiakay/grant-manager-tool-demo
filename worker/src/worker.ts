@@ -1,8 +1,12 @@
-import { Ai } from '@cloudflare/ai';
+/// <reference types="@cloudflare/workers-types" />
+
+interface AiBinding {
+  run(model: string, input: unknown): Promise<any>;
+}
 
 export interface Env {
   PDF_BUCKET: R2Bucket;
-  AI: Ai;
+  AI: AiBinding;
 }
 
 const corsHeaders = {
@@ -71,8 +75,7 @@ export default {
           headers: { ...corsHeaders, 'content-type': 'application/json' }
         });
       }
-      const ai = new Ai(env.AI);
-      const result = await ai.run('@cf/meta/llama-3-8b-instruct', { prompt });
+      const result = await env.AI.run('@cf/meta/llama-3-8b-instruct', { prompt });
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'content-type': 'application/json' }
       });

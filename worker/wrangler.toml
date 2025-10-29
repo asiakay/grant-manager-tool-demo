@@ -16,7 +16,7 @@ database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
 bucket = "./public"
 
 [observability.logs]
-enabled = false
+enabled = true
 
 [[r2_buckets]]
 binding = "PDF_BUCKET"
@@ -29,4 +29,11 @@ service = "pdf-worker"
 
 [services]
 main = "src/pdf_worker.ts"
+
+[kv_namespaces]
+binding = "LOGIN_ATTEMPTS"
+namespace_id = "65e462c43a2046e5bbb95391c2a6e6e9"
+
+binding = "USER_PROFILES"
+namespace_id = "065f64c71e0747079a2e3d86b292770d"
 

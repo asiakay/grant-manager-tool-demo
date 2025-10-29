@@ -17,10 +17,10 @@ npm-debug.log
 .DS_Store
 
 # Project outputs
-out/*
-!out/master.csv
-data/*
-!data/programs.csv
+# out/*
+# !out/master.csv
+# data/*
+# !data/programs.csv
 
 # Wrangler cache
 .wrangler/
@@ -56,6 +56,6 @@ Thumbs.db
 .idea/
 
 # Data outputs
-data/*.xlsx
-data/*.csv
-!data/master.csv   # keep the master table under version control
+# data/*.xlsx
+# data/*.csv
+# !data/master.csv   # keep the master table under version control
