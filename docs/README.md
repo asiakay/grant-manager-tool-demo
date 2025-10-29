@@ -1,34 +1,19 @@
-# Grant Manager Tool — Detailed Features
+# Grant Manager Tool Demo Documentation
 
-## Sample Dataset
+## Repository Narrative
+This repository demonstrates a complete workflow for collecting, processing, and presenting grant opportunities.
 
-A tiny dataset is included under `examples/grants_demo` for quick testing. Run the wrangler to see normalization and scoring in action:
+- **Data wrangling and scoring** – `wrangle_grants.py` consolidates raw CSV/TSV files, normalizes values, and computes weighted scores.
+- **Command-line tools** – `search_grants.py` queries the Grants.gov API and enriches results.
+- **Graphical interface** – `wrangle_grants_gui.py` wraps the wrangler in a Tkinter app with admin and user roles.
+- **Browser visualization** – `visualize_grants_web.py` serves wrangled data through a small Flask app with a credential check.
+- **Cloudflare Worker demo** – `worker.js` authenticates users, serves scored grants, and tracks lockouts.
+- **PDF summarization** – The `grant_summarizer` package extracts key fields from PDFs or HTML and creates Markdown summaries.
+- **Supporting documentation** – The repository includes a root README and additional guides under `docs/`.
 
-```bash
-python wrangle_grants.py --input examples/grants_demo --out out/demo.csv --print-summary
-```
-
-This command merges the demo files, computes weighted scores, and writes the result to `out/demo.csv`.
-
-## Browser Visualization
-
-Explore wrangled data in your browser with the small Flask app:
-
-```bash
-python visualize_grants_web.py
-```
-
-It opens with a minimal login form (`client` / `demo`) before showing the data. The page includes a dataset selector letting you switch between `out/master.csv` (default) and `data/programs.csv`. If the chosen CSV is missing, the app falls back to tiny sample data so the visualization can still be demoed.
-
-Plotly powers the optional charts. Install it with `pip install plotly` to enable interactive graphs; without it, the app runs but displays a friendly message instead of charts.
-
-## Beginner Installation
-
-If you're new to Python or Node.js, the following steps walk through a fresh setup of the project:
-
-1. Install [Python 3.9+](https://www.python.org/downloads/) and [Node.js](https://nodejs.org/) if they are not already on your machine.
-2. Clone the repository and change into the project directory:
-
+## Development Environment Setup
+1. Install [Python 3.9+](https://www.python.org/downloads/) and [Node.js](https://nodejs.org/).
+2. Clone the repository and enter the project directory:
    ```bash
    git clone https://github.com/your-org/grant-manager-tool-demo.git
    cd grant-manager-tool-demo
