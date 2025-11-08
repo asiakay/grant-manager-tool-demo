@@ -19,6 +19,7 @@ USER_HASHES = '{"admin":"713bfda78870bf9d1b261f565286f85e97ee614efe5f0faf7c34e7c
 binding = "DB"
 database_name = "EQORE_DB"
 database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
+migrations_dir = "worker/migrations"
 
 
 
@@ -43,8 +44,5 @@ binding = "PDF_INGEST"
 [[queues.producers]]
 queue = "SCORE_QUEUE"
 binding = "SCORE_QUEUE"
-
-
-[[migrations_dir]]
 
 

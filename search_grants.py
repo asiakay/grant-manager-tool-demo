@@ -22,7 +22,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-SEARCH_URL = "https://www.grants.gov/grantsws/rest/opportunities/search"
+SEARCH_URL = "https://api.grants.gov/v1/api/search2"
 DETAIL_URL = "https://www.grants.gov/grantsws/rest/opportunities/{id}/synopsis"
 
 
@@ -84,16 +84,16 @@ def _post_json(url: str, payload: Dict[str, Any], debug: bool = False) -> Dict:
 
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
     """Return a list of opportunities matching ``keyword`` and ``filters``."""
-    # The Grants.gov API expects the singular "keyword" parameter.
-    params = {"keyword": keyword, "limit": "20", **filters}
-    data = _get_json(SEARCH_URL, params, debug=debug)
-    payload = {"keywords": keyword, "limit": "20", **filters}
+    # The new search2 API uses POST with JSON payload
+    payload = {"keyword": keyword, "rows": 20, **filters}
     try:
-        data = _post_json(SEARCH_URL, payload, debug=debug)
+        response = _post_json(SEARCH_URL, payload, debug=debug)
     except RuntimeError as err:
         logging.error("Search request failed: %s", err)
         return []
-    return data.get("opportunities", [])
+    # The new API nests opportunities under data.oppHits
+    data = response.get("data", {})
+    return data.get("oppHits", [])
 
 
 def fetch_detail(opp_id: str, debug: bool = False) -> Dict:
