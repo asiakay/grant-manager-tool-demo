@@ -30,10 +30,11 @@ service = "pdf-worker"
 [services]
 main = "src/pdf_worker.ts"
 
-[kv_namespaces]
+[[kv_namespaces]]
 binding = "LOGIN_ATTEMPTS"
-namespace_id = "65e462c43a2046e5bbb95391c2a6e6e9"
+id = "713c8d1d9eb34d1ea13656bf40f14ccc"
 
+[[kv_namespaces]]
 binding = "USER_PROFILES"
-namespace_id = "065f64c71e0747079a2e3d86b292770d"
+id = "3613c184af7d4890a70f1c9d28583329"
 

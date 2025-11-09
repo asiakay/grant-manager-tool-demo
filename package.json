@@ -14,10 +14,9 @@
   },
   "scripts": {
     "test": "pytest grant_summarizer",
-    "predev": "cd worker && wrangler d1 migrations apply EQORE_DB",
-    "predeploy": "cd worker && wrangler d1 migrations apply EQORE_DB",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply EQORE_DB --remote"
   },
   "repository": {
     "type": "git",
