@@ -113,13 +113,24 @@ def build_summary(opportunities: List[Dict], debug: bool = False) -> pd.DataFram
     rows: List[Dict[str, str]] = []
     for opp in opportunities:
         opp_id = str(opp.get("id") or opp.get("opportunityId"))
-        detail = fetch_detail(opp_id, debug=debug)
+        opp_number = opp.get("number", "")
+
+        # Build the Grants.gov URL for this opportunity
+        grant_url = f"https://www.grants.gov/search-results-detail/{opp_id}" if opp_id else ""
+
+        # Note: detail endpoint is deprecated, using data from search2 API only
+        # detail = fetch_detail(opp_id, debug=debug)
+
         rows.append(
             {
                 "Grant name": opp.get("title"),
-                "Award max": detail.get("awardCeiling"),
-                "App deadline": opp.get("closeDate"),
-                "Timeline summary": f"{opp.get('openDate')} to {opp.get('closeDate')}",
+                "Opportunity Number": opp_number,
+                "Agency": opp.get("agency"),
+                "Status": opp.get("oppStatus"),
+                "Open Date": opp.get("openDate"),
+                "Close Date": opp.get("closeDate"),
+                "URL": grant_url,
+                "CFDA": ", ".join(opp.get("cfdaList", [])),
             }
         )
     return pd.DataFrame(rows)
