@@ -23,6 +23,74 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    if (url.pathname === '/') {
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grant Manager API</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+    h1 { color: #2563eb; }
+    h2 { color: #1e40af; margin-top: 2em; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+    pre { background: #f3f4f6; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    .endpoint { margin: 1em 0; padding: 1em; border-left: 3px solid #2563eb; background: #f9fafb; }
+    .method { display: inline-block; padding: 2px 8px; border-radius: 3px; font-weight: bold; font-size: 0.85em; }
+    .get { background: #10b981; color: white; }
+    .post { background: #3b82f6; color: white; }
+  </style>
+</head>
+<body>
+  <h1>Grant Manager API</h1>
+  <p>Welcome to the Grant Manager Tool API. This service provides endpoints for grant scoring, PDF processing, and AI-powered grant analysis.</p>
+
+  <h2>Available Endpoints</h2>
+
+  <div class="endpoint">
+    <span class="method get">GET</span> <code>/api/health</code>
+    <p>Health check endpoint. Returns <code>{"ok": true}</code> if the service is running.</p>
+  </div>
+
+  <div class="endpoint">
+    <span class="method post">POST</span> <code>/api/score</code>
+    <p>Simple scoring endpoint that doubles the input value.</p>
+    <pre>Request: {"value": 42}
+Response: {"doubled": 84}</pre>
+  </div>
+
+  <div class="endpoint">
+    <span class="method post">POST</span> <code>/api/chat</code>
+    <p>AI-powered chat using Cloudflare AI (Llama-3-8B model). Ask questions about grants.</p>
+    <pre>Request: {"message": "What is this grant about?"}
+Response: {"response": "..."}</pre>
+  </div>
+
+  <div class="endpoint">
+    <span class="method post">POST</span> <code>/upload</code>
+    <p>Upload a PDF file to R2 storage. Accepts multipart/form-data or JSON with base64 data.</p>
+    <pre>Multipart: file field with PDF
+JSON: {"name": "grant.pdf", "data": "base64..."}</pre>
+  </div>
+
+  <div class="endpoint">
+    <span class="method get">GET</span> <code>/pdf/:name</code>
+    <p>Retrieve a PDF file from R2 storage by filename.</p>
+  </div>
+
+  <h2>Resources</h2>
+  <ul>
+    <li><a href="https://github.com/asiakay/grant-manager-tool-demo">GitHub Repository</a></li>
+    <li><a href="/api/health">Test Health Check</a></li>
+  </ul>
+</body>
+</html>`;
+      return new Response(html, {
+        headers: { 'content-type': 'text/html; charset=utf-8' }
+      });
+    }
+
     if (url.pathname === '/api/health') {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' }
