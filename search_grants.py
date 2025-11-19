@@ -84,14 +84,17 @@ def _post_json(url: str, payload: Dict[str, Any], debug: bool = False) -> Dict:
 
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
     """Return a list of opportunities matching ``keyword`` and ``filters``."""
-    # The new search2 API uses POST with JSON payload
-    payload = {"keyword": keyword, "rows": 20, **filters}
+    payload = {"keywords": keyword, "limit": "20", **filters}
     try:
         response = _post_json(SEARCH_URL, payload, debug=debug)
     except RuntimeError as err:
         logging.error("Search request failed: %s", err)
         return []
-    # The new API nests opportunities under data.oppHits
+
+    # Support both the legacy response (``opportunities``) and the newer
+    # ``data.oppHits`` shape used by the search2 API.
+    if "opportunities" in response:
+        return response.get("opportunities", [])
     data = response.get("data", {})
     return data.get("oppHits", [])
 
