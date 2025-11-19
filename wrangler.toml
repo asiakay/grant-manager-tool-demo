@@ -1,27 +1,10 @@
 name = "grant-demo"
 main = "worker.js"
 compatibility_date = "2024-05-29"
-rules = [{ type = "Text", globs = ["worker/migrations/*.sql"] }]
+workers_dev = true
 
-# wrangler.toml (wrangler v3.88.0^)
-[observability.logs]
-enabled = true
-
-# wrangler.toml (wrangler v3.88.0^)
-[observability.logs]
-enabled = true
-
-[vars]
-USER_HASHES = '{"admin":"713bfda78870bf9d1b261f565286f85e97ee614efe5f0faf7c34e7ca4f65baca","user":"05d49692b755f99c4504b510418efeeeebfd466892540f27acf9a31a326d6504"}'
-
-
-[[d1_databases]]
-binding = "DB"
-database_name = "EQORE_DB"
-database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
-migrations_dir = "worker/migrations"
-
-
+# This ensures all HTML/CSS/JS files get bundled
+assets = { directory = "ui" }
 
 [[kv_namespaces]]
 binding = "USER_PROFILES"
@@ -31,19 +14,7 @@ id = "59000bb55ca54e35ad7ca0ae7fb5fa25"
 binding = "LOGIN_ATTEMPTS"
 id = "da51bf4b2ff24a3fbff95b2aada6e020"
 
-
-
-[[r2_buckets]]
-binding = "PDF_BUCKET"
-bucket_name = "pdf-bucket"
-
-[[queues.consumers]]
-queue = "PDF_INGEST"
-service = "pdf-worker"
-binding = "PDF_INGEST"
-
-[[queues.producers]]
-queue = "SCORE_QUEUE"
-binding = "SCORE_QUEUE"
-
-
+[[d1_databases]]
+binding = "EQORE_DB"
+database_name = "eqore-db"
+database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
