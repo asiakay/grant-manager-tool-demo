@@ -25,7 +25,7 @@ migrations_dir = "worker/migrations"
 
 [[kv_namespaces]]
 binding = "USER_PROFILES"
-id = "3613c184af7d4890a70f1c9d28583329"
+id = "065f64c71e0747079a2e3d86b292770"
 
 [[kv_namespaces]]
 binding = "LOGIN_ATTEMPTS"
