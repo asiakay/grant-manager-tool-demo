@@ -6,17 +6,7 @@
   // Required compatibility date for the Workers runtime
   "compatibility_date": "2024-05-29",
   // Deploy to workers.dev by default (set to false if using custom routes only)
-  "workers_dev": true,
-  "kv_namespaces": [
-    {
-      "binding": "LOGIN_ATTEMPTS",
-      "id": "713c8d1d9eb34d1ea13656bf40f14ccc"
-    },
-    {
-      "binding": "USER_PROFILES",
-      "id": "3613c184af7d4890a70f1c9d28583329"
-    }
-  ]
+  "workers_dev": true
 }
 /* // Optional HTTP routes
   "routes": [{ "pattern": "workers.dev/*", "script": "grant-demo" }],

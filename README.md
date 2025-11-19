@@ -370,10 +370,10 @@ The main worker with full authentication, dashboard, and database integration.
   - Schema defined in `docs/data_contract.json`
 
 - **Storage**
-  - KV: `USER_PROFILES` - User-specific scoring weights
-  - KV: `LOGIN_ATTEMPTS` - Login attempt tracking
   - R2: `PDF_BUCKET` - PDF document storage
   - Queues: `PDF_INGEST` (consumer), `SCORE_QUEUE` (producer)
+  - _(Optional)_ KV: `USER_PROFILES` for per-user scoring weights
+  - _(Optional)_ KV: `LOGIN_ATTEMPTS` for rate-limiting login attempts
 
 #### Configuration
 
@@ -388,14 +388,6 @@ binding = "DB"
 database_name = "EQORE_DB"
 database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
 
-[[kv_namespaces]]
-binding = "USER_PROFILES"
-id = "..."
-
-[[kv_namespaces]]
-binding = "LOGIN_ATTEMPTS"
-id = "..."
-
 [[r2_buckets]]
 binding = "PDF_BUCKET"
 bucket_name = "pdf-bucket"
@@ -409,6 +401,14 @@ binding = "SCORE_QUEUE"
 
 [vars]
 USER_HASHES = '{"admin":"...","user":"..."}'
+
+# Add optional KV namespaces if you provision them:
+# [[kv_namespaces]]
+# binding = "USER_PROFILES"
+# id = "..."
+# [[kv_namespaces]]
+# binding = "LOGIN_ATTEMPTS"
+# id = "..."
 ```
 
 #### Database Schema
@@ -636,12 +636,12 @@ cd ..
    ```
    Copy the database ID to `wrangler.toml`
 
-4. **Create KV Namespaces:**
+4. **(Optional) Create KV Namespaces:**
    ```bash
    wrangler kv:namespace create USER_PROFILES
    wrangler kv:namespace create LOGIN_ATTEMPTS
    ```
-   Copy the namespace IDs to `wrangler.toml`
+   Copy the namespace IDs to `wrangler.toml` if you want user profiles or login rate limiting
 
 5. **Create R2 Bucket:**
    ```bash

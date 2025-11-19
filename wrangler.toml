@@ -23,16 +23,6 @@ migrations_dir = "worker/migrations"
 
 
 
-[[kv_namespaces]]
-binding = "USER_PROFILES"
-id = "3613c184af7d4890a70f1c9d28583329"
-
-[[kv_namespaces]]
-binding = "LOGIN_ATTEMPTS"
-id = "713c8d1d9eb34d1ea13656bf40f14ccc"
-
-
-
 [[r2_buckets]]
 binding = "PDF_BUCKET"
 bucket_name = "pdf-bucket"
