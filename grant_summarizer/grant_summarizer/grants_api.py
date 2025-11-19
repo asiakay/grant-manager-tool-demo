@@ -2,9 +2,10 @@ from typing import List, Dict
 import json
 import logging
 import ssl
-from urllib.parse import urlencode
+import certifi
 from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 
 import certifi
 
@@ -15,11 +16,10 @@ def search_grants(keyword: str, limit: int = 10) -> List[Dict]:
     """Search the grants.gov API for opportunities matching ``keyword``."""
 
     params = urlencode({"keyword": keyword, "limit": limit})
-    ssl.create_default_context(cafile=certifi.where())  # Ensure certifi is referenced
     try:
         with urlopen(f"{API_URL}?{params}", timeout=10) as resp:
             data = json.load(resp)
-    except HTTPError as err:  # pragma: no cover - network failure during GET
+    except HTTPError as err:
         body = err.read().decode("utf-8", errors="replace")
         logging.error("Search API request failed with %s: %s", err.code, body[:200])
         return []

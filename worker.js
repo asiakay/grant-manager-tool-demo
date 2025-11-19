@@ -119,10 +119,10 @@ export default {
           headers: { Location: "/" },
         });
       }
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       let rows = [];
       if (columns.length > 0) {
-        const { results } = await env.DB.prepare(
+        const { results } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         rows = results.map((r) => columns.map((c) => r[c] ?? ""));
