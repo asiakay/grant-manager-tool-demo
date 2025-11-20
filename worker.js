@@ -184,18 +184,10 @@ export default {
           headers: { Location: "/" },
         });
       }
-
-      const query = (url.searchParams.get("q") || "").trim();
-      const datasetLabel = "Programs table";
-      const sourceLabel = "D1 database (programs)";
-      let limit = Number(url.searchParams.get("limit") || 25);
-      if (!Number.isFinite(limit)) limit = 25;
-      limit = Math.min(Math.max(limit, 5), 100);
-
-      const columns = await getColumns(env.DB);
-      let records = [];
+      const columns = await getColumns(env.EQORE_DB);
+      let rows = [];
       if (columns.length > 0) {
-        const { results } = await env.DB.prepare(
+        const { results } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         records = results.map((r) =>

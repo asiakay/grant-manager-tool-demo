@@ -84,19 +84,15 @@ def _post_json(url: str, payload: Dict[str, Any], debug: bool = False) -> Dict:
 
 def search_grants(keyword: str, filters: Dict[str, str], debug: bool = False) -> List[Dict]:
     """Return a list of opportunities matching ``keyword`` and ``filters``."""
-
-    payload: Dict[str, Any] = {**filters}
-    payload.setdefault("limit", "20")
-    payload["keywords"] = keyword
+    # Legacy search endpoint expects "keywords" and a "limit" string parameter.
+    payload: Dict[str, Any] = {"keywords": keyword, "limit": "20"}
+    payload.update(filters)
     try:
         response = _post_json(SEARCH_URL, payload, debug=debug)
     except RuntimeError as err:
         logging.error("Search request failed: %s", err)
         return []
-    if "opportunities" in response:
-        return response["opportunities"]
-    data = response.get("data", {})
-    return data.get("oppHits", [])
+    return response.get("opportunities", [])
 
 
 def fetch_detail(opp_id: str, debug: bool = False) -> Dict:

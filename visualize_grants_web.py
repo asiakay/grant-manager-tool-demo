@@ -25,7 +25,7 @@ from typing import Any, Dict, Iterable
 
 import json
 import logging
-
+import os
 import pandas as pd
 
 try:  # Plotly is optional for visualization
@@ -633,4 +633,13 @@ def logout():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    host = os.environ.get("GRANT_PORTAL_HOST", "127.0.0.1")
+    debug_flag = os.environ.get("GRANT_PORTAL_DEBUG", "0") not in {"", "0", "false", "False"}
+
+    if host not in {"127.0.0.1", "localhost", "::1"} and debug_flag:
+        logging.warning(
+            "Disabling Flask debug mode because host %s is not loopback", host
+        )
+        debug_flag = False
+
+    app.run(host=host, debug=debug_flag)
