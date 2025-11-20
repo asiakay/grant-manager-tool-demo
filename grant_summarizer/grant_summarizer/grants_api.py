@@ -7,12 +7,14 @@ from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 
+import certifi
+
 API_URL = "https://www.grants.gov/grantsws/rest/opportunities/search"
 
 
 def search_grants(keyword: str, limit: int = 10) -> List[Dict]:
     """Search the grants.gov API for opportunities matching ``keyword``."""
-    # The API uses the singular "keyword" query parameter.
+
     params = urlencode({"keyword": keyword, "limit": limit})
     try:
         with urlopen(f"{API_URL}?{params}", timeout=10) as resp:
@@ -21,7 +23,7 @@ def search_grants(keyword: str, limit: int = 10) -> List[Dict]:
         body = err.read().decode("utf-8", errors="replace")
         logging.error("Search API request failed with %s: %s", err.code, body[:200])
         return []
-    except URLError as err:
+    except URLError as err:  # pragma: no cover - network failure during GET
         logging.error("Search API request failed: %s", err)
         return []
     return data.get("opportunities", [])

@@ -564,6 +564,11 @@ Located in `ui/` directory, used by the primary worker:
 - Load grants via `/api/grants` endpoint
 - JSON display for debugging
 
+#### visualize_grants_web.py
+- Flask-based "Grant Manager Portal" for non-technical teammates
+- Provides login, dataset switching, keyword filtering, and CSV export
+- Displays summary cards, interactive Plotly chart (optional), and preview table
+
 ### React Components (Experimental)
 
 #### ScoringTable.jsx
