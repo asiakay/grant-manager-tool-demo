@@ -27,8 +27,8 @@ preview_bucket_name = "pdf-bucket"
 queue = "PDF_INGEST"
 
 [[services]]
-name = "pdf-worker"
-service = "src/pdf_worker.ts"
+binding = "PDF_WORKER"
+service = "pdf-worker"
 
 [[kv_namespaces]]
 binding = "LOGIN_ATTEMPTS"
