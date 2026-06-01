@@ -18,19 +18,11 @@ WINDOW = 300
 
 
 def extract_text(pdf_path: str) -> str:
-    """Extract text from a PDF using pdfminer; fall back to PyPDF2."""
-    from pdfminer.high_level import extract_text as pdfminer_extract
+    """Extract text from a PDF using pypdf."""
+    from pypdf import PdfReader
 
-    path = Path(pdf_path)
-    try:
-        return pdfminer_extract(str(path))
-    except Exception:
-        try:
-            from PyPDF2 import PdfReader  # type: ignore
-        except Exception as exc:  # pragma: no cover - PyPDF2 absent
-            raise exc
-        reader = PdfReader(str(path))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    reader = PdfReader(str(Path(pdf_path)))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
 class _HTMLStripper(HTMLParser):
