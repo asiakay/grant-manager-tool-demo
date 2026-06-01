@@ -5,21 +5,20 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# Workers deployment is handled by workers-ci.yml
 jobs:
-  deploy:
+  test-and-check:
+    name: Python tests & JS sanity
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Set up Node
-      uses: actions/setup-node@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: 20
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - uses: actions/setup-python@v4
       with:
         python-version: "3.11"
 
@@ -30,26 +29,4 @@ jobs:
       run: npm ci
 
     - name: Run Python tests
-      run: pytest -q || true
-
-    - name: Create KV Namespaces if missing
-      run: |
-        npx wrangler kv:namespace create USER_PROFILES --environment production || true
-        npx wrangler kv:namespace create LOGIN_ATTEMPTS --environment production || true
-
-    - name: Apply D1 migrations
-      run: |
-        npx wrangler d1 migrations apply EQORE_DB --remote || true
-
-    - name: Deploy Worker
-      run: |
-        npx wrangler deploy --config wrangler.toml --env production
-
-    - name: Add deployment badge to README
-      run: |
-        echo "![Deploy Status](https://github.com/${{ github.repository }}/actions/workflows/deploy.yml/badge.svg)" > README.md
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git add README.md
-        git commit -m "Update deploy badge" || true
-        git push || true
+      run: pytest -q
