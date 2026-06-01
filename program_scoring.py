@@ -16,9 +16,46 @@ import argparse
 from datetime import datetime
 import pandas as pd
 
+# Canonical column names and their accepted aliases (first alias wins on read).
+_COLUMN_ALIASES: dict[str, list[str]] = {
+    "Stack Required?": ["StackRequired", "Stack Required"],
+    "Deadline / Next Cohort": ["DeadlineISO", "Deadline", "Next Cohort"],
+    "Cadence": [],
+    "Relevance": [],
+    "Fit": [],
+    "Ease": ["Ease of Use"],
+}
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename aliased column names to their canonical form in-place copy."""
+    rename: dict[str, str] = {}
+    for canonical, aliases in _COLUMN_ALIASES.items():
+        if canonical not in df.columns:
+            for alias in aliases:
+                if alias in df.columns:
+                    rename[alias] = canonical
+                    break
+    return df.rename(columns=rename)
+
+
+def _validate_columns(df: pd.DataFrame) -> None:
+    """Raise ValueError listing every required column that is absent."""
+    missing = [col for col in _COLUMN_ALIASES if col not in df.columns]
+    if missing:
+        raise ValueError(
+            f"program_scoring: input CSV is missing required columns: {missing}.\n"
+            f"Found columns: {list(df.columns)}.\n"
+            "Expected schema: programs/accelerators CSV, not grants CSV. "
+            "Pass a file like data/programs.csv or examples/programs.csv."
+        )
+
 
 def add_program_scores(df: pd.DataFrame) -> pd.DataFrame:
     """Compute stack/cadence scores and Weighted Score for program rows."""
+    df = _normalize_columns(df)
+    _validate_columns(df)
+
     today = pd.Timestamp.today().normalize()
 
     stack_align = []
@@ -27,12 +64,12 @@ def add_program_scores(df: pd.DataFrame) -> pd.DataFrame:
 
     for _, row in df.iterrows():
         # Stack alignment: assume "yes" means we already use the required stack
-        stack_required = str(row.get("Stack Required?", "")).lower()
+        stack_required = str(row["Stack Required?"]).lower()
         stack_alignment = 1.0 if "yes" in stack_required else 0.2
 
         # Cadence / recency
-        deadline_str = str(row.get("Deadline / Next Cohort", ""))
-        cadence_str = str(row.get("Cadence", "")).lower()
+        deadline_str = str(row["Deadline / Next Cohort"])
+        cadence_str = str(row["Cadence"]).lower()
         if "rolling" in deadline_str.lower() or "rolling" in cadence_str:
             cad_rec = 1.0
         else:
@@ -46,9 +83,9 @@ def add_program_scores(df: pd.DataFrame) -> pd.DataFrame:
                 else:
                     cad_rec = max(0.0, 1 - min(days, 365) / 365)
 
-        r = pd.to_numeric(row.get("Relevance", 0), errors="coerce") or 0
-        f = pd.to_numeric(row.get("Fit", 0), errors="coerce") or 0
-        e = pd.to_numeric(row.get("Ease", 0), errors="coerce") or 0
+        r = pd.to_numeric(row["Relevance"], errors="coerce") or 0
+        f = pd.to_numeric(row["Fit"], errors="coerce") or 0
+        e = pd.to_numeric(row["Ease"], errors="coerce") or 0
         score = 0.3 * r + 0.3 * f + 0.2 * e + 0.1 * stack_alignment + 0.1 * cad_rec
 
         stack_align.append(round(stack_alignment, 3))
