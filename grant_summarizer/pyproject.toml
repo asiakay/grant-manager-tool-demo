@@ -7,7 +7,8 @@ name = "grant_summarizer"
 version = "0.1.0"
 dependencies = [
   "typer",
-  "pdfminer.six",
+  "pypdf>=3.0",
+  "cffi",
   "pydantic",
 ]
 
