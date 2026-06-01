@@ -4,7 +4,13 @@ wrangle:
 visualize:
 	python visualize_grants_web.py
 
-deploy:
+build-ui:
+	cd ui && npm install && npm run build
+
+deploy: build-ui
 	wrangler deploy
 
-.PHONY: wrangle visualize deploy
+dev-ui:
+	cd ui && npm install && npm run dev
+
+.PHONY: wrangle visualize build-ui deploy dev-ui
