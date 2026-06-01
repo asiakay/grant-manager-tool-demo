@@ -1,0 +1,282 @@
+import { useState, useMemo } from "react";
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  flexRender,
+  createColumnHelper,
+  type SortingState,
+} from "@tanstack/react-table";
+import type { Grant, FilterState } from "../types";
+
+interface Props {
+  grants: Grant[];
+  filters: FilterState;
+  watchlist: Set<string>;
+  candidates: Set<string>;
+  onRowClick: (grant: Grant) => void;
+  onToggleWatchlist: (name: string) => void;
+  onToggleCandidate: (name: string) => void;
+}
+
+const columnHelper = createColumnHelper<Grant>();
+
+function ScoreCell({ value }: { value: string | number }) {
+  const n = parseFloat(String(value));
+  if (isNaN(n)) return <span className="text-gray-500">—</span>;
+  const color =
+    n >= 7
+      ? "text-green-400"
+      : n >= 4
+        ? "text-yellow-400"
+        : "text-red-400";
+  return <span className={`font-semibold ${color}`}>{n.toFixed(1)}</span>;
+}
+
+function BoolCell({ value }: { value: string | number }) {
+  const s = String(value || "").toLowerCase();
+  const yes = s === "yes" || s === "true" || s === "y";
+  const no = s === "no" || s === "false" || s === "n";
+  if (yes) return <span className="badge bg-green-900/50 text-green-300">Yes</span>;
+  if (no) return <span className="badge bg-red-900/50 text-red-300">No</span>;
+  return <span className="text-gray-400 text-xs">{value || "—"}</span>;
+}
+
+function DeadlineCell({ value }: { value: string | number }) {
+  const raw = String(value || "");
+  if (!raw) return <span className="text-gray-500">—</span>;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return <span className="text-gray-300 text-xs">{raw}</span>;
+  const now = Date.now();
+  const diff = d.getTime() - now;
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  const color =
+    days < 0
+      ? "text-gray-500 line-through"
+      : days < 30
+        ? "text-red-400"
+        : days < 90
+          ? "text-yellow-400"
+          : "text-gray-300";
+  return (
+    <span className={`text-xs ${color}`}>
+      {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+    </span>
+  );
+}
+
+export default function GrantTable({
+  grants,
+  filters,
+  watchlist,
+  candidates,
+  onRowClick,
+  onToggleWatchlist,
+  onToggleCandidate,
+}: Props) {
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "Weighted Score", desc: true },
+  ]);
+
+  const filtered = useMemo(() => {
+    return grants.filter((g) => {
+      if (filters.type && g.Type !== filters.type) return false;
+      if (filters.stage && g.Stage !== filters.stage) return false;
+      if (filters.minScore) {
+        const score = parseFloat(String(g["Weighted Score"] || "0"));
+        if (score < parseFloat(filters.minScore)) return false;
+      }
+      if (filters.deadlineBefore) {
+        const deadline = new Date(String(g["Deadline/Next Cohort"] || ""));
+        const cutoff = new Date(filters.deadlineBefore);
+        if (isNaN(deadline.getTime()) || deadline > cutoff) return false;
+      }
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        return (
+          String(g.Name || "").toLowerCase().includes(q) ||
+          String(g.Sponsor || "").toLowerCase().includes(q) ||
+          String(g.Benefits || "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [grants, filters]);
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor("Name", {
+        header: "Name",
+        cell: (info) => (
+          <span className="font-medium text-white text-sm line-clamp-2 leading-snug">
+            {info.getValue()}
+          </span>
+        ),
+        size: 200,
+      }),
+      columnHelper.accessor("Type", {
+        header: "Type",
+        cell: (info) => (
+          <span className="badge bg-gray-800 text-gray-300 text-xs whitespace-nowrap">
+            {info.getValue() || "—"}
+          </span>
+        ),
+        size: 90,
+      }),
+      columnHelper.accessor("Sponsor", {
+        header: "Sponsor",
+        cell: (info) => (
+          <span className="text-gray-300 text-xs line-clamp-1">{info.getValue() || "—"}</span>
+        ),
+        size: 140,
+      }),
+      columnHelper.accessor("Stage", {
+        header: "Stage",
+        cell: (info) => (
+          <span className="text-gray-400 text-xs">{info.getValue() || "—"}</span>
+        ),
+        size: 90,
+      }),
+      columnHelper.accessor("Deadline/Next Cohort", {
+        header: "Deadline",
+        cell: (info) => <DeadlineCell value={info.getValue()} />,
+        size: 110,
+        sortingFn: (a, b) => {
+          const da = new Date(String(a.original["Deadline/Next Cohort"] || "")).getTime();
+          const db = new Date(String(b.original["Deadline/Next Cohort"] || "")).getTime();
+          return (isNaN(da) ? Infinity : da) - (isNaN(db) ? Infinity : db);
+        },
+      }),
+      columnHelper.accessor("Non-dilutive?", {
+        header: "Non-dilutive",
+        cell: (info) => <BoolCell value={info.getValue()} />,
+        size: 100,
+      }),
+      columnHelper.accessor("Relevance", {
+        header: "Rel",
+        cell: (info) => <ScoreCell value={info.getValue()} />,
+        size: 55,
+      }),
+      columnHelper.accessor("Fit", {
+        header: "Fit",
+        cell: (info) => <ScoreCell value={info.getValue()} />,
+        size: 50,
+      }),
+      columnHelper.accessor("Ease", {
+        header: "Ease",
+        cell: (info) => <ScoreCell value={info.getValue()} />,
+        size: 55,
+      }),
+      columnHelper.accessor("Weighted Score", {
+        header: "Score",
+        cell: (info) => <ScoreCell value={info.getValue()} />,
+        size: 60,
+        sortingFn: (a, b) => {
+          const sa = parseFloat(String(a.original["Weighted Score"] || "0"));
+          const sb = parseFloat(String(b.original["Weighted Score"] || "0"));
+          return sa - sb;
+        },
+      }),
+      columnHelper.display({
+        id: "actions",
+        header: "",
+        cell: ({ row }) => {
+          const name = String(row.original.Name);
+          const isCandidate = candidates.has(name);
+          const isWatchlisted = watchlist.has(name);
+          return (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <button
+                title={isCandidate ? "Remove from candidates" : "Mark as candidate"}
+                onClick={() => onToggleCandidate(name)}
+                className={`p-1 rounded transition-colors text-base leading-none ${isCandidate ? "text-brand-400" : "text-gray-600 hover:text-gray-400"}`}
+              >
+                ★
+              </button>
+              <button
+                title={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+                onClick={() => onToggleWatchlist(name)}
+                className={`p-1 rounded transition-colors text-sm leading-none ${isWatchlisted ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
+              >
+                👁
+              </button>
+            </div>
+          );
+        },
+        size: 60,
+      }),
+    ],
+    [candidates, watchlist, onToggleCandidate, onToggleWatchlist]
+  );
+
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+
+  if (filtered.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+        <span className="text-4xl mb-3">🔍</span>
+        <p className="font-medium">No grants match your filters</p>
+        <p className="text-sm mt-1">Try adjusting your search criteria</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border-separate border-spacing-0">
+        <thead>
+          {table.getHeaderGroups().map((hg) => (
+            <tr key={hg.id}>
+              {hg.headers.map((header) => (
+                <th
+                  key={header.id}
+                  style={{ width: header.getSize() }}
+                  className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""}`}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === "asc" && " ↑"}
+                    {header.column.getIsSorted() === "desc" && " ↓"}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {table.getRowModel().rows.map((row) => {
+            const name = String(row.original.Name);
+            const isCandidate = candidates.has(name);
+            const isWatchlisted = watchlist.has(name);
+            return (
+              <tr
+                key={row.id}
+                onClick={() => onRowClick(row.original)}
+                className={`cursor-pointer transition-colors border-b border-gray-800/50 hover:bg-gray-800/60 ${isCandidate ? "bg-brand-900/10" : isWatchlisted ? "bg-blue-900/10" : ""}`}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className="px-3 py-2.5 align-middle max-w-xs">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="text-center text-gray-600 text-xs py-3">
+        Showing {filtered.length} of {grants.length} grants
+      </p>
+    </div>
+  );
+}
