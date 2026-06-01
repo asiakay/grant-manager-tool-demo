@@ -23,9 +23,6 @@ binding = "PDF_BUCKET"
 bucket_name = "pdf-bucket"
 preview_bucket_name = "pdf-bucket"
 
-[[queues.consumers]]
-queue = "PDF_INGEST"
-
 [[services]]
 binding = "PDF_WORKER"
 service = "pdf-worker"
