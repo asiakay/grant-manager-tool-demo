@@ -54,6 +54,7 @@ def main() -> None:
     ap.add_argument("--delimiter", dest="delimiter", default=",", help='CSV delimiter (default: ",")')
     ap.add_argument("--encoding", dest="encoding", default="utf-8", help='File encoding (default: "utf-8")')
     ap.add_argument("--strict", action="store_true", help="Fail if any file cannot be read")
+    ap.add_argument("--print-summary", action="store_true", help="Print summary statistics after merging")
     args = ap.parse_args()
 
     in_dir = args.in_dir
@@ -129,6 +130,13 @@ def main() -> None:
         w.writerows(normalized)
 
     print(f"OK: Merged {loaded} file(s) → {out_file} ({len(normalized)} rows)")
+
+    if args.print_summary:
+        print(f"\nSummary:")
+        print(f"  Files merged : {loaded}")
+        print(f"  Total rows   : {len(normalized)}")
+        print(f"  Columns ({len(union)}): {', '.join(union)}")
+
     sys.exit(0)
 
 
