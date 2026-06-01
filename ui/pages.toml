@@ -1,0 +1,17 @@
+# Cloudflare Pages configuration for the Grant Manager SPA
+# Connect this directory (ui/) as a Cloudflare Pages project:
+#
+#   Build command:    npm run build
+#   Build output:     dist
+#   Root directory:   ui
+#
+# The Pages site serves the SPA. API calls are proxied to the Cloudflare Worker
+# via a Pages Function or by configuring the Worker route to handle /api/* and
+# the Pages project to handle everything else.
+#
+# Environment variables (set in Pages dashboard):
+#   None required — the Worker handles all secrets.
+#
+# To connect via Wrangler CLI:
+#   wrangler pages project create grant-manager-ui
+#   wrangler pages deploy ui/dist --project-name=grant-manager-ui
