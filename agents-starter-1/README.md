@@ -37,10 +37,20 @@ npm install
 
 3. Set up your environment:
 
-Create a `.dev.vars` file:
+Create a `.dev.vars` file in the project root (copy from `.dev.vars.example`):
 
 ```env
 OPENAI_API_KEY=your_openai_api_key
+# Optional - Cloudflare AI Gateway https://developers.cloudflare.com/ai-gateway/
+# GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/..
+```
+
+> **Tip:** Without `OPENAI_API_KEY`, the chat UI will display an in-app error banner with setup instructions. The pipeline/scoring tools work independently of this key.
+
+For production, upload the key as a Cloudflare secret:
+
+```bash
+echo "OPENAI_API_KEY=your_key_here" | npx wrangler secret bulk
 ```
 
 4. Run locally:
