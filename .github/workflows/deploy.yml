@@ -23,7 +23,9 @@ jobs:
         python-version: "3.11"
 
     - name: Install Python deps
-      run: pip install -r requirements.txt
+      run: |
+        pip install -r requirements.txt
+        pip install -e grant_summarizer
 
     - name: Install JS deps
       run: npm ci
