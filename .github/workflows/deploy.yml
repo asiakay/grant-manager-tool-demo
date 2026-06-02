@@ -25,6 +25,7 @@ jobs:
     - name: Install Python deps
       run: |
         pip install -r requirements.txt
+        pip install pytest
         pip install -e grant_summarizer
 
     - name: Install JS deps
