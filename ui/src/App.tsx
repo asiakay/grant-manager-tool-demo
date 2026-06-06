@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
-import { checkAuth, login } from "./api";
+import { checkAuth } from "./api";
 
 type AuthState = "loading" | "unauthenticated" | "authenticated";
 
@@ -9,17 +9,8 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
 
   useEffect(() => {
-    checkAuth().then(async (ok) => {
-      if (ok) {
-        setAuth("authenticated");
-      } else {
-        try {
-          await login("demo", "demo");
-          setAuth("authenticated");
-        } catch {
-          setAuth("unauthenticated");
-        }
-      }
+    checkAuth().then((ok) => {
+      setAuth(ok ? "authenticated" : "unauthenticated");
     });
   }, []);
 
