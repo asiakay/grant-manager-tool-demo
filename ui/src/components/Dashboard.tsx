@@ -26,6 +26,7 @@ function saveSet(key: string, s: Set<string>) {
 
 interface Props {
   onLogout: () => void;
+  onBackToProfile?: () => void;
 }
 
 const INITIAL_FILTERS: FilterState = {
@@ -36,7 +37,7 @@ const INITIAL_FILTERS: FilterState = {
   search: "",
 };
 
-export default function Dashboard({ onLogout }: Props) {
+export default function Dashboard({ onLogout, onBackToProfile }: Props) {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -142,17 +143,19 @@ export default function Dashboard({ onLogout }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setProfileOpen(true)}
-            className="btn-ghost px-2.5 gap-1.5 hidden sm:flex"
-            title="Edit profile"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span className="text-xs">{profile ? "Profile" : "Set profile"}</span>
-            {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400" />}
-          </button>
+          {onBackToProfile && (
+            <button
+              onClick={onBackToProfile}
+              className="btn-ghost px-2.5 gap-1.5 hidden sm:flex"
+              title="Back to profile"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="text-xs">{profile ? "My Profile" : "Set profile"}</span>
+              {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400" />}
+            </button>
+          )}
 
           <button
             onClick={handleExport}
@@ -206,6 +209,14 @@ export default function Dashboard({ onLogout }: Props) {
 
         {!loading && !error && (
           <>
+            {profile && (
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-brand-900/20 border border-brand-800/40 text-sm text-brand-300">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                <span>Grants are sorted by <strong>personalized match score</strong> based on your profile — check the Match column.</span>
+              </div>
+            )}
             <SummaryCards grants={grants} />
 
             {/* Filters */}

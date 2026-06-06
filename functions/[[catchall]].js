@@ -254,6 +254,14 @@ export async function onRequest(context) {
     });
   }
 
+  // API: me
+  if (url.pathname === "/api/me") {
+    if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+    return new Response(JSON.stringify({ username }), {
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   // API: health
   if (url.pathname === "/api/health") {
     return new Response(JSON.stringify({ ok: true }), {

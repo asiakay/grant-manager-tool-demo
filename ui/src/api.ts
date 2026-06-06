@@ -162,6 +162,17 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
   if (!res.ok) throw new Error("Failed to save profile");
 }
 
+export async function fetchMe(): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/api/me`, { credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json() as { username: string };
+    return data.username ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkAuth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/api/grants`, {
