@@ -73,48 +73,44 @@ jobs:
       # commands see the correct IDs without touching the committed file.
       - name: Provision Cloudflare resources
         run: |
-          # wrangler --json writes a banner to stdout before the JSON payload.
-          # json_from() strips everything before the first [ or { so jq gets
-          # clean input even when wrangler emits extra lines.
-          json_from() { sed -n '/^[[{]/,$ p'; }
+          # Wrangler --json wraps output in a CF API envelope: {"result":..., "success":...}
+          # extract_id() unwraps either a bare value or an enveloped one.
+          # We also redirect stderr to stdout so wrangler errors are visible, not swallowed.
+          kv_list_ids()  { jq -r 'if type == "array" then .[] elif .result then .result[] else empty end | select(.title == $ENV.KV_TITLE) | .id'; }
+          kv_create_id() { jq -r 'if .result then .result.id else .id end'; }
+          d1_list_uuid() { jq -r 'if type == "array" then .[] elif .result then .result[] else empty end | select(.name == "eqore-db") | (.uuid // .id)'; }
+          d1_create_uuid(){ jq -r 'if .result then (.result.uuid // .result.id) else (.uuid // .id) end'; }
 
           # ── USER_PROFILES KV ─────────────────────────────────────────────
           WORKER_NAME=$(grep '^name' wrangler.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
-          UP_ID=$(npx wrangler kv namespace list --json 2>/dev/null \
-            | json_from \
-            | jq -r --arg t "${WORKER_NAME}-USER_PROFILES" '.[] | select(.title == $t) | .id' \
-            | head -1)
+          export KV_TITLE="${WORKER_NAME}-USER_PROFILES"
+          UP_ID=$(npx wrangler kv namespace list --json 2>&1 \
+            | kv_list_ids | head -1)
           if [ -z "$UP_ID" ]; then
             echo "Creating USER_PROFILES KV namespace..."
-            UP_ID=$(npx wrangler kv namespace create USER_PROFILES --json 2>/dev/null \
-              | json_from \
-              | jq -r '.id')
+            UP_ID=$(npx wrangler kv namespace create USER_PROFILES --json 2>&1 \
+              | kv_create_id)
           fi
           echo "USER_PROFILES id: $UP_ID"
 
           # ── LOGIN_ATTEMPTS KV ─────────────────────────────────────────────
-          LA_ID=$(npx wrangler kv namespace list --json 2>/dev/null \
-            | json_from \
-            | jq -r --arg t "${WORKER_NAME}-LOGIN_ATTEMPTS" '.[] | select(.title == $t) | .id' \
-            | head -1)
+          export KV_TITLE="${WORKER_NAME}-LOGIN_ATTEMPTS"
+          LA_ID=$(npx wrangler kv namespace list --json 2>&1 \
+            | kv_list_ids | head -1)
           if [ -z "$LA_ID" ]; then
             echo "Creating LOGIN_ATTEMPTS KV namespace..."
-            LA_ID=$(npx wrangler kv namespace create LOGIN_ATTEMPTS --json 2>/dev/null \
-              | json_from \
-              | jq -r '.id')
+            LA_ID=$(npx wrangler kv namespace create LOGIN_ATTEMPTS --json 2>&1 \
+              | kv_create_id)
           fi
           echo "LOGIN_ATTEMPTS id: $LA_ID"
 
           # ── EQORE_DB D1 ───────────────────────────────────────────────────
-          DB_ID=$(npx wrangler d1 list --json 2>/dev/null \
-            | json_from \
-            | jq -r '.[] | select(.name == "eqore-db") | .uuid' \
-            | head -1)
+          DB_ID=$(npx wrangler d1 list --json 2>&1 \
+            | d1_list_uuid | head -1)
           if [ -z "$DB_ID" ]; then
             echo "Creating eqore-db D1 database..."
-            DB_ID=$(npx wrangler d1 create eqore-db --json 2>/dev/null \
-              | json_from \
-              | jq -r '.uuid')
+            DB_ID=$(npx wrangler d1 create eqore-db --json 2>&1 \
+              | d1_create_uuid)
           fi
           echo "EQORE_DB id: $DB_ID"
 
