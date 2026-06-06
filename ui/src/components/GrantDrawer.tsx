@@ -142,7 +142,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated }: Props) {
                   >
                     <p className="text-gray-500 text-xs font-medium mb-1">{col as string}</p>
                     {isScoreCol(col) ? (
-                      <ScoreBadge value={grant[col]} />
+                      <ScoreBadge value={grant[col] ?? ""} />
                     ) : (
                       <p className="text-gray-200 text-sm leading-snug">
                         {String(grant[col] || "—")}
