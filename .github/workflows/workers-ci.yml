@@ -73,9 +73,8 @@ jobs:
       # commands see the correct IDs without touching the committed file.
       - name: Provision Cloudflare resources
         run: |
-          # Wrangler --json wraps output in a CF API envelope: {"result":..., "success":...}
-          # extract_id() unwraps either a bare value or an enveloped one.
-          # We also redirect stderr to stdout so wrangler errors are visible, not swallowed.
+          # Wrangler --json writes JSON to stdout and progress/warnings to stderr.
+          # Pipe only stdout to jq; redirect stderr separately for logging.
           kv_list_ids()  { jq -r 'if type == "array" then .[] elif .result then .result[] else empty end | select(.title == $ENV.KV_TITLE) | .id'; }
           kv_create_id() { jq -r 'if .result then .result.id else .id end'; }
           d1_list_uuid() { jq -r 'if type == "array" then .[] elif .result then .result[] else empty end | select(.name == "grant-manager-db") | (.uuid // .id)'; }
@@ -84,35 +83,36 @@ jobs:
           # ── USER_PROFILES KV ─────────────────────────────────────────────
           WORKER_NAME=$(grep '^name' wrangler.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
           export KV_TITLE="${WORKER_NAME}-USER_PROFILES"
-          UP_ID=$(npx wrangler kv namespace list --json 2>&1 \
+          UP_ID=$(npx wrangler kv namespace list --json 2>/tmp/wrangler.log \
             | kv_list_ids | head -1)
           if [ -z "$UP_ID" ]; then
             echo "Creating USER_PROFILES KV namespace..."
-            UP_ID=$(npx wrangler kv namespace create USER_PROFILES --json 2>&1 \
+            UP_ID=$(npx wrangler kv namespace create USER_PROFILES --json 2>/tmp/wrangler.log \
               | kv_create_id)
           fi
           echo "USER_PROFILES id: $UP_ID"
 
           # ── LOGIN_ATTEMPTS KV ─────────────────────────────────────────────
           export KV_TITLE="${WORKER_NAME}-LOGIN_ATTEMPTS"
-          LA_ID=$(npx wrangler kv namespace list --json 2>&1 \
+          LA_ID=$(npx wrangler kv namespace list --json 2>/tmp/wrangler.log \
             | kv_list_ids | head -1)
           if [ -z "$LA_ID" ]; then
             echo "Creating LOGIN_ATTEMPTS KV namespace..."
-            LA_ID=$(npx wrangler kv namespace create LOGIN_ATTEMPTS --json 2>&1 \
+            LA_ID=$(npx wrangler kv namespace create LOGIN_ATTEMPTS --json 2>/tmp/wrangler.log \
               | kv_create_id)
           fi
           echo "LOGIN_ATTEMPTS id: $LA_ID"
 
           # ── GRANT_MANAGER_DB D1 ───────────────────────────────────────────────────
-          DB_ID=$(npx wrangler d1 list --json 2>&1 \
+          DB_ID=$(npx wrangler d1 list --json 2>/tmp/wrangler.log \
             | d1_list_uuid | head -1)
           if [ -z "$DB_ID" ]; then
             echo "Creating grant-manager-db D1 database..."
-            DB_ID=$(npx wrangler d1 create grant-manager-db --json 2>&1 \
+            DB_ID=$(npx wrangler d1 create grant-manager-db --json 2>/tmp/wrangler.log \
               | d1_create_uuid)
           fi
           echo "GRANT_MANAGER_DB id: $DB_ID"
+          cat /tmp/wrangler.log || true
 
           # ── Fail early if any ID is still missing ─────────────────────────
           if [ -z "$UP_ID" ] || [ -z "$LA_ID" ] || [ -z "$DB_ID" ]; then
