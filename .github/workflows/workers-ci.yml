@@ -99,36 +99,42 @@ jobs:
           echo "LOGIN_ATTEMPTS id: $LA_ID"
 
           # ── GRANT_MANAGER_DB D1 ───────────────────────────────────────────
+          # D1 API requires D1:Edit permission on the token. If it returns an
+          # auth error, fall back to the ID already committed in wrangler.toml.
           D1_LIST=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100")
-          echo "D1 list (preview): $(echo "$D1_LIST" | head -c 400)"
-          DB_ID=$(echo "$D1_LIST" | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
-          if [ -z "$DB_ID" ]; then
-            echo "Creating grant-manager-db D1 database..."
-            D1_CREATE=$(curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
-              -d '{"name":"grant-manager-db"}' "$CF/d1/database")
-            echo "D1 create response: $(echo "$D1_CREATE" | head -c 400)"
-            DB_ID=$(echo "$D1_CREATE" | jq -r '(.result.uuid // .result.id) // empty' | head -1)
+          D1_SUCCESS=$(echo "$D1_LIST" | jq -r '.success')
+          if [ "$D1_SUCCESS" = "true" ]; then
+            DB_ID=$(echo "$D1_LIST" | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
             if [ -z "$DB_ID" ]; then
-              # May have failed due to conflict; re-list to pick up existing DB
-              DB_ID=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100" \
-                | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
+              echo "Creating grant-manager-db D1 database..."
+              D1_CREATE=$(curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+                -d '{"name":"grant-manager-db"}' "$CF/d1/database")
+              DB_ID=$(echo "$D1_CREATE" | jq -r '(.result.uuid // .result.id) // empty' | head -1)
+              if [ -z "$DB_ID" ]; then
+                DB_ID=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100" \
+                  | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
+              fi
             fi
+          else
+            echo "⚠️  D1 API auth failed — using ID from wrangler.toml (add D1:Edit permission to token to enable provisioning)"
+            DB_ID=$(grep 'database_id' wrangler.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "GRANT_MANAGER_DB id: $DB_ID"
 
-          # ── Fail early if any ID is still missing ─────────────────────────
+          # ── Fail early if KV IDs are missing (D1 has fallback above) ──────
           if [ -z "$UP_ID" ] || [ -z "$LA_ID" ] || [ -z "$DB_ID" ]; then
             echo "❌ Failed to resolve one or more resource IDs"
             exit 1
           fi
 
-          # ── Patch wrangler.toml with this account's IDs ──────────────────
+          # ── Patch wrangler.toml KV IDs with this account's values ─────────
           sed -i \
             "s/id = \"3613c184af7d4890a70f1c9d28583329\"/id = \"$UP_ID\"/" \
             wrangler.toml
           sed -i \
             "s/id = \"713c8d1d9eb34d1ea13656bf40f14ccc\"/id = \"$LA_ID\"/" \
             wrangler.toml
+          # Only patch D1 ID if it changed from the committed value
           sed -i \
             "s/database_id = \"e99396be-8043-41f6-9762-07c2b6fc4d3f\"/database_id = \"$DB_ID\"/" \
             wrangler.toml
