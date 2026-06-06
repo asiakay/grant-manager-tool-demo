@@ -37,14 +37,14 @@ jobs:
         working-directory: ui
         run: npm run build
 
-  # ── Deploy only on push to main ───────────────────────────────────────────
+  # ── Deploy on push to main (production) or any PR (preview) ─────────────
   deploy:
     name: Deploy to Cloudflare
     runs-on: ubuntu-latest
     needs: validate
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     environment:
-      name: production
+      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production' || 'preview' }}
       url: https://grant-demo.workers.dev
 
     steps:
