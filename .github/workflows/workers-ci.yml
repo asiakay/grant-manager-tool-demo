@@ -74,8 +74,9 @@ jobs:
       - name: Provision Cloudflare resources
         run: |
           # ── USER_PROFILES KV ─────────────────────────────────────────────
+          WORKER_NAME=$(grep '^name' wrangler.toml | head -1 | sed 's/name\s*=\s*"\(.*\)"/\1/')
           UP_ID=$(npx wrangler kv namespace list --json 2>/dev/null \
-            | jq -r '.[] | select(.title | test("USER_PROFILES")) | .id' \
+            | jq -r --arg t "${WORKER_NAME}-USER_PROFILES" '.[] | select(.title == $t) | .id' \
             | head -1)
           if [ -z "$UP_ID" ]; then
             echo "Creating USER_PROFILES KV namespace..."
@@ -86,7 +87,7 @@ jobs:
 
           # ── LOGIN_ATTEMPTS KV ─────────────────────────────────────────────
           LA_ID=$(npx wrangler kv namespace list --json 2>/dev/null \
-            | jq -r '.[] | select(.title | test("LOGIN_ATTEMPTS")) | .id' \
+            | jq -r --arg t "${WORKER_NAME}-LOGIN_ATTEMPTS" '.[] | select(.title == $t) | .id' \
             | head -1)
           if [ -z "$LA_ID" ]; then
             echo "Creating LOGIN_ATTEMPTS KV namespace..."
