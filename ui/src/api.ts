@@ -13,6 +13,18 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function signup(username: string, password: string, confirmPassword: string): Promise<void> {
+  const body = new URLSearchParams({ username, password, confirm_password: confirmPassword });
+  const res = await fetch(`${BASE}/signup`, {
+    method: "POST",
+    body,
+    credentials: "include",
+  });
+  if (res.ok) return;
+  const data = await res.json().catch(() => ({})) as { error?: string };
+  throw new Error(data.error || "Sign-up failed");
+}
+
 export async function login(username: string, password: string): Promise<void> {
   const body = new URLSearchParams({ username, password });
   const res = await fetch(`${BASE}/login`, {
