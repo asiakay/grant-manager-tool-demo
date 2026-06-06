@@ -26,6 +26,9 @@ function Card({ label, value, sub, icon, accent }: CardProps) {
 }
 
 function parseScore(g: Grant): number {
+  // Prefer the personalized computed score; fall back to Weighted Score
+  const computed = g.score;
+  if (typeof computed === "number" && !isNaN(computed)) return computed;
   const v = g["Weighted Score"];
   if (typeof v === "number") return v;
   const n = parseFloat(String(v));
@@ -73,7 +76,7 @@ export default function SummaryCards({ grants }: Props) {
         accent="bg-blue-900/40"
       />
       <Card
-        label="Top Scored"
+        label="Top Match"
         value={topScore}
         sub={topName}
         icon="🏆"

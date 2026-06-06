@@ -22,13 +22,14 @@ interface Props {
 
 const columnHelper = createColumnHelper<Grant>();
 
-function ScoreCell({ value }: { value: string | number }) {
+function ScoreCell({ value, max = 5 }: { value: string | number; max?: number }) {
   const n = parseFloat(String(value));
   if (isNaN(n)) return <span className="text-gray-500">—</span>;
+  const pct = n / max;
   const color =
-    n >= 7
+    pct >= 0.65
       ? "text-green-400"
-      : n >= 4
+      : pct >= 0.35
         ? "text-yellow-400"
         : "text-red-400";
   return <span className={`font-semibold ${color}`}>{n.toFixed(1)}</span>;
@@ -155,22 +156,22 @@ export default function GrantTable({
       }),
       columnHelper.accessor("Relevance", {
         header: "Rel",
-        cell: (info) => <ScoreCell value={info.getValue()} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
         size: 55,
       }),
       columnHelper.accessor("Fit", {
         header: "Fit",
-        cell: (info) => <ScoreCell value={info.getValue()} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
         size: 50,
       }),
       columnHelper.accessor("Ease", {
         header: "Ease",
-        cell: (info) => <ScoreCell value={info.getValue()} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
         size: 55,
       }),
       columnHelper.accessor("score", {
-        header: "Match",
-        cell: (info) => <ScoreCell value={info.getValue() ?? 0} />,
+        header: "Match ★",
+        cell: (info) => <ScoreCell value={info.getValue() ?? 0} max={5} />,
         size: 65,
         sortingFn: (a, b) => {
           const sa = parseFloat(String(a.original.score ?? "0"));
