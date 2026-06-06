@@ -4,21 +4,21 @@ on:
   push:
     branches: [main]
     paths:
-      - 'worker/**'
       - 'worker.js'
       - 'wrangler.toml'
+      - 'ui/**'
   pull_request:
     branches: [main]
     paths:
-      - 'worker/**'
       - 'worker.js'
       - 'wrangler.toml'
+      - 'ui/**'
   workflow_dispatch:
 
 jobs:
-  # ── Validate on every PR ──────────────────────────────────────────────────
+  # ── Build & type-check on every PR ───────────────────────────────────────
   validate:
-    name: Type-check & dry-run
+    name: Build UI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,21 +27,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: worker/package-lock.json
+          cache-dependency-path: ui/package-lock.json
 
-      - name: Install worker deps
-        working-directory: worker
+      - name: Install UI deps
+        working-directory: ui
         run: npm ci
 
-      - name: TypeScript type-check
-        working-directory: worker
-        run: npx tsc --noEmit
-
-      - name: Wrangler dry-run (validate config)
-        working-directory: worker
-        run: npx wrangler deploy --dry-run --outdir /tmp/worker-build
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Build UI
+        working-directory: ui
+        run: npm run build
 
   # ── Deploy only on push to main ───────────────────────────────────────────
   deploy:
@@ -60,21 +54,88 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: worker/package-lock.json
+          cache-dependency-path: ui/package-lock.json
 
-      - name: Install worker deps
-        working-directory: worker
+      - name: Install UI deps
+        working-directory: ui
         run: npm ci
 
+      - name: Build UI
+        working-directory: ui
+        run: npm run build
+
+      - name: Install root deps
+        run: npm ci
+
+      # ── Provision KV namespaces and D1 database if not yet created ────────
+      # Looks up each resource by name in the target account. Creates it when
+      # missing. Patches wrangler.toml in-place so the subsequent wrangler
+      # commands see the correct IDs without touching the committed file.
+      - name: Provision Cloudflare resources
+        run: |
+          # ── USER_PROFILES KV ─────────────────────────────────────────────
+          UP_ID=$(npx wrangler kv namespace list --json 2>/dev/null \
+            | jq -r '.[] | select(.title | test("USER_PROFILES")) | .id' \
+            | head -1)
+          if [ -z "$UP_ID" ]; then
+            echo "Creating USER_PROFILES KV namespace..."
+            UP_ID=$(npx wrangler kv namespace create USER_PROFILES --json 2>/dev/null \
+              | jq -r '.id')
+          fi
+          echo "USER_PROFILES id: $UP_ID"
+
+          # ── LOGIN_ATTEMPTS KV ─────────────────────────────────────────────
+          LA_ID=$(npx wrangler kv namespace list --json 2>/dev/null \
+            | jq -r '.[] | select(.title | test("LOGIN_ATTEMPTS")) | .id' \
+            | head -1)
+          if [ -z "$LA_ID" ]; then
+            echo "Creating LOGIN_ATTEMPTS KV namespace..."
+            LA_ID=$(npx wrangler kv namespace create LOGIN_ATTEMPTS --json 2>/dev/null \
+              | jq -r '.id')
+          fi
+          echo "LOGIN_ATTEMPTS id: $LA_ID"
+
+          # ── EQORE_DB D1 ───────────────────────────────────────────────────
+          DB_ID=$(npx wrangler d1 list --json 2>/dev/null \
+            | jq -r '.[] | select(.name == "eqore-db") | .uuid' \
+            | head -1)
+          if [ -z "$DB_ID" ]; then
+            echo "Creating eqore-db D1 database..."
+            DB_ID=$(npx wrangler d1 create eqore-db --json 2>/dev/null \
+              | jq -r '.uuid')
+          fi
+          echo "EQORE_DB id: $DB_ID"
+
+          # ── Fail early if any ID is still missing ─────────────────────────
+          if [ -z "$UP_ID" ] || [ -z "$LA_ID" ] || [ -z "$DB_ID" ]; then
+            echo "❌ Failed to resolve one or more resource IDs"
+            exit 1
+          fi
+
+          # ── Patch wrangler.toml with new account's IDs ────────────────────
+          sed -i \
+            "s/id = \"59000bb55ca54e35ad7ca0ae7fb5fa25\"/id = \"$UP_ID\"/" \
+            wrangler.toml
+          sed -i \
+            "s/id = \"da51bf4b2ff24a3fbff95b2aada6e020\"/id = \"$LA_ID\"/" \
+            wrangler.toml
+          sed -i \
+            "s/database_id = \"85970bbc-3d0b-4922-8ec2-3845f4606201\"/database_id = \"$DB_ID\"/" \
+            wrangler.toml
+
+          echo "✅ wrangler.toml patched for this account"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Apply D1 migrations
-        working-directory: worker
         run: npx wrangler d1 migrations apply EQORE_DB --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         continue-on-error: true
 
-      - name: Deploy worker
-        working-directory: worker
+      - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

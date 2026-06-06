@@ -166,12 +166,12 @@ export default {
         });
       }
       if (request.method === "POST") {
-        const columns = await getColumns(env.DB);
+        const columns = await getColumns(env.EQORE_DB);
         const form = await request.formData();
         const values = columns.map((c) => form.get(c) || "");
         const placeholders = columns.map(() => "?").join(",");
         const cols = columns.map((c) => `"${c}"`).join(",");
-        await env.DB.prepare(
+        await env.EQORE_DB.prepare(
           `INSERT OR REPLACE INTO programs (${cols}) VALUES (${placeholders})`
         )
           .bind(...values)
@@ -181,23 +181,23 @@ export default {
           headers: { Location: "/dashboard" },
         });
       }
-      return new Response(await newSchemaPage(env.DB), {
+      return new Response(await newSchemaPage(env.EQORE_DB), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
 
     if (url.pathname === "/schema") {
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       return new Response(JSON.stringify(columns), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (url.pathname === "/data") {
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       let body = "";
       if (columns.length > 0) {
-        const { results } = await env.DB.prepare(
+        const { results } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         body = [
@@ -232,7 +232,7 @@ export default {
       const columns = await getColumns(env.DB);
       let results = [];
       if (columns.length > 0) {
-        const { results: rows } = await env.DB.prepare(
+        const { results: rows } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         results = rows
@@ -247,6 +247,34 @@ export default {
           .sort((a, b) => b.score - a.score);
       }
       return new Response(JSON.stringify(results), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (url.pathname === "/api/health") {
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (url.pathname === "/api/chat" && request.method === "POST") {
+      if (!loggedIn) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      if (!env.AI) {
+        return new Response("AI binding not configured", { status: 503 });
+      }
+      const { messages } = await request.json();
+      const prompt = Array.isArray(messages)
+        ? messages.map((m) => `${m.role}: ${m.content}`).join("\n")
+        : String(messages || "");
+      const result = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
+        messages: Array.isArray(messages)
+          ? messages
+          : [{ role: "user", content: prompt }],
+        stream: false,
+      });
+      return new Response(JSON.stringify({ response: result.response }), {
         headers: { "content-type": "application/json" },
       });
     }
