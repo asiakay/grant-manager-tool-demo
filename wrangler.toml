@@ -1,4 +1,4 @@
-name = "grant-demo"
+name = "grant-manager-tool-demo"
 main = "worker.js"
 compatibility_date = "2024-05-29"
 workers_dev = true
