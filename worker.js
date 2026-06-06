@@ -102,12 +102,22 @@ async function newSchemaPage(db) {
 </html>`;
 }
 
+const SESSION_TTL = 86400; // 24 hours in seconds
+
+async function resolveSession(env, cookie) {
+  const match = cookie.match(/session=([^;]+)/);
+  if (!match) return null;
+  const token = decodeURIComponent(match[1]);
+  if (!token || !env.USER_PROFILES) return null;
+  const username = await env.USER_PROFILES.get(`session:${token}`);
+  return username || null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const cookie = request.headers.get("Cookie") || "";
-    const sessionMatch = cookie.match(/session=([^;]+)/);
-    const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
+    const username = await resolveSession(env, cookie);
     const loggedIn = !!username;
     // Hash the password at runtime so it always matches the same algorithm
     // used for incoming login attempts. Environment-provided users may supply
@@ -159,12 +169,16 @@ export default {
         if (env.LOGIN_ATTEMPTS) {
           await env.LOGIN_ATTEMPTS.delete(ip);
         }
+        const token = crypto.randomUUID();
+        if (env.USER_PROFILES) {
+          await env.USER_PROFILES.put(`session:${token}`, user, { expirationTtl: SESSION_TTL });
+        }
         const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {
           status: 302,
           headers: {
             "Set-Cookie":
-              `session=${encodeURIComponent(user)}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+              `session=${token}; Path=/; HttpOnly; SameSite=Lax${secure}`,
             Location: "/dashboard",
           },
         });
@@ -184,10 +198,10 @@ export default {
           headers: { Location: "/" },
         });
       }
-      const columns = await getColumns(env.EQORE_DB);
+      const columns = await getColumns(env.GRANT_MANAGER_DB);
       let rows = [];
       if (columns.length > 0) {
-        const { results } = await env.EQORE_DB.prepare(
+        const { results } = await env.GRANT_MANAGER_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         records = results.map((r) =>
@@ -256,12 +270,12 @@ export default {
         });
       }
       if (request.method === "POST") {
-        const columns = await getColumns(env.EQORE_DB);
+        const columns = await getColumns(env.GRANT_MANAGER_DB);
         const form = await request.formData();
         const values = columns.map((c) => form.get(c) || "");
         const placeholders = columns.map(() => "?").join(",");
         const cols = columns.map((c) => `"${c}"`).join(",");
-        await env.EQORE_DB.prepare(
+        await env.GRANT_MANAGER_DB.prepare(
           `INSERT OR REPLACE INTO programs (${cols}) VALUES (${placeholders})`
         )
           .bind(...values)
@@ -271,23 +285,23 @@ export default {
           headers: { Location: "/dashboard" },
         });
       }
-      return new Response(await newSchemaPage(env.EQORE_DB), {
+      return new Response(await newSchemaPage(env.GRANT_MANAGER_DB), {
         headers: { "content-type": "text/html; charset=UTF-8" },
       });
     }
 
     if (url.pathname === "/schema") {
-      const columns = await getColumns(env.EQORE_DB);
+      const columns = await getColumns(env.GRANT_MANAGER_DB);
       return new Response(JSON.stringify(columns), {
         headers: { "content-type": "application/json" },
       });
     }
 
     if (url.pathname === "/data") {
-      const columns = await getColumns(env.EQORE_DB);
+      const columns = await getColumns(env.GRANT_MANAGER_DB);
       let body = "";
       if (columns.length > 0) {
-        const { results } = await env.EQORE_DB.prepare(
+        const { results } = await env.GRANT_MANAGER_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         body = [
@@ -319,10 +333,10 @@ export default {
           profile = {};
         }
       }
-      const columns = await getColumns(env.EQORE_DB);
+      const columns = await getColumns(env.GRANT_MANAGER_DB);
       let results = [];
       if (columns.length > 0) {
-        const { results: rows } = await env.EQORE_DB.prepare(
+        const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
         results = rows
@@ -367,6 +381,10 @@ export default {
     }
 
     if (url.pathname === "/logout") {
+      const match = cookie.match(/session=([^;]+)/);
+      if (match && env.USER_PROFILES) {
+        await env.USER_PROFILES.delete(`session:${decodeURIComponent(match[1])}`);
+      }
       const secure = url.protocol === "https:" ? "; Secure" : "";
       return new Response("", {
         status: 302,

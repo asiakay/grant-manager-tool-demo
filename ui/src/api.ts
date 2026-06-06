@@ -4,7 +4,6 @@ const BASE = "";
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
-    window.location.href = "/";
     throw new Error("Unauthenticated");
   }
   if (!res.ok) {
@@ -66,7 +65,6 @@ export async function sendChat(
   });
 
   if (res.status === 401) {
-    window.location.href = "/";
     throw new Error("Unauthenticated");
   }
 

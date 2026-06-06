@@ -10,16 +10,17 @@ assets = { directory = "ui/dist", not_found_handling = "single-page-application"
 
 [[kv_namespaces]]
 binding = "USER_PROFILES"
-id = "59000bb55ca54e35ad7ca0ae7fb5fa25"
+id = "3613c184af7d4890a70f1c9d28583329"
 
 [[kv_namespaces]]
 binding = "LOGIN_ATTEMPTS"
-id = "da51bf4b2ff24a3fbff95b2aada6e020"
+id = "713c8d1d9eb34d1ea13656bf40f14ccc"
 
 [[d1_databases]]
-binding = "EQORE_DB"
-database_name = "eqore-db"
-database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
+binding = "GRANT_MANAGER_DB"
+database_name = "grant-manager-db"
+database_id = "e99396be-8043-41f6-9762-07c2b6fc4d3f"
+migrations_dir = "migrations"
 
 [ai]
 binding = "AI"

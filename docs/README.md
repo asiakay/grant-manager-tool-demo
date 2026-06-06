@@ -50,7 +50,7 @@ The Worker relies on a D1 database. Run the migration before deploying:
 
 ```bash
 cd worker
-wrangler d1 migrations apply EQORE_DB
+wrangler d1 migrations apply GRANT_MANAGER_DB
 ```
 
 Store each user's weight profile as JSON in the `USER_PROFILES` KV namespace to control how grants are scored. If the binding isn't configured, scoring defaults to zero for all grants.

@@ -20,6 +20,6 @@ This guide summarizes the tradeoffs between running the full processing pipeline
 - `PDF_BUCKET` – R2 bucket holding uploaded PDFs and generated summaries.
 - `PDF_INGEST` – queue delivering PDF keys to extraction workers.
 - `SCORE_QUEUE` – queue for sending extracted rows to scoring workers.
-- `EQORE_DB` – D1 database binding containing program records.
+- `GRANT_MANAGER_DB` – D1 database binding containing program records.
 
 These variables are referenced in the pipeline, Worker, or example scripts. Ensure they are configured before choosing an approach.

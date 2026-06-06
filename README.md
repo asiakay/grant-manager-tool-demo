@@ -55,7 +55,7 @@ grant-summarizer --pdf path/to/grant.pdf --format all --outdir ./dist
 ```bash
 # Apply database migrations
 cd worker
-wrangler d1 migrations apply EQORE_DB
+wrangler d1 migrations apply GRANT_MANAGER_DB
 
 # Deploy to Cloudflare
 npm run deploy
@@ -385,7 +385,7 @@ compatibility_date = "2024-05-29"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "EQORE_DB"
+database_name = "GRANT_MANAGER_DB"
 database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
 
 [[kv_namespaces]]
@@ -440,7 +440,7 @@ CREATE TABLE programs (
 ```bash
 # Apply database migrations
 cd worker
-wrangler d1 migrations apply EQORE_DB
+wrangler d1 migrations apply GRANT_MANAGER_DB
 
 # Deploy to Cloudflare
 npm run deploy
@@ -637,7 +637,7 @@ cd ..
 
 3. **Create D1 Database:**
    ```bash
-   wrangler d1 create EQORE_DB
+   wrangler d1 create GRANT_MANAGER_DB
    ```
    Copy the database ID to `wrangler.toml`
 
@@ -656,7 +656,7 @@ cd ..
 6. **Apply Migrations:**
    ```bash
    cd worker
-   wrangler d1 migrations apply EQORE_DB
+   wrangler d1 migrations apply GRANT_MANAGER_DB
    ```
 
 7. **Deploy:**

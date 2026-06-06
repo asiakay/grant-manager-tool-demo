@@ -49,9 +49,15 @@ export default function Dashboard({ onLogout }: Props) {
   useEffect(() => {
     fetchGrants()
       .then(setGrants)
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        if (e.message === "Unauthenticated") {
+          onLogout();
+        } else {
+          setError(e.message);
+        }
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [onLogout]);
 
   const handleLogout = useCallback(async () => {
     await logout().catch(() => {});
