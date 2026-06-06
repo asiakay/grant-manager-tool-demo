@@ -114,6 +114,27 @@ export async function onRequest(context) {
     });
   }
 
+  // API: profile
+  if (url.pathname === "/api/profile") {
+    if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+    if (request.method === "GET") {
+      const raw = env.USER_PROFILES ? await env.USER_PROFILES.get(`profile:${username}`) : null;
+      const profile = raw ? JSON.parse(raw) : null;
+      return new Response(JSON.stringify(profile), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (request.method === "POST") {
+      const body = await request.json();
+      if (env.USER_PROFILES) {
+        await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+  }
+
   // API: grants list
   if (url.pathname === "/api/grants") {
     if (!loggedIn) return new Response("Unauthorized", { status: 401 });
@@ -124,7 +145,7 @@ export async function onRequest(context) {
     }
     let profile = {};
     if (env.USER_PROFILES) {
-      const profileRaw = await env.USER_PROFILES.get(username);
+      const profileRaw = await env.USER_PROFILES.get(`profile:${username}`);
       if (profileRaw) {
         try { profile = JSON.parse(profileRaw); } catch { profile = {}; }
       }
