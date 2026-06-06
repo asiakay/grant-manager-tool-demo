@@ -20,3 +20,6 @@ id = "da51bf4b2ff24a3fbff95b2aada6e020"
 binding = "EQORE_DB"
 database_name = "eqore-db"
 database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
+
+[ai]
+binding = "AI"
