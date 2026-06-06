@@ -9,6 +9,8 @@ from urllib.parse import urlencode
 
 import certifi
 
+import certifi
+
 API_URL = "https://www.grants.gov/grantsws/rest/opportunities/search"
 
 

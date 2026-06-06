@@ -18,6 +18,71 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
+function normalizeNumber(value) {
+  if (value === undefined || value === null) return NaN;
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return NaN;
+  const cleaned = value.replace(/[$,]/g, "");
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+function detectDeadlineColumn(columns) {
+  return columns.find((c) => {
+    const lowered = c.toLowerCase();
+    return lowered.includes("deadline") || lowered.includes("cohort");
+  });
+}
+
+function detectFundingColumn(columns) {
+  return columns.find((c) => {
+    const lowered = c.toLowerCase();
+    return lowered.includes("funding") || lowered.includes("amount");
+  });
+}
+
+function computeSummary(records, columns) {
+  const summary = { totalFunding: null, nextDeadline: null };
+  const fundingCol = detectFundingColumn(columns);
+  if (fundingCol) {
+    const total = records
+      .map((r) => normalizeNumber(r[fundingCol]))
+      .filter((n) => Number.isFinite(n))
+      .reduce((acc, n) => acc + n, 0);
+    if (Number.isFinite(total)) {
+      summary.totalFunding = total;
+    }
+  }
+
+  const deadlineCol = detectDeadlineColumn(columns);
+  if (deadlineCol) {
+    const now = new Date();
+    const upcoming = records
+      .map((r) => new Date(r[deadlineCol]))
+      .filter((d) => d instanceof Date && !Number.isNaN(d.getTime()) && d >= now)
+      .sort((a, b) => a.getTime() - b.getTime());
+    if (upcoming.length > 0) {
+      summary.nextDeadline = upcoming[0].toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  }
+
+  return summary;
+}
+
+function rowMatchesQuery(row, query) {
+  if (!query) return true;
+  const needle = query.toLowerCase();
+  return Object.values(row).some((value) =>
+    String(value ?? "")
+      .toLowerCase()
+      .includes(needle)
+  );
+}
+
 async function newSchemaPage(db) {
   const columns = await getColumns(db);
   const inputs = columns
@@ -125,8 +190,18 @@ export default {
         const { results } = await env.EQORE_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
-        rows = results.map((r) => columns.map((c) => r[c] ?? ""));
+        records = results.map((r) =>
+          columns.reduce((acc, col) => {
+            acc[col] = r[col] ?? "";
+            return acc;
+          }, {})
+        );
       }
+
+      const filtered = records.filter((r) => rowMatchesQuery(r, query));
+      const summary = computeSummary(filtered, columns);
+      const previewRows = filtered.slice(0, limit);
+
       let profile = {};
       let profileRaw = null;
       if (env.USER_PROFILES) {
@@ -141,9 +216,24 @@ export default {
           profile = {};
         }
       }
-      return new Response(renderDashboardPage(columns, rows, username, profile), {
-        headers: { "content-type": "text/html; charset=UTF-8" },
-      });
+
+      return new Response(
+        renderDashboardPage({
+          username,
+          headers: columns,
+          previewRows,
+          query,
+          limit,
+          totalRows: filtered.length,
+          summary,
+          datasetLabel,
+          sourceLabel,
+          profile,
+        }),
+        {
+          headers: { "content-type": "text/html; charset=UTF-8" },
+        }
+      );
     }
 
       if (url.pathname === "/test-endpoints") {
