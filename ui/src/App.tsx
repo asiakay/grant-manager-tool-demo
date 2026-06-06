@@ -3,40 +3,72 @@ import Login from "./components/Login";
 import Signup from "./components/Signup";
 import Dashboard from "./components/Dashboard";
 import ProfileSetup from "./components/ProfileSetup";
-import { checkAuth, login, fetchProfile, saveProfile } from "./api";
+import WelcomePage from "./components/WelcomePage";
+import { checkAuth, login, fetchProfile, saveProfile, fetchMe } from "./api";
 import type { UserProfile } from "./api";
 
-type AuthState = "loading" | "unauthenticated" | "signup" | "profile-setup" | "authenticated";
+type AuthState = "loading" | "unauthenticated" | "signup" | "profile-setup" | "welcome" | "authenticated";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
   const [profileSaving, setProfileSaving] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [username, setUsername] = useState("");
 
   useEffect(() => {
     checkAuth().then(async (ok) => {
       if (!ok) { setAuth("unauthenticated"); return; }
-      const profile = await fetchProfile().catch(() => null);
-      setAuth(profile ? "authenticated" : "profile-setup");
+      const [p, me] = await Promise.all([
+        fetchProfile().catch(() => null),
+        fetchMe(),
+      ]);
+      setProfile(p);
+      setUsername(me ?? "");
+      setAuth(p ? "welcome" : "profile-setup");
     });
   }, []);
 
-  async function handleSignupSuccess(username: string, password: string) {
+  async function handleSignupSuccess(user: string, password: string) {
     try {
-      await login(username, password);
+      await login(user, password);
+      setUsername(user);
       setAuth("profile-setup");
     } catch {
       setAuth("unauthenticated");
     }
   }
 
-  async function handleProfileSave(profile: UserProfile) {
+  async function handleLoginSuccess() {
+    const [p, me] = await Promise.all([
+      fetchProfile().catch(() => null),
+      fetchMe(),
+    ]);
+    setProfile(p);
+    setUsername(me ?? "");
+    setAuth(p ? "welcome" : "profile-setup");
+  }
+
+  async function handleProfileSave(p: UserProfile) {
     setProfileSaving(true);
     try {
-      await saveProfile(profile);
-      setAuth("authenticated");
+      await saveProfile(p);
+      setProfile(p);
+      setAuth("welcome");
     } catch {
-      // proceed anyway
-      setAuth("authenticated");
+      setProfile(p);
+      setAuth("welcome");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function handleWelcomeProfileSave(p: UserProfile) {
+    setProfileSaving(true);
+    try {
+      await saveProfile(p);
+      setProfile(p);
+    } catch {
+      setProfile(p);
     } finally {
       setProfileSaving(false);
     }
@@ -56,7 +88,7 @@ export default function App() {
   if (auth === "signup") {
     return (
       <Signup
-        onSuccess={(username, password) => handleSignupSuccess(username, password)}
+        onSuccess={(user, password) => handleSignupSuccess(user, password)}
         onBackToLogin={() => setAuth("unauthenticated")}
       />
     );
@@ -65,10 +97,7 @@ export default function App() {
   if (auth === "unauthenticated") {
     return (
       <Login
-        onSuccess={async () => {
-          const profile = await fetchProfile().catch(() => null);
-          setAuth(profile ? "authenticated" : "profile-setup");
-        }}
+        onSuccess={handleLoginSuccess}
         onSignUp={() => setAuth("signup")}
       />
     );
@@ -77,6 +106,7 @@ export default function App() {
   if (auth === "profile-setup") {
     return (
       <ProfileSetup
+        initial={profile}
         onSave={handleProfileSave}
         onSkip={() => setAuth("authenticated")}
         saving={profileSaving}
@@ -84,5 +114,22 @@ export default function App() {
     );
   }
 
-  return <Dashboard onLogout={() => setAuth("unauthenticated")} />;
+  if (auth === "welcome" && profile) {
+    return (
+      <WelcomePage
+        username={username || "there"}
+        profile={profile}
+        onViewMatches={() => setAuth("authenticated")}
+        onSaveProfile={handleWelcomeProfileSave}
+        saving={profileSaving}
+      />
+    );
+  }
+
+  return (
+    <Dashboard
+      onLogout={() => setAuth("unauthenticated")}
+      onBackToProfile={profile ? () => setAuth("welcome") : undefined}
+    />
+  );
 }
