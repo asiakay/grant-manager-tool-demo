@@ -102,12 +102,22 @@ async function newSchemaPage(db) {
 </html>`;
 }
 
+const SESSION_TTL = 86400; // 24 hours in seconds
+
+async function resolveSession(env, cookie) {
+  const match = cookie.match(/session=([^;]+)/);
+  if (!match) return null;
+  const token = decodeURIComponent(match[1]);
+  if (!token || !env.USER_PROFILES) return null;
+  const username = await env.USER_PROFILES.get(`session:${token}`);
+  return username || null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const cookie = request.headers.get("Cookie") || "";
-    const sessionMatch = cookie.match(/session=([^;]+)/);
-    const username = sessionMatch ? decodeURIComponent(sessionMatch[1]) : null;
+    const username = await resolveSession(env, cookie);
     const loggedIn = !!username;
     // Hash the password at runtime so it always matches the same algorithm
     // used for incoming login attempts. Environment-provided users may supply
@@ -159,12 +169,16 @@ export default {
         if (env.LOGIN_ATTEMPTS) {
           await env.LOGIN_ATTEMPTS.delete(ip);
         }
+        const token = crypto.randomUUID();
+        if (env.USER_PROFILES) {
+          await env.USER_PROFILES.put(`session:${token}`, user, { expirationTtl: SESSION_TTL });
+        }
         const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {
           status: 302,
           headers: {
             "Set-Cookie":
-              `session=${encodeURIComponent(user)}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+              `session=${token}; Path=/; HttpOnly; SameSite=Lax${secure}`,
             Location: "/dashboard",
           },
         });
@@ -367,6 +381,10 @@ export default {
     }
 
     if (url.pathname === "/logout") {
+      const match = cookie.match(/session=([^;]+)/);
+      if (match && env.USER_PROFILES) {
+        await env.USER_PROFILES.delete(`session:${decodeURIComponent(match[1])}`);
+      }
       const secure = url.protocol === "https:" ? "; Secure" : "";
       return new Response("", {
         status: 302,
