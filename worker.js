@@ -142,6 +142,67 @@ export default {
 
     const users = { ...defaultUsers, ...envUsers };
 
+    if (url.pathname === "/signup" && request.method === "POST") {
+      const form = await request.formData();
+      const newUser = (form.get("username") || "").trim();
+      const newPass = form.get("password") || "";
+      const confirmPass = form.get("confirm_password") || "";
+
+      if (!newUser || newUser.length < 3 || newUser.length > 32) {
+        return new Response(JSON.stringify({ error: "Username must be 3–32 characters." }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
+        return new Response(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (!newPass || newPass.length < 6) {
+        return new Response(JSON.stringify({ error: "Password must be at least 6 characters." }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (newPass !== confirmPass) {
+        return new Response(JSON.stringify({ error: "Passwords do not match." }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      await env.GRANT_MANAGER_DB.prepare(
+        `CREATE TABLE IF NOT EXISTS users (
+          username TEXT PRIMARY KEY,
+          password_hash TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        )`
+      ).run();
+
+      const existing = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT username FROM users WHERE username = ?"
+      ).bind(newUser).first();
+
+      if (existing || users[newUser]) {
+        return new Response(JSON.stringify({ error: "Username is already taken." }), {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      const hash = await hashPassword(newPass);
+      await env.GRANT_MANAGER_DB.prepare(
+        "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
+      ).bind(newUser, hash, Date.now()).run();
+
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
       const user = form.get("username");
@@ -165,7 +226,23 @@ export default {
         return new Response("Too many attempts. Try again later.", { status: 429 });
       }
       const hashed = await hashPassword(pass || "");
-      if (users[user] && users[user] === hashed) {
+      let dbUser = null;
+      try {
+        await env.GRANT_MANAGER_DB.prepare(
+          `CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+          )`
+        ).run();
+        dbUser = await env.GRANT_MANAGER_DB.prepare(
+          "SELECT password_hash FROM users WHERE username = ?"
+        ).bind(user).first();
+      } catch (err) {
+        console.warn("D1 user lookup failed", err);
+      }
+      const dbMatch = dbUser && dbUser.password_hash === hashed;
+      if ((users[user] && users[user] === hashed) || dbMatch) {
         if (env.LOGIN_ATTEMPTS) {
           await env.LOGIN_ATTEMPTS.delete(ip);
         }

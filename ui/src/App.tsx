@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import Login from "./components/Login";
+import Signup from "./components/Signup";
 import Dashboard from "./components/Dashboard";
-import { checkAuth } from "./api";
+import { checkAuth, login } from "./api";
 
-type AuthState = "loading" | "unauthenticated" | "authenticated";
+type AuthState = "loading" | "unauthenticated" | "signup" | "authenticated";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
@@ -13,6 +14,16 @@ export default function App() {
       setAuth(ok ? "authenticated" : "unauthenticated");
     });
   }, []);
+
+  async function handleSignupSuccess(username: string, password: string) {
+    try {
+      await login(username, password);
+      setAuth("authenticated");
+    } catch {
+      // Auto-login failed after signup; fall back to login page
+      setAuth("unauthenticated");
+    }
+  }
 
   if (auth === "loading") {
     return (
@@ -25,8 +36,22 @@ export default function App() {
     );
   }
 
+  if (auth === "signup") {
+    return (
+      <Signup
+        onSuccess={(username, password) => handleSignupSuccess(username, password)}
+        onBackToLogin={() => setAuth("unauthenticated")}
+      />
+    );
+  }
+
   if (auth === "unauthenticated") {
-    return <Login onSuccess={() => setAuth("authenticated")} />;
+    return (
+      <Login
+        onSuccess={() => setAuth("authenticated")}
+        onSignUp={() => setAuth("signup")}
+      />
+    );
   }
 
   return <Dashboard onLogout={() => setAuth("unauthenticated")} />;

@@ -1,14 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { login } from "../api";
+import { signup } from "../api";
 
 interface Props {
-  onSuccess: () => void;
-  onSignUp: () => void;
+  onSuccess: (username: string, password: string) => void;
+  onBackToLogin: () => void;
 }
 
-export default function Login({ onSuccess, onSignUp }: Props) {
+export default function Signup({ onSuccess, onBackToLogin }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -17,10 +18,10 @@ export default function Login({ onSuccess, onSignUp }: Props) {
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
-      onSuccess();
+      await signup(username, password, confirmPassword);
+      onSuccess(username, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Sign-up failed");
     } finally {
       setLoading(false);
     }
@@ -32,7 +33,7 @@ export default function Login({ onSuccess, onSignUp }: Props) {
         <div className="text-center mb-8">
           <div className="text-4xl mb-3">💰</div>
           <h1 className="text-2xl font-bold text-white">Grant Manager</h1>
-          <p className="text-gray-400 text-sm mt-1">Sign in to access your grant dashboard</p>
+          <p className="text-gray-400 text-sm mt-1">Create your account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="card space-y-4">
@@ -51,6 +52,10 @@ export default function Login({ onSuccess, onSignUp }: Props) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              minLength={3}
+              maxLength={32}
+              pattern="[a-zA-Z0-9_]+"
+              title="Letters, numbers, and underscores only"
             />
           </div>
 
@@ -59,9 +64,23 @@ export default function Login({ onSuccess, onSignUp }: Props) {
             <input
               className="input"
               type="password"
-              autoComplete="current-password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+            <p className="text-gray-500 text-xs mt-1">Minimum 6 characters</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Confirm Password</label>
+            <input
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
           </div>
@@ -74,21 +93,21 @@ export default function Login({ onSuccess, onSignUp }: Props) {
             {loading ? (
               <>
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Signing in…
+                Creating account…
               </>
             ) : (
-              "Sign in"
+              "Create account"
             )}
           </button>
         </form>
 
         <p className="text-center text-gray-500 text-sm mt-4">
-          Don't have an account?{" "}
+          Already have an account?{" "}
           <button
-            onClick={onSignUp}
+            onClick={onBackToLogin}
             className="text-brand-400 hover:text-brand-300 underline"
           >
-            Create one
+            Sign in
           </button>
         </p>
       </div>
