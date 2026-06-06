@@ -247,25 +247,44 @@ export default {
       return new Response("Unauthorized", { status: 401 });
     }
 
-if (url.pathname === "/api/grants") {
+if (url.pathname === "/api/profile") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (request.method === "GET") {
+        const raw = env.USER_PROFILES ? await env.USER_PROFILES.get(`profile:${username}`) : null;
+        const profile = raw ? JSON.parse(raw) : null;
+        return new Response(JSON.stringify(profile), { headers: { "content-type": "application/json" } });
+      }
+      if (request.method === "POST") {
+        const body = await request.json();
+        await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
+        return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
+      }
+    }
+
+    if (url.pathname === "/api/grants") {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
       }
-      let profileRaw = null;
-      if (env.USER_PROFILES) {
-        profileRaw = await env.USER_PROFILES.get(username);
-      } else {
-        console.warn("USER_PROFILES binding is not configured");
-        return new Response("USER_PROFILES binding not configured", { status: 500 });
-      }
       let profile = {};
-      if (profileRaw) {
-        try {
-          profile = JSON.parse(profileRaw);
-        } catch (err) {
-          profile = {};
+      if (env.USER_PROFILES) {
+        const raw = await env.USER_PROFILES.get(`profile:${username}`);
+        if (raw) {
+          try { profile = JSON.parse(raw); } catch { profile = {}; }
         }
       }
+
+      // Keywords derived from user profile for text matching
+      const focusAreas = profile.focusAreas || [];
+      const orgType = profile.orgType || "";
+      const stage = profile.stage || "";
+
+      // Build a keyword set from profile for matching against grant text
+      const keywords = [
+        ...focusAreas.map(f => f.toLowerCase()),
+        orgType.toLowerCase(),
+        stage.toLowerCase(),
+      ].filter(Boolean);
+
       const columns = await getColumns(env.GRANT_MANAGER_DB);
       let results = [];
       if (columns.length > 0) {
@@ -274,12 +293,39 @@ if (url.pathname === "/api/grants") {
         ).all();
         results = rows
           .map((r) => {
-            let score = 0;
-            for (const [field, weight] of Object.entries(profile)) {
-              const val = Number(r[field]) || 0;
-              score += val * Number(weight);
+            // Combine searchable text fields from the grant
+            const grantText = [r.Name, r.Sponsor, r["Eligibility (key conditions)"], r.Benefits, r["Notes/Actions"]]
+              .join(" ").toLowerCase();
+
+            // Keyword overlap score (0–5 points)
+            let keywordScore = 0;
+            for (const kw of keywords) {
+              if (kw && grantText.includes(kw)) keywordScore += 1;
             }
-            return { ...r, score };
+
+            // Curator numeric scores (0–5 scale from data)
+            const relevance = parseFloat(r.Relevance) || 0;
+            const fit = parseFloat(r.Fit) || 0;
+            const ease = parseFloat(r.Ease) || 0;
+            const curatorScore = (relevance + fit + ease) / 3;
+
+            // Deadline recency bonus (sooner = higher, within 1 year)
+            let recency = 0;
+            const deadline = r["Deadline/Next Cohort"] ? new Date(r["Deadline/Next Cohort"]) : null;
+            if (deadline && !isNaN(deadline.getTime())) {
+              const daysUntil = (deadline - Date.now()) / 86400000;
+              if (daysUntil >= 0 && daysUntil <= 365) recency = 1 - daysUntil / 365;
+            }
+
+            // Weighted composite: keyword match weighted heavily when profile exists
+            const hasProfile = keywords.length > 0;
+            const score = hasProfile
+              ? (keywordScore / Math.max(keywords.length, 1)) * 5 * 0.5
+                + curatorScore * 0.35
+                + recency * 0.15
+              : curatorScore * 0.85 + recency * 0.15;
+
+            return { ...r, score: Math.round(score * 100) / 100 };
           })
           .sort((a, b) => b.score - a.score);
       }

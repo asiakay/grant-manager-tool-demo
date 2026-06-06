@@ -76,7 +76,7 @@ export default function GrantTable({
   onToggleCandidate,
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "Weighted Score", desc: true },
+    { id: "score", desc: true },
   ]);
 
   const filtered = useMemo(() => {
@@ -84,7 +84,7 @@ export default function GrantTable({
       if (filters.type && g.Type !== filters.type) return false;
       if (filters.stage && g.Stage !== filters.stage) return false;
       if (filters.minScore) {
-        const score = parseFloat(String(g["Weighted Score"] || "0"));
+        const score = parseFloat(String(g.score ?? g["Weighted Score"] ?? "0"));
         if (score < parseFloat(filters.minScore)) return false;
       }
       if (filters.deadlineBefore) {
@@ -168,13 +168,13 @@ export default function GrantTable({
         cell: (info) => <ScoreCell value={info.getValue()} />,
         size: 55,
       }),
-      columnHelper.accessor("Weighted Score", {
-        header: "Score",
-        cell: (info) => <ScoreCell value={info.getValue()} />,
-        size: 60,
+      columnHelper.accessor("score", {
+        header: "Match",
+        cell: (info) => <ScoreCell value={info.getValue() ?? 0} />,
+        size: 65,
         sortingFn: (a, b) => {
-          const sa = parseFloat(String(a.original["Weighted Score"] || "0"));
-          const sb = parseFloat(String(b.original["Weighted Score"] || "0"));
+          const sa = parseFloat(String(a.original.score ?? "0"));
+          const sb = parseFloat(String(b.original.score ?? "0"));
           return sa - sb;
         },
       }),

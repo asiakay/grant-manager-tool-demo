@@ -16,7 +16,8 @@ export interface Grant {
   Ease: number | string;
   "Weighted Score": number | string;
   "Notes/Actions": string;
-  [key: string]: string | number;
+  score?: number;
+  [key: string]: string | number | undefined;
 }
 
 export type SortDir = "asc" | "desc" | false;

@@ -2,26 +2,43 @@ import { useEffect, useState } from "react";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
 import Dashboard from "./components/Dashboard";
-import { checkAuth, login } from "./api";
+import ProfileSetup from "./components/ProfileSetup";
+import { checkAuth, login, fetchProfile, saveProfile } from "./api";
+import type { UserProfile } from "./api";
 
-type AuthState = "loading" | "unauthenticated" | "signup" | "authenticated";
+type AuthState = "loading" | "unauthenticated" | "signup" | "profile-setup" | "authenticated";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
+  const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
-    checkAuth().then((ok) => {
-      setAuth(ok ? "authenticated" : "unauthenticated");
+    checkAuth().then(async (ok) => {
+      if (!ok) { setAuth("unauthenticated"); return; }
+      const profile = await fetchProfile().catch(() => null);
+      setAuth(profile ? "authenticated" : "profile-setup");
     });
   }, []);
 
   async function handleSignupSuccess(username: string, password: string) {
     try {
       await login(username, password);
+      setAuth("profile-setup");
+    } catch {
+      setAuth("unauthenticated");
+    }
+  }
+
+  async function handleProfileSave(profile: UserProfile) {
+    setProfileSaving(true);
+    try {
+      await saveProfile(profile);
       setAuth("authenticated");
     } catch {
-      // Auto-login failed after signup; fall back to login page
-      setAuth("unauthenticated");
+      // proceed anyway
+      setAuth("authenticated");
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -48,8 +65,21 @@ export default function App() {
   if (auth === "unauthenticated") {
     return (
       <Login
-        onSuccess={() => setAuth("authenticated")}
+        onSuccess={async () => {
+          const profile = await fetchProfile().catch(() => null);
+          setAuth(profile ? "authenticated" : "profile-setup");
+        }}
         onSignUp={() => setAuth("signup")}
+      />
+    );
+  }
+
+  if (auth === "profile-setup") {
+    return (
+      <ProfileSetup
+        onSave={handleProfileSave}
+        onSkip={() => setAuth("authenticated")}
+        saving={profileSaving}
       />
     );
   }

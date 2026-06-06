@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Grant, FilterState } from "../types";
-import { fetchGrants, logout, exportCsv } from "../api";
+import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile } from "../api";
+import type { UserProfile } from "../api";
 import SummaryCards from "./SummaryCards";
 import GrantTable from "./GrantTable";
 import GrantDrawer from "./GrantDrawer";
 import ChatPanel from "./ChatPanel";
+import ProfileSetup from "./ProfileSetup";
 
 const WATCHLIST_KEY = "gm_watchlist";
 const CANDIDATES_KEY = "gm_candidates";
@@ -42,6 +44,9 @@ export default function Dashboard({ onLogout }: Props) {
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [selectedGrant, setSelectedGrant] = useState<Grant | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
@@ -57,7 +62,26 @@ export default function Dashboard({ onLogout }: Props) {
         }
       })
       .finally(() => setLoading(false));
+    fetchProfile().then(setProfile).catch(() => {});
   }, [onLogout]);
+
+  async function handleProfileSave(p: UserProfile) {
+    setProfileSaving(true);
+    try {
+      await saveProfile(p);
+      setProfile(p);
+      setProfileOpen(false);
+      // Reload grants with new profile scoring
+      setLoading(true);
+      const updated = await fetchGrants();
+      setGrants(updated);
+    } catch {
+      // ignore
+    } finally {
+      setProfileSaving(false);
+      setLoading(false);
+    }
+  }
 
   const handleLogout = useCallback(async () => {
     await logout().catch(() => {});
@@ -118,6 +142,18 @@ export default function Dashboard({ onLogout }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setProfileOpen(true)}
+            className="btn-ghost px-2.5 gap-1.5 hidden sm:flex"
+            title="Edit profile"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-xs">{profile ? "Profile" : "Set profile"}</span>
+            {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400" />}
+          </button>
+
           <button
             onClick={handleExport}
             className="btn-outline hidden sm:flex gap-1.5"
@@ -292,6 +328,20 @@ export default function Dashboard({ onLogout }: Props) {
 
       {/* Chat panel */}
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+
+      {/* Profile modal */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <ProfileSetup
+              initial={profile}
+              onSave={handleProfileSave}
+              onSkip={() => setProfileOpen(false)}
+              saving={profileSaving}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
