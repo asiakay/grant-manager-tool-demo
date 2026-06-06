@@ -1,35 +1,30 @@
-name: Deploy Grant Manager Portal
+name: Deploy to Cloudflare Workers
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches:
+      - main
 
-# Workers deployment is handled by workers-ci.yml
 jobs:
-  test-and-check:
-    name: Python tests & JS sanity
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: actions/setup-node@v4
-      with:
-        node-version: 20
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
 
-    - uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
+      - name: Install UI dependencies
+        run: cd ui && npm ci
 
-    - name: Install Python deps
-      run: |
-        pip install -r requirements.txt
-        pip install pytest
-        pip install -e grant_summarizer
+      - name: Build UI
+        run: cd ui && npm run build
 
-    - name: Install JS deps
-      run: npm ci
-
-    - name: Run Python tests
-      run: pytest -q
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
