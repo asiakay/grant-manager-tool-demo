@@ -99,13 +99,20 @@ jobs:
           echo "LOGIN_ATTEMPTS id: $LA_ID"
 
           # ── GRANT_MANAGER_DB D1 ───────────────────────────────────────────
-          DB_ID=$(curl -sf -H "$AUTH" "$CF/d1/database?per_page=100" \
-            | jq -r '.result[] | select(.name == "grant-manager-db") | .uuid' | head -1)
+          D1_LIST=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100")
+          echo "D1 list (preview): $(echo "$D1_LIST" | head -c 400)"
+          DB_ID=$(echo "$D1_LIST" | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
           if [ -z "$DB_ID" ]; then
             echo "Creating grant-manager-db D1 database..."
-            DB_ID=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
-              -d '{"name":"grant-manager-db"}' "$CF/d1/database" \
-              | jq -r '.result.uuid')
+            D1_CREATE=$(curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+              -d '{"name":"grant-manager-db"}' "$CF/d1/database")
+            echo "D1 create response: $(echo "$D1_CREATE" | head -c 400)"
+            DB_ID=$(echo "$D1_CREATE" | jq -r '(.result.uuid // .result.id) // empty' | head -1)
+            if [ -z "$DB_ID" ]; then
+              # May have failed due to conflict; re-list to pick up existing DB
+              DB_ID=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100" \
+                | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
+            fi
           fi
           echo "GRANT_MANAGER_DB id: $DB_ID"
 
