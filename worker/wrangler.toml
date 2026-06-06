@@ -9,7 +9,7 @@ binding = "AI"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "EQORE_DB"
+database_name = "GRANT_MANAGER_DB"
 database_id = "85970bbc-3d0b-4922-8ec2-3845f4606201"
 
 [site]

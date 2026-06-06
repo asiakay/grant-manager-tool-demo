@@ -100,7 +100,7 @@ export async function onRequest(context) {
   // API: grants list
   if (url.pathname === "/api/grants") {
     if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-    if (!env.EQORE_DB) {
+    if (!env.GRANT_MANAGER_DB) {
       return new Response(JSON.stringify([]), {
         headers: { "content-type": "application/json" },
       });
@@ -112,10 +112,10 @@ export async function onRequest(context) {
         try { profile = JSON.parse(profileRaw); } catch { profile = {}; }
       }
     }
-    const columns = await getColumns(env.EQORE_DB);
+    const columns = await getColumns(env.GRANT_MANAGER_DB);
     let results = [];
     if (columns.length > 0) {
-      const { results: rows } = await env.EQORE_DB.prepare(
+      const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
         `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
       ).all();
       results = rows
@@ -160,11 +160,11 @@ export async function onRequest(context) {
   // Data export (CSV)
   if (url.pathname === "/data") {
     if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-    if (!env.EQORE_DB) return new Response("", { headers: { "content-type": "text/csv" } });
-    const columns = await getColumns(env.EQORE_DB);
+    if (!env.GRANT_MANAGER_DB) return new Response("", { headers: { "content-type": "text/csv" } });
+    const columns = await getColumns(env.GRANT_MANAGER_DB);
     let body = "";
     if (columns.length > 0) {
-      const { results } = await env.EQORE_DB.prepare(
+      const { results } = await env.GRANT_MANAGER_DB.prepare(
         `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
       ).all();
       body = [
@@ -179,8 +179,8 @@ export async function onRequest(context) {
 
   // Schema (column list)
   if (url.pathname === "/schema") {
-    if (!env.EQORE_DB) return new Response(JSON.stringify([]), { headers: { "content-type": "application/json" } });
-    const columns = await getColumns(env.EQORE_DB);
+    if (!env.GRANT_MANAGER_DB) return new Response(JSON.stringify([]), { headers: { "content-type": "application/json" } });
+    const columns = await getColumns(env.GRANT_MANAGER_DB);
     return new Response(JSON.stringify(columns), {
       headers: { "content-type": "application/json" },
     });
@@ -192,13 +192,13 @@ export async function onRequest(context) {
       return new Response("", { status: 302, headers: { Location: "/" } });
     }
     if (request.method === "POST") {
-      if (!env.EQORE_DB) return new Response("Database not configured", { status: 503 });
-      const columns = await getColumns(env.EQORE_DB);
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+      const columns = await getColumns(env.GRANT_MANAGER_DB);
       const form = await request.formData();
       const values = columns.map((c) => form.get(c) || "");
       const placeholders = columns.map(() => "?").join(",");
       const cols = columns.map((c) => `"${c}"`).join(",");
-      await env.EQORE_DB.prepare(
+      await env.GRANT_MANAGER_DB.prepare(
         `INSERT OR REPLACE INTO programs (${cols}) VALUES (${placeholders})`
       )
         .bind(...values)
