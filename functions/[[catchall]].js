@@ -100,6 +100,11 @@ export async function onRequest(context) {
   // API: grants list
   if (url.pathname === "/api/grants") {
     if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+    if (!env.EQORE_DB) {
+      return new Response(JSON.stringify([]), {
+        headers: { "content-type": "application/json" },
+      });
+    }
     let profile = {};
     if (env.USER_PROFILES) {
       const profileRaw = await env.USER_PROFILES.get(username);
@@ -155,6 +160,7 @@ export async function onRequest(context) {
   // Data export (CSV)
   if (url.pathname === "/data") {
     if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+    if (!env.EQORE_DB) return new Response("", { headers: { "content-type": "text/csv" } });
     const columns = await getColumns(env.EQORE_DB);
     let body = "";
     if (columns.length > 0) {
@@ -173,6 +179,7 @@ export async function onRequest(context) {
 
   // Schema (column list)
   if (url.pathname === "/schema") {
+    if (!env.EQORE_DB) return new Response(JSON.stringify([]), { headers: { "content-type": "application/json" } });
     const columns = await getColumns(env.EQORE_DB);
     return new Response(JSON.stringify(columns), {
       headers: { "content-type": "application/json" },
@@ -185,6 +192,7 @@ export async function onRequest(context) {
       return new Response("", { status: 302, headers: { Location: "/" } });
     }
     if (request.method === "POST") {
+      if (!env.EQORE_DB) return new Response("Database not configured", { status: 503 });
       const columns = await getColumns(env.EQORE_DB);
       const form = await request.formData();
       const values = columns.map((c) => form.get(c) || "");
