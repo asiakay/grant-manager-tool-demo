@@ -229,7 +229,7 @@ export default {
           profile = {};
         }
       }
-      const columns = await getColumns(env.DB);
+      const columns = await getColumns(env.EQORE_DB);
       let results = [];
       if (columns.length > 0) {
         const { results: rows } = await env.EQORE_DB.prepare(
@@ -265,13 +265,10 @@ export default {
         return new Response("AI binding not configured", { status: 503 });
       }
       const { messages } = await request.json();
-      const prompt = Array.isArray(messages)
-        ? messages.map((m) => `${m.role}: ${m.content}`).join("\n")
-        : String(messages || "");
       const result = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
         messages: Array.isArray(messages)
           ? messages
-          : [{ role: "user", content: prompt }],
+          : [{ role: "user", content: String(messages || "") }],
         stream: false,
       });
       return new Response(JSON.stringify({ response: result.response }), {
