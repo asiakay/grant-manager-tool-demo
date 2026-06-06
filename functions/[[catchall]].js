@@ -232,6 +232,46 @@ export async function onRequest(context) {
         try { profile = JSON.parse(profileRaw); } catch { profile = {}; }
       }
     }
+
+    const focusAreas = profile.focusAreas || [];
+    const orgType = profile.orgType || "";
+    const stage = profile.stage || "";
+
+    const FOCUS_KEYWORDS = {
+      "health & medicine": ["health", "medical", "medicine", "clinical", "healthcare", "patient", "disease", "hospital", "biomedical"],
+      "education & workforce": ["education", "workforce", "training", "school", "learning", "student", "teacher", "employment", "job", "skill"],
+      "technology & innovation": ["technology", "innovation", "tech", "software", "digital", "data", "ai", "startup", "engineering", "stem"],
+      "housing & community": ["housing", "community", "affordable", "homeless", "neighborhood", "urban", "residential", "shelter"],
+      "environment & climate": ["environment", "climate", "sustainability", "green", "energy", "carbon", "conservation", "renewable", "ecological"],
+      "agriculture & food": ["agriculture", "food", "farm", "rural", "crop", "nutrition", "hunger", "food security"],
+      "social services": ["social", "welfare", "poverty", "low-income", "family", "children", "youth", "elderly", "disability"],
+      "arts & humanities": ["arts", "humanities", "culture", "creative", "museum", "music", "film", "heritage", "literature"],
+      "international development": ["international", "global", "developing", "foreign", "aid", "humanitarian", "overseas"],
+      "veterans & military": ["veteran", "military", "armed forces", "defense", "service member", "vets"],
+      "research & science": ["research", "science", "scientific", "laboratory", "study", "university", "academic", "investigation"],
+      "justice & safety": ["justice", "safety", "legal", "law", "criminal", "public safety", "equity", "civil rights", "policy"],
+    };
+    const ORG_KEYWORDS = {
+      nonprofit: ["nonprofit", "non-profit", "501c3", "ngo", "charity", "community organization"],
+      university: ["university", "college", "academic", "research institution", "higher education"],
+      startup: ["startup", "small business", "entrepreneur", "early-stage", "emerging"],
+      government: ["government", "tribal", "municipality", "public agency", "federal", "state agency"],
+      individual: ["individual", "researcher", "fellow", "independent"],
+      hospital: ["hospital", "health system", "clinic", "medical center", "healthcare provider"],
+    };
+    const STAGE_KEYWORDS = {
+      research: ["pilot", "research", "ideation", "exploratory", "proof of concept", "early stage"],
+      pilot: ["pilot", "proof of concept", "demonstration", "prototype", "feasibility"],
+      growth: ["growth", "scaling", "expansion", "scale", "growing"],
+      established: ["established", "program", "organization", "existing", "operational"],
+    };
+
+    const keywords = [
+      ...focusAreas.flatMap(f => FOCUS_KEYWORDS[f.toLowerCase()] || [f.toLowerCase()]),
+      ...(ORG_KEYWORDS[orgType] || [orgType.toLowerCase()]),
+      ...(STAGE_KEYWORDS[stage] || [stage.toLowerCase()]),
+    ].filter(Boolean);
+
     const columns = await getColumns(env.GRANT_MANAGER_DB);
     let results = [];
     if (columns.length > 0) {
@@ -240,12 +280,34 @@ export async function onRequest(context) {
       ).all();
       results = rows
         .map((r) => {
-          let score = 0;
-          for (const [field, weight] of Object.entries(profile)) {
-            const val = Number(r[field]) || 0;
-            score += val * Number(weight);
+          const grantText = [r.Name, r.Sponsor, r["Eligibility (key conditions)"], r.Benefits, r["Notes/Actions"]]
+            .join(" ").toLowerCase();
+
+          let keywordScore = 0;
+          for (const kw of keywords) {
+            if (kw && grantText.includes(kw)) keywordScore += 1;
           }
-          return { ...r, score };
+
+          const relevance = parseFloat(r.Relevance) || 0;
+          const fit = parseFloat(r.Fit) || 0;
+          const ease = parseFloat(r.Ease) || 0;
+          const curatorScore = (relevance + fit + ease) / 3;
+
+          let recency = 0;
+          const deadline = r["Deadline/Next Cohort"] ? new Date(r["Deadline/Next Cohort"]) : null;
+          if (deadline && !isNaN(deadline.getTime())) {
+            const daysUntil = (deadline - Date.now()) / 86400000;
+            if (daysUntil >= 0 && daysUntil <= 365) recency = 1 - daysUntil / 365;
+          }
+
+          const hasProfile = keywords.length > 0;
+          const score = hasProfile
+            ? (keywordScore / Math.max(keywords.length, 1)) * 5 * 0.5
+              + curatorScore * 0.35
+              + recency * 0.15
+            : curatorScore * 0.85 + recency * 0.15;
+
+          return { ...r, score: Math.round(score * 100) / 100 };
         })
         .sort((a, b) => b.score - a.score);
     }

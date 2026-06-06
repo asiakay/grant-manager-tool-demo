@@ -278,11 +278,42 @@ if (url.pathname === "/api/profile") {
       const orgType = profile.orgType || "";
       const stage = profile.stage || "";
 
-      // Build a keyword set from profile for matching against grant text
+      // Expand profile selections into individual searchable keywords
+      const FOCUS_KEYWORDS = {
+        "health & medicine": ["health", "medical", "medicine", "clinical", "healthcare", "patient", "disease", "hospital", "biomedical"],
+        "education & workforce": ["education", "workforce", "training", "school", "learning", "student", "teacher", "employment", "job", "skill"],
+        "technology & innovation": ["technology", "innovation", "tech", "software", "digital", "data", "ai", "startup", "engineering", "stem"],
+        "housing & community": ["housing", "community", "affordable", "homeless", "neighborhood", "urban", "residential", "shelter"],
+        "environment & climate": ["environment", "climate", "sustainability", "green", "energy", "carbon", "conservation", "renewable", "ecological"],
+        "agriculture & food": ["agriculture", "food", "farm", "rural", "crop", "nutrition", "hunger", "food security"],
+        "social services": ["social", "welfare", "poverty", "low-income", "family", "children", "youth", "elderly", "disability"],
+        "arts & humanities": ["arts", "humanities", "culture", "creative", "museum", "music", "film", "heritage", "literature"],
+        "international development": ["international", "global", "developing", "foreign", "aid", "humanitarian", "overseas"],
+        "veterans & military": ["veteran", "military", "armed forces", "defense", "service member", "vets"],
+        "research & science": ["research", "science", "scientific", "laboratory", "study", "university", "academic", "investigation"],
+        "justice & safety": ["justice", "safety", "legal", "law", "criminal", "public safety", "equity", "civil rights", "policy"],
+      };
+
+      const ORG_KEYWORDS = {
+        nonprofit: ["nonprofit", "non-profit", "501c3", "ngo", "charity", "community organization"],
+        university: ["university", "college", "academic", "research institution", "higher education"],
+        startup: ["startup", "small business", "entrepreneur", "early-stage", "emerging"],
+        government: ["government", "tribal", "municipality", "public agency", "federal", "state agency"],
+        individual: ["individual", "researcher", "fellow", "independent"],
+        hospital: ["hospital", "health system", "clinic", "medical center", "healthcare provider"],
+      };
+
+      const STAGE_KEYWORDS = {
+        research: ["pilot", "research", "ideation", "exploratory", "proof of concept", "early stage"],
+        pilot: ["pilot", "proof of concept", "demonstration", "prototype", "feasibility"],
+        growth: ["growth", "scaling", "expansion", "scale", "growing"],
+        established: ["established", "program", "organization", "existing", "operational"],
+      };
+
       const keywords = [
-        ...focusAreas.map(f => f.toLowerCase()),
-        orgType.toLowerCase(),
-        stage.toLowerCase(),
+        ...focusAreas.flatMap(f => FOCUS_KEYWORDS[f.toLowerCase()] || [f.toLowerCase()]),
+        ...(ORG_KEYWORDS[orgType] || [orgType.toLowerCase()]),
+        ...(STAGE_KEYWORDS[stage] || [stage.toLowerCase()]),
       ].filter(Boolean);
 
       const columns = await getColumns(env.GRANT_MANAGER_DB);
