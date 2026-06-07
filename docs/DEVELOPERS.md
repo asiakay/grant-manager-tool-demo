@@ -87,6 +87,19 @@ python wrangle_grants.py --input data/ --out master.csv --print-summary
 
 # Score
 python program_scoring.py master.csv --out scored.csv
+
+# Import into D1  (one command runs wrangle → score → import)
+make import          # → remote D1 (production)
+make import-local    # → local D1 preview (requires: npx wrangler d1 migrations apply GRANT_MANAGER_DB --local)
+```
+
+`import_to_d1.py` validates the CSV, maps column aliases, drops pipeline-only columns
+(`StackAlignment`, `CadenceRecency`), and upserts rows via `INSERT OR REPLACE` so
+re-runs are safe. User-owned `Notes / Actions` data is never overwritten.
+
+For a quick sanity check before importing live data:
+```bash
+python import_to_d1.py out/scored.csv --dry-run   # prints SQL, no execution
 ```
 
 ### Tests

@@ -90,6 +90,10 @@ python wrangle_grants.py --input data/ --out master.csv --print-summary
 # Score opportunities
 python program_scoring.py master.csv --out scored.csv
 
+# Load into D1 (one command runs the full pipeline: wrangle → score → import)
+make import          # load to remote D1
+make import-local    # load to local D1 preview
+
 # Summarize grant PDFs
 grant-summarizer --pdf grant.pdf --format all --outdir ./dist
 ```
@@ -140,7 +144,7 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 This is an actively developed MVP. Current technical debt, in order of priority:
 
-- **CSV → D1 import** — No automated pipeline from scored.csv to the database yet. Currently manual via `/new_schema`.
+- **CSV → D1 import** — Automated via `make import` / `make import-local` (`import_to_d1.py`).
 - **PDF pipeline** — `pdf_worker.ts` queue consumer is incomplete pending `GRANT_SUMMARIZER_URL` configuration.
 - **React scoring table** — `ui/ScoringTable.jsx` exists but is not yet integrated into the worker.
 
