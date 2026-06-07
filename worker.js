@@ -316,7 +316,7 @@ if (url.pathname === "/api/profile") {
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: "claude-haiku-4-5",
+            model: "claude-opus-4-7",
             max_tokens: 1024,
             system:
               "You are a helpful grant research assistant. Help users analyze grant opportunities, compare funding sources, and answer questions about their grant data.",
