@@ -10,17 +10,9 @@ import {
   type StreamTextOnFinishCallback,
   type ToolSet
 } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createWorkersAI } from "workers-ai-provider";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
-// import { env } from "cloudflare:workers";
-
-const model = anthropic("claude-sonnet-4-6");
-// Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -45,6 +37,9 @@ export class Chat extends AIChatAgent<Env> {
       ...this.mcp.unstable_getAITools()
     };
 
+    const workersAI = createWorkersAI({ binding: this.env.AI });
+    const model = workersAI("@cf/meta/llama-3.1-8b-instruct");
+
     // Create a streaming response that handles both text and tool outputs
     const dataStreamResponse = createDataStreamResponse({
       execute: async (dataStream) => {
@@ -57,7 +52,6 @@ export class Chat extends AIChatAgent<Env> {
           executions
         });
 
-        // Stream the AI response using Claude
         const result = streamText({
           model,
           system: `You are a helpful assistant that can do various tasks... 
@@ -108,15 +102,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/check-open-ai-key") {
-      const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
-      return Response.json({
-        success: hasAnthropicKey
-      });
-    }
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.error(
-        "ANTHROPIC_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
-      );
+      return Response.json({ success: !!env.AI });
     }
     return (
       // Route the request to our agent or return 404 if not found
