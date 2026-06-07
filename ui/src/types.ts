@@ -33,4 +33,5 @@ export interface FilterState {
   minScore: string;
   deadlineBefore: string;
   search: string;
+  savedOnly: boolean;
 }

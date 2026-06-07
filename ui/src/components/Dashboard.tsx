@@ -35,6 +35,7 @@ const INITIAL_FILTERS: FilterState = {
   minScore: "",
   deadlineBefore: "",
   search: "",
+  savedOnly: false,
 };
 
 export default function Dashboard({ onLogout, onBackToProfile }: Props) {
@@ -117,7 +118,7 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
   const stages = [...new Set(grants.map((g) => g.Stage).filter(Boolean))].sort();
 
   const activeFilterCount = Object.entries(filters).filter(
-    ([, v]) => v !== ""
+    ([, v]) => v !== "" && v !== false
   ).length;
 
   async function handleExport() {
@@ -300,16 +301,12 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
               {(watchlist.size > 0 || candidates.size > 0) && (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {candidates.size > 0 && (
-                    <span className="badge bg-brand-900/50 text-brand-300">
-                      ★ {candidates.size} candidate{candidates.size !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {watchlist.size > 0 && (
-                    <span className="badge bg-blue-900/50 text-blue-300">
-                      👁 {watchlist.size} on watchlist
-                    </span>
-                  )}
+                  <button
+                    onClick={() => setFilters((f) => ({ ...f, savedOnly: !f.savedOnly }))}
+                    className={`badge transition-colors cursor-pointer ${filters.savedOnly ? "bg-brand-600/60 text-brand-200 ring-1 ring-brand-400" : "bg-brand-900/50 text-brand-300 hover:bg-brand-800/50"}`}
+                  >
+                    ★ {candidates.size + watchlist.size} saved — {filters.savedOnly ? "showing saved" : "show saved"}
+                  </button>
                 </div>
               )}
             </div>
