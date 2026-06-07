@@ -24,3 +24,6 @@ migrations_dir = "migrations"
 
 [ai]
 binding = "AI"
+
+[observability.logs]
+enabled = true
