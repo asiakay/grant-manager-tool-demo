@@ -3,7 +3,6 @@
 Built on Cloudflare's edge infrastructure. 603 non-dilutive funding opportunities. Personalized match scoring. AI-assisted research. Live in production.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-grant--manager--tool--demo.asialakaygrady--6d4.workers.dev-1D9E75?style=flat-square)](https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev)
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fasiakay%2Fgrant-manager-tool-demo)
 
 ---
 
@@ -59,32 +58,9 @@ Access credentials available on request.
 ## Architecture
 
 ```
-Grants.gov API
-      │
-      ▼
-search_grants.py ──► Raw CSVs
-                          │
-                          ▼
-                   wrangle_grants.py ──► master.csv
-                                              │
-                          ┌───────────────────┤
-                          │                   │
-                          ▼                   ▼
-                   Grant PDFs          program_scoring.py
-                          │                   │
-                          ▼                   │
-                   grant-summarizer           │
-                          │                   │
-                          ▼                   ▼
-                   clean_row.csv ──────► scored.csv
-                                              │
-                                              ▼
-                                        D1 Database
-                                              │
-                                              ▼
-                                    Cloudflare Worker
-                                     (Dashboard + API)
+Grants.gov API → Python pipeline (search · wrangle · score) → D1 Database → Cloudflare Worker (Dashboard + API)
 ```
+Weights are configurable per user. The scoring profile is stored in KV and applied at query time — not baked into the dataset.
 
 ### Stack
 - **Runtime:** Cloudflare Workers (edge, zero cold starts)
@@ -99,20 +75,7 @@ search_grants.py ──► Raw CSVs
 ## Key Components
 
 ### Cloudflare Worker (`worker.js`)
-Primary production deployment. Handles authentication, dashboard rendering, user profile management, and the `/api/grants` scoring endpoint.
-
-**Endpoints:**
-```
-GET  /              Login page or dashboard redirect
-POST /login         Authentication
-GET  /dashboard     Programs dashboard (authenticated)
-GET  /api/grants    Scored grants ranked by user profile (authenticated)
-GET  /schema        Programs schema as JSON
-GET  /data          Full dataset as CSV export
-POST /new_schema    Add program entry
-GET  /logout        Clear session
-POST /api/chat      AI assistant (Cloudflare AI)
-```
+Primary production deployment. Handles authentication, dashboard rendering, user profile management, and grant scoring. Full endpoint reference in [DEVELOPERS.md](docs/DEVELOPERS.md).
 
 ### Python Pipeline
 Four production-ready CLI tools for data acquisition, normalization, scoring, and PDF summarization. The full pipeline documentation is in [DEVELOPERS.md](docs/DEVELOPERS.md).
@@ -137,28 +100,7 @@ Score = 0.3×Relevance + 0.3×Fit + 0.2×Ease + 0.1×StackAlignment + 0.1×Deadl
 ```
 Weights are configurable per user. The scoring profile is stored in KV and applied at query time — not baked into the dataset.
 
-### Database Schema
-```sql
-CREATE TABLE programs (
-  "Type"                    TEXT,
-  "Name"                    TEXT PRIMARY KEY,
-  "Sponsor"                 TEXT,
-  "Source URL"              TEXT,
-  "Region / Eligibility"    TEXT,
-  "Deadline / Next Cohort"  TEXT,
-  "Cadence"                 TEXT,
-  "Benefits"                TEXT,
-  "Eligibility"             TEXT,
-  "Stage"                   TEXT,
-  "Non-dilutive?"           TEXT,
-  "Stack Required?"         TEXT,
-  "Relevance"               TEXT,
-  "Fit"                     TEXT,
-  "Ease"                    TEXT,
-  "Weighted Score"          TEXT,
-  "Notes / Actions"         TEXT
-)
-```
+Full schema definition: [docs/data_contract.json](docs/data_contract.json).
 
 ---
 
