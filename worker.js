@@ -304,22 +304,28 @@ export default {
         ? profile.weights
         : null;
 
+      const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+      const pageSize = Math.min(500, Math.max(1, parseInt(url.searchParams.get("pageSize") || "100", 10)));
+
       const grantsStart = Date.now();
       const columns = await getColumns(env.GRANT_MANAGER_DB);
-      let results = [];
+      let scored = [];
       if (columns.length > 0) {
         const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
           `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
         ).all();
-        results = rows
+        scored = rows
           .map((r) => ({
             ...r,
             score: Math.round(computeScore(r, userWeights) * 100) / 100,
           }))
           .sort((a, b) => b.score - a.score);
       }
-      log("info", "grants_fetched", { ...reqCtx, rowCount: results.length, durationMs: Date.now() - grantsStart });
-      return jsonResponse(JSON.stringify(results));
+      const total = scored.length;
+      const start = (page - 1) * pageSize;
+      const data = scored.slice(start, start + pageSize);
+      log("info", "grants_fetched", { ...reqCtx, total, page, pageSize, durationMs: Date.now() - grantsStart });
+      return jsonResponse(JSON.stringify({ data, total, page, pageSize }));
     }
 
     if (url.pathname === "/api/me") {
