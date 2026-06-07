@@ -1,4 +1,8 @@
 
+function log(level, event, fields = {}) {
+  console.log(JSON.stringify({ level, event, ...fields, ts: Date.now() }));
+}
+
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 const MIN_PASSWORD_LENGTH = 8;
@@ -107,10 +111,13 @@ async function checkRateLimit(kv, key) {
 
 export default {
   async fetch(request, env) {
+    const requestId = crypto.randomUUID();
     const url = new URL(request.url);
+    const reqStart = Date.now();
     const cookie = request.headers.get("Cookie") || "";
     const username = await resolveSession(env, cookie);
     const loggedIn = !!username;
+    const reqCtx = { requestId, method: request.method, path: url.pathname, user: username ?? undefined };
     // Hash the password at runtime so it always matches the same algorithm
     // used for incoming login attempts. Environment-provided users may supply
     // either hashed or plain-text passwords; the latter are hashed here so the
@@ -128,7 +135,7 @@ export default {
             : await hashPassword(secret);
         }
       } catch (err) {
-        console.warn("Invalid USER_HASHES value", err);
+        log("warn", "invalid_user_hashes", { requestId, error: String(err) });
       }
     }
 
@@ -139,7 +146,10 @@ export default {
       if (env.LOGIN_ATTEMPTS) {
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const { blocked } = await checkRateLimit(env.LOGIN_ATTEMPTS, `signup:${ip}`);
-        if (blocked) return new Response("Too many signup attempts. Try again later.", { status: 429 });
+        if (blocked) {
+          log("warn", "signup_rate_limited", { requestId, ip });
+          return new Response("Too many signup attempts. Try again later.", { status: 429 });
+        }
       }
 
       const form = await request.formData();
@@ -173,6 +183,7 @@ export default {
       ).bind(newUser).first();
 
       if (existing || users[newUser]) {
+        log("info", "signup_username_taken", { requestId, username: newUser });
         return jsonResponse(JSON.stringify({ error: "Username is already taken." }), { status: 409 });
       }
 
@@ -181,6 +192,7 @@ export default {
         "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
       ).bind(newUser, hash, Date.now()).run();
 
+      log("info", "signup_success", { requestId, username: newUser });
       return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
     }
 
@@ -195,10 +207,11 @@ export default {
         const now = Date.now();
         const rec = stored || { count: 0, time: now };
         if (now - rec.time <= LOCKOUT_MS && rec.count >= MAX_ATTEMPTS) {
+          log("warn", "login_rate_limited", { requestId, ip });
           return new Response("Too many attempts. Try again later.", { status: 429 });
         }
       } else {
-        console.warn("LOGIN_ATTEMPTS binding is not configured");
+        log("warn", "login_attempts_binding_missing", { requestId });
       }
 
       const hashed = await hashPassword(pass || "");
@@ -215,7 +228,7 @@ export default {
           "SELECT password_hash FROM users WHERE username = ?"
         ).bind(user).first();
       } catch (err) {
-        console.warn("D1 user lookup failed", err);
+        log("warn", "login_d1_lookup_failed", { requestId, error: String(err) });
       }
       const dbMatch = dbUser && dbUser.password_hash === hashed;
       if ((users[user] && users[user] === hashed) || dbMatch) {
@@ -224,6 +237,7 @@ export default {
         if (env.USER_PROFILES) {
           await env.USER_PROFILES.put(`session:${token}`, user, { expirationTtl: SESSION_TTL });
         }
+        log("info", "login_success", { requestId, user, ip });
         const secure = url.protocol === "https:" ? "; Secure" : "";
         return new Response("", {
           status: 302,
@@ -234,6 +248,7 @@ export default {
         });
       }
 
+      log("warn", "login_failed", { requestId, user, ip });
       // Failed login — increment attempt counter
       if (env.LOGIN_ATTEMPTS) {
         const now = Date.now();
@@ -255,10 +270,12 @@ export default {
       }
       if (request.method === "POST") {
         if (!(await validateCsrf(request, env, username))) {
+          log("warn", "csrf_rejected", { ...reqCtx, endpoint: "profile" });
           return new Response("Forbidden", { status: 403 });
         }
         const body = await request.json();
         await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
+        log("info", "profile_saved", reqCtx);
         return jsonResponse(JSON.stringify({ ok: true }));
       }
     }
@@ -287,6 +304,7 @@ export default {
         ? profile.weights
         : null;
 
+      const grantsStart = Date.now();
       const columns = await getColumns(env.GRANT_MANAGER_DB);
       let results = [];
       if (columns.length > 0) {
@@ -300,6 +318,7 @@ export default {
           }))
           .sort((a, b) => b.score - a.score);
       }
+      log("info", "grants_fetched", { ...reqCtx, rowCount: results.length, durationMs: Date.now() - grantsStart });
       return jsonResponse(JSON.stringify(results));
     }
 
@@ -329,6 +348,7 @@ export default {
     if (url.pathname === "/api/notes" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
       if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "notes" });
         return new Response("Forbidden", { status: 403 });
       }
       if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
@@ -349,6 +369,7 @@ export default {
         return new Response("Unauthorized", { status: 401 });
       }
       if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "chat" });
         return new Response("Forbidden", { status: 403 });
       }
       const { messages } = await request.json();
@@ -396,7 +417,7 @@ export default {
           (r["Notes / Actions"] ? `\n  Notes: ${r["Notes / Actions"]}` : "")
         ).join("\n\n");
       } catch (e) {
-        console.error("Grant context fetch failed", e);
+        log("error", "chat_grant_context_failed", { ...reqCtx, error: String(e) });
       }
 
       const systemPrompt =
@@ -409,10 +430,12 @@ export default {
 
       // Try native AI binding first, then fall back to REST API
       if (env.AI) {
+        const aiStart = Date.now();
         const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
           messages: aiMessages,
           stream: false,
         });
+        log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.1-8b-instruct", contextGrants: totalCount, durationMs: Date.now() - aiStart });
         return jsonResponse(JSON.stringify({ response: result.response }));
       }
 
@@ -476,6 +499,7 @@ export default {
           { expirationTtl: 3600 }
         );
       }
+      log("info", "password_reset_requested", { requestId, username: resetUser });
       return jsonResponse(JSON.stringify({
         ok: true,
         token: resetToken,
@@ -508,12 +532,13 @@ export default {
           "UPDATE users SET password_hash = ? WHERE username = ?"
         ).bind(newHash, resetData.username).run();
       } catch (err) {
-        console.error("Failed to update password", err);
+        log("error", "password_reset_failed", { requestId, error: String(err) });
         return jsonResponse(JSON.stringify({ error: "Failed to update password." }), { status: 500 });
       }
       if (env.LOGIN_ATTEMPTS) {
         await env.LOGIN_ATTEMPTS.delete(`reset:${resetToken}`);
       }
+      log("info", "password_reset_success", { requestId, username: resetData.username });
       return jsonResponse(JSON.stringify({ ok: true }));
     }
 
