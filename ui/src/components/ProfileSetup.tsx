@@ -1,35 +1,20 @@
 import { useState } from "react";
 import type { UserProfile } from "../api";
+import { DEFAULT_WEIGHTS } from "../api";
 
-const FOCUS_AREAS = [
-  "Health & Medicine",
-  "Education & Workforce",
-  "Technology & Innovation",
-  "Housing & Community",
-  "Environment & Climate",
-  "Agriculture & Food",
-  "Social Services",
-  "Arts & Humanities",
-  "International Development",
-  "Veterans & Military",
-  "Research & Science",
-  "Justice & Safety",
+const FIELDS: { key: keyof UserProfile["weights"]; label: string; description: string }[] = [
+  { key: "Relevance",      label: "Relevance",       description: "How well the grant aligns with your mission" },
+  { key: "Fit",            label: "Fit",              description: "How suitable you are as an applicant" },
+  { key: "Ease",           label: "Ease",             description: "How straightforward the application process is" },
+  { key: "StackAlignment", label: "Stack Alignment",  description: "Whether the sponsor's tech stack is required" },
+  { key: "CadenceRecency", label: "Deadline Urgency", description: "How soon the deadline is (rolling = highest)" },
 ];
 
-const ORG_TYPES = [
-  { value: "nonprofit", label: "Nonprofit / NGO" },
-  { value: "university", label: "University / Research Institution" },
-  { value: "startup", label: "Startup / Small Business" },
-  { value: "government", label: "Government / Tribal" },
-  { value: "individual", label: "Individual Researcher" },
-  { value: "hospital", label: "Hospital / Health System" },
-];
-
-const STAGES = [
-  { value: "research", label: "Early Research / Ideation" },
-  { value: "pilot", label: "Pilot / Proof of Concept" },
-  { value: "growth", label: "Growth / Scaling" },
-  { value: "established", label: "Established Program" },
+const PRESETS: { label: string; weights: UserProfile["weights"] }[] = [
+  { label: "Balanced (default)", weights: DEFAULT_WEIGHTS },
+  { label: "Mission-first",      weights: { Relevance: 0.5, Fit: 0.3, Ease: 0.1, StackAlignment: 0.05, CadenceRecency: 0.05 } },
+  { label: "Easy wins",          weights: { Relevance: 0.2, Fit: 0.2, Ease: 0.5, StackAlignment: 0.05, CadenceRecency: 0.05 } },
+  { label: "Deadline-driven",    weights: { Relevance: 0.25, Fit: 0.25, Ease: 0.15, StackAlignment: 0.1, CadenceRecency: 0.25 } },
 ];
 
 interface Props {
@@ -39,113 +24,119 @@ interface Props {
   saving?: boolean;
 }
 
-export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props) {
-  const [focusAreas, setFocusAreas] = useState<string[]>(initial?.focusAreas ?? []);
-  const [orgType, setOrgType] = useState(initial?.orgType ?? "");
-  const [stage, setStage] = useState(initial?.stage ?? "");
+function normalize(raw: UserProfile["weights"]): UserProfile["weights"] {
+  const total = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
+  return {
+    Relevance:      raw.Relevance / total,
+    Fit:            raw.Fit / total,
+    Ease:           raw.Ease / total,
+    StackAlignment: raw.StackAlignment / total,
+    CadenceRecency: raw.CadenceRecency / total,
+  };
+}
 
-  function toggleFocus(area: string) {
-    setFocusAreas((prev) =>
-      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
-    );
+export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props) {
+  // Store as 0-100 integers for slider UX, normalize on save
+  const initialRaw = initial?.weights ?? DEFAULT_WEIGHTS;
+  const total0 = Object.values(initialRaw).reduce((a, b) => a + b, 0) || 1;
+
+  const [sliders, setSliders] = useState<UserProfile["weights"]>({
+    Relevance:      Math.round((initialRaw.Relevance / total0) * 100),
+    Fit:            Math.round((initialRaw.Fit / total0) * 100),
+    Ease:           Math.round((initialRaw.Ease / total0) * 100),
+    StackAlignment: Math.round((initialRaw.StackAlignment / total0) * 100),
+    CadenceRecency: Math.round((initialRaw.CadenceRecency / total0) * 100),
+  });
+
+  const totalPct = Object.values(sliders).reduce((a, b) => a + b, 0);
+
+  function setField(key: keyof UserProfile["weights"], value: number) {
+    setSliders(prev => ({ ...prev, [key]: value }));
+  }
+
+  function applyPreset(weights: UserProfile["weights"]) {
+    const total = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+    setSliders({
+      Relevance:      Math.round((weights.Relevance / total) * 100),
+      Fit:            Math.round((weights.Fit / total) * 100),
+      Ease:           Math.round((weights.Ease / total) * 100),
+      StackAlignment: Math.round((weights.StackAlignment / total) * 100),
+      CadenceRecency: Math.round((weights.CadenceRecency / total) * 100),
+    });
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ focusAreas, orgType, stage });
+    onSave({ weights: normalize(sliders) });
   }
-
-  const isValid = focusAreas.length > 0 && orgType && stage;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <div className="text-4xl mb-3">🎯</div>
-          <h1 className="text-2xl font-bold text-white">Set up your profile</h1>
+          <div className="text-4xl mb-3">⚖️</div>
+          <h1 className="text-2xl font-bold text-white">Customize your scoring</h1>
           <p className="text-gray-400 text-sm mt-1">
-            Help us match grants to your specific context
+            Adjust how much each factor matters when ranking grants
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="card space-y-6">
-          {/* Focus areas */}
+          {/* Presets */}
           <div>
-            <label className="block text-sm font-semibold text-white mb-3">
-              Focus areas
-              <span className="ml-1 text-gray-500 font-normal">(select all that apply)</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {FOCUS_AREAS.map((area) => {
-                const active = focusAreas.includes(area);
-                return (
-                  <button
-                    key={area}
-                    type="button"
-                    onClick={() => toggleFocus(area)}
-                    className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
-                      active
-                        ? "bg-brand-600/30 border-brand-500 text-brand-300"
-                        : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
-                    }`}
-                  >
-                    {area}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Org type */}
-          <div>
-            <label className="block text-sm font-semibold text-white mb-3">
-              Organization type
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {ORG_TYPES.map(({ value, label }) => (
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Quick presets</p>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map(p => (
                 <button
-                  key={value}
+                  key={p.label}
                   type="button"
-                  onClick={() => setOrgType(value)}
-                  className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
-                    orgType === value
-                      ? "bg-brand-600/30 border-brand-500 text-brand-300"
-                      : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
-                  }`}
+                  onClick={() => applyPreset(p.weights)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:border-brand-500 hover:text-brand-300 transition-colors"
                 >
-                  {label}
+                  {p.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Stage */}
-          <div>
-            <label className="block text-sm font-semibold text-white mb-3">
-              Current stage
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {STAGES.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setStage(value)}
-                  className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
-                    stage === value
-                      ? "bg-brand-600/30 border-brand-500 text-brand-300"
-                      : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          {/* Sliders */}
+          <div className="space-y-5">
+            {FIELDS.map(({ key, label, description }) => {
+              const pct = sliders[key] as number;
+              const share = totalPct > 0 ? Math.round((pct / totalPct) * 100) : 0;
+              return (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <span className="text-sm font-medium text-white">{label}</span>
+                      <p className="text-xs text-gray-500">{description}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-brand-300 ml-4 w-10 text-right shrink-0">
+                      {share}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={pct}
+                    onChange={e => setField(key, Number(e.target.value))}
+                    className="w-full h-1.5 rounded-full appearance-none bg-gray-700 accent-brand-500 cursor-pointer"
+                  />
+                </div>
+              );
+            })}
           </div>
+
+          {/* Weight total warning */}
+          {totalPct === 0 && (
+            <p className="text-xs text-yellow-400">Set at least one weight above zero.</p>
+          )}
 
           <div className="flex gap-3 pt-1">
             <button
               type="submit"
-              disabled={!isValid || saving}
+              disabled={totalPct === 0 || saving}
               className="btn-primary flex-1 justify-center py-2.5"
             >
               {saving ? (
@@ -154,15 +145,11 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
                   Saving…
                 </>
               ) : (
-                "Save profile & find matches"
+                "Save & find my matches"
               )}
             </button>
             {onSkip && (
-              <button
-                type="button"
-                onClick={onSkip}
-                className="btn-ghost px-4"
-              >
+              <button type="button" onClick={onSkip} className="btn-ghost px-4">
                 Skip
               </button>
             )}

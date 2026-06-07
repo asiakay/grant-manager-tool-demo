@@ -2,35 +2,12 @@ import { useState } from "react";
 import type { UserProfile } from "../api";
 import ProfileSetup from "./ProfileSetup";
 
-const FOCUS_LABEL: Record<string, string> = {
-  "Health & Medicine": "Health & Medicine",
-  "Education & Workforce": "Education & Workforce",
-  "Technology & Innovation": "Technology & Innovation",
-  "Housing & Community": "Housing & Community",
-  "Environment & Climate": "Environment & Climate",
-  "Agriculture & Food": "Agriculture & Food",
-  "Social Services": "Social Services",
-  "Arts & Humanities": "Arts & Humanities",
-  "International Development": "International Development",
-  "Veterans & Military": "Veterans & Military",
-  "Research & Science": "Research & Science",
-  "Justice & Safety": "Justice & Safety",
-};
-
-const ORG_LABEL: Record<string, string> = {
-  nonprofit: "Nonprofit / NGO",
-  university: "University / Research Institution",
-  startup: "Startup / Small Business",
-  government: "Government / Tribal",
-  individual: "Individual Researcher",
-  hospital: "Hospital / Health System",
-};
-
-const STAGE_LABEL: Record<string, string> = {
-  research: "Early Research / Ideation",
-  pilot: "Pilot / Proof of Concept",
-  growth: "Growth / Scaling",
-  established: "Established Program",
+const FIELD_LABELS: Record<string, string> = {
+  Relevance:      "Relevance",
+  Fit:            "Fit",
+  Ease:           "Ease",
+  StackAlignment: "Stack Alignment",
+  CadenceRecency: "Deadline Urgency",
 };
 
 interface Props {
@@ -65,55 +42,51 @@ export default function WelcomePage({ username, profile, onViewMatches, onSavePr
     );
   }
 
+  const weights = profile.weights;
+  const total = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
 
-        {/* Welcome header */}
         <div className="text-center">
           <div className="text-5xl mb-4">💰</div>
           <h1 className="text-3xl font-bold text-white">Welcome back, {username}!</h1>
-          <p className="text-gray-400 mt-2">Your grant matches are ready based on your profile.</p>
+          <p className="text-gray-400 mt-2">Grants are ranked using your custom scoring weights.</p>
         </div>
 
-        {/* Profile summary card */}
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Your Profile</h2>
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Your Scoring Weights</h2>
             <button
               onClick={() => setEditing(true)}
               className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
             >
-              Edit parameters
+              Edit weights
             </button>
           </div>
 
-          {/* Focus areas */}
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Focus Areas</p>
-            <div className="flex flex-wrap gap-2">
-              {profile.focusAreas.length > 0 ? profile.focusAreas.map((area) => (
-                <span key={area} className="badge bg-brand-600/20 text-brand-300 border border-brand-700/50">
-                  {FOCUS_LABEL[area] ?? area}
-                </span>
-              )) : <span className="text-gray-500 text-sm">None selected</span>}
-            </div>
-          </div>
-
-          {/* Org type & Stage */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Organization</p>
-              <p className="text-sm text-gray-300">{(ORG_LABEL[profile.orgType] ?? profile.orgType) || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Stage</p>
-              <p className="text-sm text-gray-300">{(STAGE_LABEL[profile.stage] ?? profile.stage) || "—"}</p>
-            </div>
+          <div className="space-y-3">
+            {Object.entries(weights).map(([key, value]) => {
+              const pct = Math.round((value / total) * 100);
+              return (
+                <div key={key}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-300">{FIELD_LABELS[key] ?? key}</span>
+                    <span className="text-brand-300 font-semibold">{pct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-brand-500 rounded-full transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* CTA */}
         <button
           onClick={onViewMatches}
           className="btn-primary w-full justify-center py-3 text-base"

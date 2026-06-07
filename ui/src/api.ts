@@ -141,10 +141,22 @@ export async function exportCsv(): Promise<void> {
 }
 
 export interface UserProfile {
-  focusAreas: string[];
-  orgType: string;
-  stage: string;
+  weights: {
+    Relevance: number;
+    Fit: number;
+    Ease: number;
+    StackAlignment: number;
+    CadenceRecency: number;
+  };
 }
+
+export const DEFAULT_WEIGHTS: UserProfile["weights"] = {
+  Relevance: 0.3,
+  Fit: 0.3,
+  Ease: 0.2,
+  StackAlignment: 0.1,
+  CadenceRecency: 0.1,
+};
 
 export async function fetchProfile(): Promise<UserProfile | null> {
   const res = await fetch(`${BASE}/api/profile`, { credentials: "include" });
