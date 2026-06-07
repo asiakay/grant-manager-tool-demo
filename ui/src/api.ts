@@ -141,6 +141,11 @@ export async function exportCsv(): Promise<void> {
 }
 
 export interface UserProfile {
+  // Step 1: context
+  focusAreas: string[];
+  orgType: string;
+  stage: string;
+  // Step 2: scoring weights
   weights: {
     Relevance: number;
     Fit: number;

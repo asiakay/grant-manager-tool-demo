@@ -22,11 +22,10 @@ export default function App() {
         fetchProfile().catch(() => null),
         fetchMe(),
       ]);
-      // Treat old-format profiles (focusAreas/orgType/stage) as missing
-      const isValidProfile = p && p.weights && typeof p.weights === "object";
-      setProfile(isValidProfile ? p : null);
+      const hasWeights = p && p.weights && typeof p.weights === "object";
+      setProfile(p);
       setUsername(me ?? "");
-      setAuth(isValidProfile ? "welcome" : "profile-setup");
+      setAuth(hasWeights ? "welcome" : "profile-setup");
     });
   }, []);
 
@@ -45,10 +44,10 @@ export default function App() {
       fetchProfile().catch(() => null),
       fetchMe(),
     ]);
-    const isValidProfile = p && p.weights && typeof p.weights === "object";
-    setProfile(isValidProfile ? p : null);
+    const hasWeights = p && p.weights && typeof p.weights === "object";
+    setProfile(p);
     setUsername(me ?? "");
-    setAuth(isValidProfile ? "welcome" : "profile-setup");
+    setAuth(hasWeights ? "welcome" : "profile-setup");
   }
 
   async function handleProfileSave(p: UserProfile) {
