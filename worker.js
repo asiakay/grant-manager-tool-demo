@@ -307,10 +307,61 @@ if (url.pathname === "/api/profile") {
         ? messages
         : [{ role: "user", content: String(messages || "") }];
 
+      // Pull relevant grants from D1 to ground the AI in the actual dataset
+      const lastUserMsg = [...chatMessages].reverse().find(m => m.role === "user")?.content || "";
+      const kw = `%${lastUserMsg.slice(0, 80)}%`;
+      let grantContext = "";
+      let totalCount = 0;
+      try {
+        const countRow = await env.GRANT_MANAGER_DB.prepare("SELECT COUNT(*) as n FROM programs").first();
+        totalCount = countRow?.n ?? 0;
+
+        const cols = `"Name","Sponsor","Type","Stage","Deadline / Next Cohort","Benefits",
+          "Eligibility (key conditions)","Relevance","Fit","Ease","Notes / Actions"`;
+
+        const { results: matched } = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT ${cols} FROM programs
+           WHERE "Name" LIKE ? OR "Sponsor" LIKE ? OR "Benefits" LIKE ?
+              OR "Eligibility (key conditions)" LIKE ?
+           LIMIT 20`
+        ).bind(kw, kw, kw, kw).all();
+
+        const { results: top } = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT ${cols} FROM programs
+           ORDER BY CAST(COALESCE("Relevance","0") AS REAL)
+                  + CAST(COALESCE("Fit","0") AS REAL) DESC
+           LIMIT 10`
+        ).all();
+
+        const seen = new Set();
+        const combined = [];
+        for (const r of [...matched, ...top]) {
+          if (!seen.has(r.Name)) { seen.add(r.Name); combined.push(r); }
+        }
+
+        grantContext = combined.map(r =>
+          `• ${r.Name} | ${r.Sponsor} | ${r.Type || ""} | ${r.Stage || ""}\n` +
+          `  Deadline: ${r["Deadline / Next Cohort"] || "N/A"} | Relevance: ${r.Relevance} | Fit: ${r.Fit} | Ease: ${r.Ease}\n` +
+          `  Benefits: ${r.Benefits || "N/A"}\n` +
+          `  Eligibility: ${r["Eligibility (key conditions)"] || "N/A"}` +
+          (r["Notes / Actions"] ? `\n  Notes: ${r["Notes / Actions"]}` : "")
+        ).join("\n\n");
+      } catch (e) {
+        console.error("Grant context fetch failed", e);
+      }
+
+      const systemPrompt =
+        `You are a grant research assistant. The user has a database of ${totalCount} grant opportunities. ` +
+        `Answer questions using the grant data below. Reference grants by name, compare opportunities, ` +
+        `highlight deadlines and eligibility. Be concise and specific.\n\n` +
+        (grantContext ? `GRANTS FROM DATABASE:\n${grantContext}` : "Could not load grant data.");
+
+      const aiMessages = [{ role: "system", content: systemPrompt }, ...chatMessages];
+
       // Try native AI binding first, then fall back to REST API
       if (env.AI) {
         const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-          messages: chatMessages,
+          messages: aiMessages,
           stream: false,
         });
         return jsonResponse(JSON.stringify({ response: result.response }));
@@ -325,7 +376,7 @@ if (url.pathname === "/api/profile") {
               "Authorization": `Bearer ${env.CF_AI_TOKEN}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ messages: chatMessages }),
+            body: JSON.stringify({ messages: aiMessages }),
           }
         );
         if (!aiRes.ok) {
