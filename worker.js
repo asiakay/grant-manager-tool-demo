@@ -235,10 +235,10 @@ if (url.pathname === "/api/profile") {
     }
 
     if (url.pathname === "/api/ai-status") {
-      const hasAnthropic = !!env.ANTHROPIC_API_KEY;
-      const hasWorkersAI = !!env.AI;
-      const configured = hasAnthropic || hasWorkersAI;
-      const provider = hasAnthropic ? "anthropic" : hasWorkersAI ? "workers-ai" : null;
+      const hasBinding = !!env.AI;
+      const hasRestApi = !!(env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
+      const configured = hasBinding || hasRestApi;
+      const provider = configured ? "workers-ai" : null;
       return jsonResponse(JSON.stringify({ configured, provider }));
     }
 
@@ -307,40 +307,37 @@ if (url.pathname === "/api/profile") {
         ? messages
         : [{ role: "user", content: String(messages || "") }];
 
-      if (env.ANTHROPIC_API_KEY) {
-        const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-opus-4-7",
-            max_tokens: 1024,
-            system:
-              "You are a helpful grant research assistant. Help users analyze grant opportunities, compare funding sources, and answer questions about their grant data.",
-            messages: chatMessages,
-          }),
-        });
-        if (!anthropicRes.ok) {
-          const errText = await anthropicRes.text().catch(() => "");
-          return new Response(`AI request failed: ${errText}`, { status: 502 });
-        }
-        const data = await anthropicRes.json();
-        const text = data.content?.[0]?.text ?? "";
-        return jsonResponse(JSON.stringify({ response: text }));
-      }
-
+      // Try native AI binding first, then fall back to REST API
       if (env.AI) {
-        const result = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
+        const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
           messages: chatMessages,
           stream: false,
         });
         return jsonResponse(JSON.stringify({ response: result.response }));
       }
 
-      return new Response("AI binding not configured", { status: 503 });
+      if (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN) {
+        const aiRes = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.CF_AI_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ messages: chatMessages }),
+          }
+        );
+        if (!aiRes.ok) {
+          const errText = await aiRes.text().catch(() => "");
+          return new Response(`AI request failed: ${errText}`, { status: 502 });
+        }
+        const data = await aiRes.json();
+        const text = data.result?.response ?? "";
+        return jsonResponse(JSON.stringify({ response: text }));
+      }
+
+      return new Response("AI not configured", { status: 503 });
     }
 
     if (url.pathname === "/logout") {
