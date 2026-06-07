@@ -156,22 +156,22 @@ export default function GrantTable({
       }),
       columnHelper.accessor("Relevance", {
         header: "Rel",
-        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
         size: 55,
       }),
       columnHelper.accessor("Fit", {
         header: "Fit",
-        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
         size: 50,
       }),
       columnHelper.accessor("Ease", {
         header: "Ease",
-        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
         size: 55,
       }),
       columnHelper.accessor("score", {
         header: "Match ★",
-        cell: (info) => <ScoreCell value={info.getValue() ?? 0} max={5} />,
+        cell: (info) => <ScoreCell value={info.getValue() ?? 0} max={3} />,
         size: 65,
         sortingFn: (a, b) => {
           const sa = parseFloat(String(a.original.score ?? "0"));

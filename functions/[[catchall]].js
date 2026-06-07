@@ -15,13 +15,39 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
-function normalizeNumber(value) {
-  if (value === undefined || value === null) return NaN;
-  if (typeof value === "number") return value;
-  if (typeof value !== "string") return NaN;
-  const cleaned = value.replace(/[$,]/g, "");
-  const num = Number(cleaned);
-  return Number.isFinite(num) ? num : NaN;
+const DEFAULT_WEIGHTS = { Relevance: 0.3, Fit: 0.3, Ease: 0.2, StackAlignment: 0.1, CadenceRecency: 0.1 };
+
+function computeStackAlignment(r) {
+  const s = String(r["Stack Required?"] || "").toLowerCase().trim();
+  return (s === "yes" || s === "y") ? 1.0 : 0.2;
+}
+
+function computeCadenceRecency(r) {
+  const cadence = String(r["Cadence"] || "").toLowerCase();
+  if (cadence.includes("rolling")) return 1.0;
+  const raw = r["Deadline/Next Cohort"] || r["Deadline / Next Cohort"];
+  if (!raw) return 0;
+  const deadline = new Date(raw);
+  if (isNaN(deadline.getTime())) return 0;
+  const daysUntil = (deadline.getTime() - Date.now()) / 86400000;
+  return Math.max(0, Math.min(1, 1 - daysUntil / 365));
+}
+
+function computeScore(r, weights) {
+  const w = weights || DEFAULT_WEIGHTS;
+  const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+  const wn = {
+    Relevance:      (w.Relevance ?? 0) / total,
+    Fit:            (w.Fit ?? 0) / total,
+    Ease:           (w.Ease ?? 0) / total,
+    StackAlignment: (w.StackAlignment ?? 0) / total,
+    CadenceRecency: (w.CadenceRecency ?? 0) / total,
+  };
+  return wn.Relevance      * (parseFloat(r.Relevance) || 0)
+       + wn.Fit            * (parseFloat(r.Fit) || 0)
+       + wn.Ease           * (parseFloat(r.Ease) || 0)
+       + wn.StackAlignment * (computeStackAlignment(r) * 3)
+       + wn.CadenceRecency * (computeCadenceRecency(r) * 3);
 }
 
 async function resolveSession(env, cookie) {
@@ -233,44 +259,9 @@ export async function onRequest(context) {
       }
     }
 
-    const focusAreas = profile.focusAreas || [];
-    const orgType = profile.orgType || "";
-    const stage = profile.stage || "";
-
-    const FOCUS_KEYWORDS = {
-      "health & medicine": ["health", "medical", "medicine", "clinical", "healthcare", "patient", "disease", "hospital", "biomedical"],
-      "education & workforce": ["education", "workforce", "training", "school", "learning", "student", "teacher", "employment", "job", "skill"],
-      "technology & innovation": ["technology", "innovation", "tech", "software", "digital", "data", "ai", "startup", "engineering", "stem"],
-      "housing & community": ["housing", "community", "affordable", "homeless", "neighborhood", "urban", "residential", "shelter"],
-      "environment & climate": ["environment", "climate", "sustainability", "green", "energy", "carbon", "conservation", "renewable", "ecological"],
-      "agriculture & food": ["agriculture", "food", "farm", "rural", "crop", "nutrition", "hunger", "food security"],
-      "social services": ["social", "welfare", "poverty", "low-income", "family", "children", "youth", "elderly", "disability"],
-      "arts & humanities": ["arts", "humanities", "culture", "creative", "museum", "music", "film", "heritage", "literature"],
-      "international development": ["international", "global", "developing", "foreign", "aid", "humanitarian", "overseas"],
-      "veterans & military": ["veteran", "military", "armed forces", "defense", "service member", "vets"],
-      "research & science": ["research", "science", "scientific", "laboratory", "study", "university", "academic", "investigation"],
-      "justice & safety": ["justice", "safety", "legal", "law", "criminal", "public safety", "equity", "civil rights", "policy"],
-    };
-    const ORG_KEYWORDS = {
-      nonprofit: ["nonprofit", "non-profit", "501c3", "ngo", "charity", "community organization"],
-      university: ["university", "college", "academic", "research institution", "higher education"],
-      startup: ["startup", "small business", "entrepreneur", "early-stage", "emerging"],
-      government: ["government", "tribal", "municipality", "public agency", "federal", "state agency"],
-      individual: ["individual", "researcher", "fellow", "independent"],
-      hospital: ["hospital", "health system", "clinic", "medical center", "healthcare provider"],
-    };
-    const STAGE_KEYWORDS = {
-      research: ["pilot", "research", "ideation", "exploratory", "proof of concept", "early stage"],
-      pilot: ["pilot", "proof of concept", "demonstration", "prototype", "feasibility"],
-      growth: ["growth", "scaling", "expansion", "scale", "growing"],
-      established: ["established", "program", "organization", "existing", "operational"],
-    };
-
-    const keywords = [
-      ...focusAreas.flatMap(f => FOCUS_KEYWORDS[f.toLowerCase()] || [f.toLowerCase()]),
-      ...(ORG_KEYWORDS[orgType] || [orgType.toLowerCase()]),
-      ...(STAGE_KEYWORDS[stage] || [stage.toLowerCase()]),
-    ].filter(Boolean);
+    const userWeights = (profile.weights && typeof profile.weights === "object")
+      ? profile.weights
+      : null;
 
     const columns = await getColumns(env.GRANT_MANAGER_DB);
     let results = [];
@@ -279,36 +270,10 @@ export async function onRequest(context) {
         `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
       ).all();
       results = rows
-        .map((r) => {
-          const grantText = [r.Name, r.Sponsor, r["Eligibility (key conditions)"], r.Benefits, r["Notes/Actions"]]
-            .join(" ").toLowerCase();
-
-          let keywordScore = 0;
-          for (const kw of keywords) {
-            if (kw && grantText.includes(kw)) keywordScore += 1;
-          }
-
-          const relevance = parseFloat(r.Relevance) || 0;
-          const fit = parseFloat(r.Fit) || 0;
-          const ease = parseFloat(r.Ease) || 0;
-          const curatorScore = (relevance + fit + ease) / 3;
-
-          let recency = 0;
-          const deadline = r["Deadline/Next Cohort"] ? new Date(r["Deadline/Next Cohort"]) : null;
-          if (deadline && !isNaN(deadline.getTime())) {
-            const daysUntil = (deadline - Date.now()) / 86400000;
-            if (daysUntil >= 0 && daysUntil <= 365) recency = 1 - daysUntil / 365;
-          }
-
-          const hasProfile = keywords.length > 0;
-          const score = hasProfile
-            ? (keywordScore / Math.max(keywords.length, 1)) * 5 * 0.5
-              + curatorScore * 0.35
-              + recency * 0.15
-            : curatorScore * 0.85 + recency * 0.15;
-
-          return { ...r, score: Math.round(score * 100) / 100 };
-        })
+        .map((r) => ({
+          ...r,
+          score: Math.round(computeScore(r, userWeights) * 100) / 100,
+        }))
         .sort((a, b) => b.score - a.score);
     }
     return new Response(JSON.stringify(results), {
