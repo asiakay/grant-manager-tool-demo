@@ -341,6 +341,24 @@ export async function onRequest(context) {
     });
   }
 
+  // Update notes for a single grant
+  if (url.pathname === "/api/notes" && request.method === "POST") {
+    if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+    if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+    const form = await request.formData();
+    const name = form.get("Name");
+    const notes = form.get("Notes/Actions") ?? "";
+    if (!name) return new Response("Missing Name", { status: 400 });
+    await env.GRANT_MANAGER_DB.prepare(
+      `UPDATE programs SET "Notes/Actions" = ? WHERE "Name" = ?`
+    )
+      .bind(notes, name)
+      .run();
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   // New schema entry
   if (url.pathname === "/new_schema") {
     if (!loggedIn) {

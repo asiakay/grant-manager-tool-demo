@@ -52,7 +52,7 @@ export async function updateNotes(grantName: string, notes: string): Promise<voi
   const body = new FormData();
   body.append("Name", grantName);
   body.append("Notes/Actions", notes);
-  const res = await fetch(`${BASE}/new_schema`, {
+  const res = await fetch(`${BASE}/api/notes`, {
     method: "POST",
     body,
     credentials: "include",
