@@ -37,6 +37,13 @@ jobs:
         working-directory: ui
         run: npm run build
 
+      - name: Upload UI build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          retention-days: 1
+
   # ── Deploy on push to main (production) or any PR (preview) ─────────────
   deploy:
     name: Deploy to Cloudflare
@@ -50,19 +57,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download UI build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install UI deps
-        working-directory: ui
-        run: npm ci
-
-      - name: Build UI
-        working-directory: ui
-        run: npm run build
 
       - name: Install root deps
         run: npm ci
