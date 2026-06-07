@@ -305,19 +305,49 @@ if (url.pathname === "/api/profile") {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
       }
-      if (!env.AI) {
-        return new Response("AI binding not configured", { status: 503 });
-      }
       const { messages } = await request.json();
-      const result = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
-        messages: Array.isArray(messages)
-          ? messages
-          : [{ role: "user", content: String(messages || "") }],
-        stream: false,
-      });
-      return new Response(JSON.stringify({ response: result.response }), {
-        headers: { "content-type": "application/json" },
-      });
+      const chatMessages = Array.isArray(messages)
+        ? messages
+        : [{ role: "user", content: String(messages || "") }];
+
+      if (env.ANTHROPIC_API_KEY) {
+        const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 1024,
+            system:
+              "You are a helpful grant research assistant. Help users analyze grant opportunities, compare funding sources, and answer questions about their grant data.",
+            messages: chatMessages,
+          }),
+        });
+        if (!anthropicRes.ok) {
+          const errText = await anthropicRes.text().catch(() => "");
+          return new Response(`AI request failed: ${errText}`, { status: 502 });
+        }
+        const data = await anthropicRes.json();
+        const text = data.content?.[0]?.text ?? "";
+        return new Response(JSON.stringify({ response: text }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (env.AI) {
+        const result = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
+          messages: chatMessages,
+          stream: false,
+        });
+        return new Response(JSON.stringify({ response: result.response }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response("AI binding not configured", { status: 503 });
     }
 
     if (url.pathname === "/logout") {
