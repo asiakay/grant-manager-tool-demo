@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grant Manager — AI-Powered Grant Tracking</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:    #2563eb;
+      --brand-dk: #1d4ed8;
+      --bg:       #f8fafc;
+      --surface:  #ffffff;
+      --text:     #0f172a;
+      --muted:    #64748b;
+      --border:   #e2e8f0;
+      --radius:   12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── Nav ───────────────────────────────────────────── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .nav-logo {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--brand);
+      text-decoration: none;
+    }
+    .nav-links { display: flex; gap: 1rem; }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-links a:hover { background: var(--bg); color: var(--text); }
+    .nav-links a.primary {
+      background: var(--brand);
+      color: #fff;
+      font-weight: 600;
+    }
+    .nav-links a.primary:hover { background: var(--brand-dk); }
+
+    /* ── Hero ──────────────────────────────────────────── */
+    .hero {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 5rem 2rem 3rem;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: #eff6ff;
+      color: var(--brand);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 0.3rem 0.8rem;
+      border-radius: 99px;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.25rem;
+    }
+    .hero h1 span { color: var(--brand); }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+    }
+    .hero-cta { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.75rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary {
+      background: var(--brand);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+    }
+    .btn-primary:hover { background: var(--brand-dk); box-shadow: 0 4px 14px rgba(37,99,235,0.35); }
+    .btn-outline {
+      background: transparent;
+      color: var(--brand);
+      border: 2px solid var(--brand);
+    }
+    .btn-outline:hover { background: #eff6ff; }
+
+    /* ── Screenshot ────────────────────────────────────── */
+    .screenshot-wrap {
+      max-width: 860px;
+      margin: 3rem auto 0;
+      padding: 0 2rem;
+    }
+    .screenshot {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.10);
+      overflow: hidden;
+    }
+    .screenshot-bar {
+      background: #f1f5f9;
+      padding: 0.65rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot-r { background: #fc615d; }
+    .dot-y { background: #fdbc40; }
+    .dot-g { background: #34c749; }
+    .url-bar {
+      flex: 1;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.2rem 0.75rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-left: 0.5rem;
+    }
+    .screenshot-body {
+      background: #fff;
+      height: 340px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      color: var(--muted);
+    }
+    .screenshot-icon { font-size: 3rem; opacity: 0.3; }
+    .screenshot-body p { font-size: 0.9rem; }
+
+    /* ── Features ──────────────────────────────────────── */
+    .features {
+      max-width: 960px;
+      margin: 5rem auto;
+      padding: 0 2rem;
+    }
+    .features h2 {
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .features-sub {
+      text-align: center;
+      color: var(--muted);
+      margin-bottom: 3rem;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .feature-card:hover {
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      font-size: 1.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .feature-card h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+    .feature-card p { font-size: 0.9rem; color: var(--muted); }
+
+    /* ── CTA strip ─────────────────────────────────────── */
+    .cta-strip {
+      background: var(--brand);
+      color: #fff;
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+    .cta-strip h2 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .cta-strip p  { opacity: 0.85; margin-bottom: 2rem; }
+    .cta-strip .btn-primary {
+      background: #fff;
+      color: var(--brand);
+      box-shadow: none;
+    }
+    .cta-strip .btn-primary:hover { background: #eff6ff; }
+    .cta-strip .btn-outline { border-color: #fff; color: #fff; }
+    .cta-strip .btn-outline:hover { background: rgba(255,255,255,0.15); }
+    .cta-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+    /* ── Footer ────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-logo" href="#">Grant Manager</a>
+    <div class="nav-links">
+      <a href="https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev/login">Log in</a>
+      <a class="primary" href="https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev/signup">Sign up free</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">AI-Powered Grant Tracking</div>
+    <h1>Find and win <span>the right grants</span><br>for your project</h1>
+    <p>
+      Grant Manager scores, ranks, and tracks funding opportunities based on your project's
+      profile — so you spend time applying, not searching.
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev/signup">Get started free</a>
+      <a class="btn btn-outline" href="https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev/login">Log in to your account</a>
+    </div>
+  </section>
+
+  <div class="screenshot-wrap">
+    <div class="screenshot">
+      <div class="screenshot-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <div class="url-bar">grant-manager-tool-demo.asialakaygrady-6d4.workers.dev</div>
+      </div>
+      <div class="screenshot-body">
+        <div class="screenshot-icon">📊</div>
+        <p>App screenshot coming soon</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="features">
+    <h2>Everything you need to track funding</h2>
+    <p class="features-sub">Built for founders, researchers, and teams navigating the grant landscape.</p>
+    <div class="feature-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon">🎯</div>
+        <h3>Personalized Scoring</h3>
+        <p>Each grant is scored against your profile's relevance, fit, ease, and stack alignment — tunable weights, your priorities.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>AI Assistant</h3>
+        <p>Ask questions about your grant pipeline in plain English. Get summaries, deadline alerts, and application tips instantly.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📋</div>
+        <h3>Centralized Pipeline</h3>
+        <p>Track every opportunity — deadline, cadence, sponsor, eligibility — in one sortable, filterable table.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📝</div>
+        <h3>Notes & Actions</h3>
+        <p>Attach notes and next steps to any grant. Keep your team aligned on what's in progress and what's been submitted.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📤</div>
+        <h3>CSV Export</h3>
+        <p>Export your full grant list at any time for reporting, offline review, or sharing with stakeholders.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure & Private</h3>
+        <p>Per-user accounts with session-based auth. Your grant data and scoring weights stay private to you.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="cta-strip">
+    <h2>Ready to build your grant pipeline?</h2>
+    <p>Create a free account and start tracking opportunities today.</p>
+    <div class="cta-btns">
+      <a class="btn btn-primary" href="https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev/signup">Create free account</a>
+      <a class="btn btn-outline" href="https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev/login">Log in</a>
+    </div>
+  </section>
+
+  <footer>
+    &copy; 2026 Grant Manager &mdash; Powered by Cloudflare Workers
+  </footer>
+
+</body>
+</html>
