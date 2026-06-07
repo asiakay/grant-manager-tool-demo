@@ -364,7 +364,7 @@ describe("GET /api/grants — scoring", () => {
     expect(grants[0].Name).toBe("Grant Alpha");
   });
 
-  it("far-future deadlines (>365 days) score 0 for CadenceRecency", async () => {
+  it("deadlines more than 365 days away score 0 for CadenceRecency", async () => {
     const token = await createAndLoginUser("quinn", "password1");
     await fetch(new Request("http://localhost/api/profile", {
       method: "POST",
@@ -376,6 +376,25 @@ describe("GET /api/grants — scoring", () => {
     const beta = grants.find((g) => g.Name === "Grant Beta");
     // Grant Beta has deadline 2099-12-31 — more than 365 days away → CadenceRecency = 0
     expect(beta.score).toBe(0);
+  });
+
+  it("past deadlines score 0 for CadenceRecency", async () => {
+    const token = await createAndLoginUser("rosa2", "password1");
+    // Insert a grant with a past deadline directly
+    await env.GRANT_MANAGER_DB.prepare(
+      `INSERT INTO programs ("Name","Sponsor","Relevance","Fit","Ease","Stack Required?","Cadence","Deadline / Next Cohort")
+       VALUES ('Grant Past', 'Sponsor P', '0', '0', '0', 'No', 'Annual', '2020-01-01')`
+    ).run();
+    await fetch(new Request("http://localhost/api/profile", {
+      method: "POST",
+      headers: { Cookie: `session=${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } }),
+    }));
+    const res = await authedGet("/api/grants", token);
+    const grants = await res.json();
+    const past = grants.find((g) => g.Name === "Grant Past");
+    // Past deadline → daysUntil < 0 → CadenceRecency = 0 → score = 0
+    expect(past.score).toBe(0);
   });
 });
 
