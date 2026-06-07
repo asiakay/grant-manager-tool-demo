@@ -234,6 +234,14 @@ if (url.pathname === "/api/profile") {
       }
     }
 
+    if (url.pathname === "/api/ai-status") {
+      const hasAnthropic = !!env.ANTHROPIC_API_KEY;
+      const hasWorkersAI = !!env.AI;
+      const configured = hasAnthropic || hasWorkersAI;
+      const provider = hasAnthropic ? "anthropic" : hasWorkersAI ? "workers-ai" : null;
+      return jsonResponse(JSON.stringify({ configured, provider }));
+    }
+
     if (url.pathname === "/api/grants") {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
@@ -308,7 +316,7 @@ if (url.pathname === "/api/profile") {
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: "claude-haiku-4-5-20251001",
+            model: "claude-haiku-4-5",
             max_tokens: 1024,
             system:
               "You are a helpful grant research assistant. Help users analyze grant opportunities, compare funding sources, and answer questions about their grant data.",
