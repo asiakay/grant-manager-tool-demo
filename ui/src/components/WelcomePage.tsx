@@ -42,7 +42,7 @@ export default function WelcomePage({ username, profile, onViewMatches, onSavePr
     );
   }
 
-  const weights = profile.weights;
+  const weights = profile.weights ?? {};
   const total = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
 
   return (
