@@ -140,7 +140,6 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 This is an actively developed MVP. Current technical debt, in order of priority:
 
-- **Dual worker confusion** — `wrangler.toml` points to `worker/src/worker.ts` but `worker.js` is the primary deployment. Consolidation in progress.
 - **CSV → D1 import** — No automated pipeline from scored.csv to the database yet. Currently manual via `/new_schema`.
 - **PDF pipeline** — `pdf_worker.ts` queue consumer is incomplete pending `GRANT_SUMMARIZER_URL` configuration.
 - **React scoring table** — `ui/ScoringTable.jsx` exists but is not yet integrated into the worker.
