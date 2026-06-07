@@ -30,6 +30,7 @@ function computeCadenceRecency(r) {
   const deadline = new Date(raw);
   if (isNaN(deadline.getTime())) return 0;
   const daysUntil = (deadline.getTime() - Date.now()) / 86400000;
+  if (daysUntil < 0) return 0;
   return Math.max(0, Math.min(1, 1 - daysUntil / 365));
 }
 
