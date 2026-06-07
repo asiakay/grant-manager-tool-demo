@@ -407,8 +407,9 @@ queue = "PDF_INGEST"
 queue = "SCORE_QUEUE"
 binding = "SCORE_QUEUE"
 
-[vars]
-USER_HASHES = '{"admin":"...","user":"..."}'
+# USER_HASHES must be set as a Cloudflare Secret, not a [vars] entry:
+# wrangler secret put USER_HASHES
+# When prompted, paste a JSON string: '{"admin":"<sha256hex>","user":"<sha256hex>"}'
 ```
 
 #### Database Schema
@@ -789,7 +790,7 @@ UI Components
 
 3. **Security Concerns:**
    - Hardcoded secret key in visualize_grants_web.py
-   - USER_HASHES visible in wrangler.toml (should use secrets)
+   - USER_HASHES must be stored as a Cloudflare Secret (`wrangler secret put USER_HASHES`), not in wrangler.toml
 
 4. **Architecture Confusion:**
    - Dual worker setup (worker.js vs worker/src/worker.ts)
@@ -909,7 +910,7 @@ For issues or questions:
 
 **Worker Login:**
 - Username: `demo`, Password: `demo`
-- Username: `admin`, Password: (see USER_HASHES in wrangler.toml)
+- Username: `admin`, Password: (set via `wrangler secret put USER_HASHES`)
 
 **Python GUI:**
 - Username: `admin`, Password: `adminpass`
