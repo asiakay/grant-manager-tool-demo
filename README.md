@@ -145,7 +145,7 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 This is an actively developed MVP. Current technical debt, in order of priority:
 
 - **CSV → D1 import** — Automated via `make import` / `make import-local` (`import_to_d1.py`).
-- **PDF processing pipeline** *(under development)* — A Queue-based worker (`pdf_worker.ts`) that reads PDFs from R2, calls the `grant_summarizer` service, and outputs scored CSV has been prototyped but is not yet deployed. Pending: provision R2 bucket, Cloudflare Queue, and a hosted `GRANT_SUMMARIZER_URL` endpoint, then reintroduce the worker as a separate named Worker deployment.
+- **PDF processing pipeline** *(under development)* — A Queue-based worker ([`drafts/pdf_worker.ts`](drafts/pdf_worker.ts)) that reads PDFs from R2, calls the `grant_summarizer` service, and outputs scored CSV has been prototyped but is not yet deployed. Pending: provision R2 bucket, Cloudflare Queue, and a hosted `GRANT_SUMMARIZER_URL` endpoint, then wire up as a separate named Worker deployment. See the file header for full setup instructions.
 - **React scoring table** — `ui/ScoringTable.jsx` exists but is not yet integrated into the worker.
 
 ---
