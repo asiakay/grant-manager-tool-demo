@@ -61,9 +61,16 @@ export async function logout(): Promise<void> {
   await fetch(`${BASE}/logout`, { credentials: "include" });
 }
 
-export async function fetchGrants(): Promise<Grant[]> {
-  const res = await fetch(`${BASE}/api/grants`, { credentials: "include" });
-  return handleResponse<Grant[]>(res);
+export interface PagedGrants {
+  data: Grant[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchGrants(page = 1, pageSize = 500): Promise<PagedGrants> {
+  const res = await fetch(`${BASE}/api/grants?page=${page}&pageSize=${pageSize}`, { credentials: "include" });
+  return handleResponse<PagedGrants>(res);
 }
 
 export async function updateNotes(grantName: string, notes: string): Promise<void> {

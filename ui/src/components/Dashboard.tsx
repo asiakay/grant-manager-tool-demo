@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Grant, FilterState } from "../types";
 import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile } from "../api";
+import type { PagedGrants } from "../api";
 import type { UserProfile } from "../api";
 import SummaryCards from "./SummaryCards";
 import GrantTable from "./GrantTable";
@@ -40,6 +41,7 @@ const INITIAL_FILTERS: FilterState = {
 
 export default function Dashboard({ onLogout, onBackToProfile }: Props) {
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [grantsTotal, setGrantsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -55,7 +57,7 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
   useEffect(() => {
     fetchGrants()
-      .then(setGrants)
+      .then(({ data, total }: PagedGrants) => { setGrants(data); setGrantsTotal(total); })
       .catch((e) => {
         if (e.message === "Unauthenticated") {
           onLogout();
@@ -75,8 +77,9 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
       setProfileOpen(false);
       // Reload grants with new profile scoring
       setLoading(true);
-      const updated = await fetchGrants();
+      const { data: updated, total } = await fetchGrants();
       setGrants(updated);
+      setGrantsTotal(total);
     } catch {
       // ignore
     } finally {
@@ -138,7 +141,7 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
           <div>
             <h1 className="text-base font-semibold text-white leading-tight">Grant Manager</h1>
             {!loading && (
-              <p className="text-gray-500 text-xs">{grants.length} programs loaded</p>
+              <p className="text-gray-500 text-xs">{grantsTotal} programs loaded</p>
             )}
           </div>
         </div>

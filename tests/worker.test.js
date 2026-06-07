@@ -386,14 +386,16 @@ describe("/api/profile", () => {
 describe("GET /api/grants — scoring", () => {
   beforeEach(seedPrograms);
 
-  it("returns an array of grants with a score field", async () => {
+  it("returns paginated envelope with data array and total", async () => {
     const { token } = await createAndLoginUser("karen", "password1x");
     const res = await authedGet("/api/grants", token);
     expect(res.status).toBe(200);
-    const grants = await res.json();
-    expect(Array.isArray(grants)).toBe(true);
-    expect(grants.length).toBe(3);
-    for (const g of grants) {
+    const body = await res.json();
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.total).toBe(3);
+    expect(body.page).toBe(1);
+    expect(typeof body.pageSize).toBe("number");
+    for (const g of body.data) {
       expect(typeof g.score).toBe("number");
       expect(g.score).toBeGreaterThanOrEqual(0);
     }
@@ -402,10 +404,27 @@ describe("GET /api/grants — scoring", () => {
   it("returns grants sorted by score descending", async () => {
     const { token } = await createAndLoginUser("lena", "password1x");
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     for (let i = 1; i < grants.length; i++) {
       expect(grants[i - 1].score).toBeGreaterThanOrEqual(grants[i].score);
     }
+  });
+
+  it("paginates correctly with page and pageSize params", async () => {
+    const { token } = await createAndLoginUser("lena2", "password1x");
+    const res1 = await authedGet("/api/grants?page=1&pageSize=2", token);
+    const body1 = await res1.json();
+    expect(body1.data.length).toBe(2);
+    expect(body1.total).toBe(3);
+    expect(body1.page).toBe(1);
+    const res2 = await authedGet("/api/grants?page=2&pageSize=2", token);
+    const body2 = await res2.json();
+    expect(body2.data.length).toBe(1);
+    expect(body2.page).toBe(2);
+    // No overlap between pages
+    const names1 = body1.data.map((g) => g.Name);
+    const names2 = body2.data.map((g) => g.Name);
+    expect(names1.every((n) => !names2.includes(n))).toBe(true);
   });
 
   it("applies custom weights from user profile", async () => {
@@ -414,14 +433,14 @@ describe("GET /api/grants — scoring", () => {
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 1, StackAlignment: 0, CadenceRecency: 0 } });
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     expect(grants[0].Name).toBe("Grant Beta");
   });
 
   it("applies default weights when no profile exists", async () => {
     const { token } = await createAndLoginUser("nina", "password1x");
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     expect(grants[0].Name).toBe("Grant Alpha");
   });
 
@@ -430,7 +449,7 @@ describe("GET /api/grants — scoring", () => {
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 1, CadenceRecency: 0 } });
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     expect(grants[0].Name).toBe("Grant Beta");
   });
 
@@ -439,7 +458,7 @@ describe("GET /api/grants — scoring", () => {
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } });
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     expect(grants[0].Name).toBe("Grant Alpha");
   });
 
@@ -448,7 +467,7 @@ describe("GET /api/grants — scoring", () => {
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } });
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     const beta = grants.find((g) => g.Name === "Grant Beta");
     expect(beta.score).toBe(0);
   });
@@ -462,7 +481,7 @@ describe("GET /api/grants — scoring", () => {
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } });
     const res = await authedGet("/api/grants", token);
-    const grants = await res.json();
+    const { data: grants } = await res.json();
     const past = grants.find((g) => g.Name === "Grant Past");
     expect(past.score).toBe(0);
   });

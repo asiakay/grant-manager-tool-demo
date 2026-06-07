@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,6 +8,8 @@ import {
   createColumnHelper,
   type SortingState,
 } from "@tanstack/react-table";
+
+const PAGE_SIZE = 25;
 import type { Grant, FilterState } from "../types";
 
 interface Props {
@@ -79,6 +81,9 @@ export default function GrantTable({
   const [sorting, setSorting] = useState<SortingState>([
     { id: "score", desc: true },
   ]);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setPage(1); }, [filters, grants]);
 
   const filtered = useMemo(() => {
     return grants.filter((g) => {
@@ -234,6 +239,11 @@ export default function GrantTable({
     getFilteredRowModel: getFilteredRowModel(),
   });
 
+  const allSortedRows = table.getRowModel().rows;
+  const pageCount = Math.max(1, Math.ceil(allSortedRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageRows = allSortedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
   if (filtered.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-500">
@@ -268,7 +278,7 @@ export default function GrantTable({
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row) => {
+          {pageRows.map((row) => {
             const name = String(row.original.Name);
             const isCandidate = candidates.has(name);
             const isWatchlisted = watchlist.has(name);
@@ -288,9 +298,34 @@ export default function GrantTable({
           })}
         </tbody>
       </table>
-      <p className="text-center text-gray-600 text-xs py-3">
-        Showing {filtered.length} of {grants.length} grants
-      </p>
+      <div className="flex items-center justify-between px-3 py-2.5 border-t border-gray-800 text-xs text-gray-500">
+        <span>
+          {filtered.length === grants.length
+            ? `${grants.length} grants`
+            : `${filtered.length} of ${grants.length} grants`}
+        </span>
+        {pageCount > 1 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              ‹ Prev
+            </button>
+            <span className="tabular-nums">
+              {safePage} / {pageCount}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={safePage === pageCount}
+              className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Next ›
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
