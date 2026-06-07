@@ -35,8 +35,11 @@ function NoAiKeyBanner() {
     <div className="mx-4 my-3 bg-amber-900/30 border border-amber-700/50 rounded-lg p-3 text-sm">
       <p className="font-semibold text-amber-300 mb-1">⚠️ AI not configured</p>
       <p className="text-amber-200/80 text-xs leading-relaxed">
-        The AI binding is not set up on the worker. To enable chat, configure an AI binding in{" "}
-        <code className="bg-amber-900/50 px-1 rounded">wrangler.toml</code> and redeploy.
+        No AI provider is configured. Add an{" "}
+        <code className="bg-amber-900/50 px-1 rounded">ANTHROPIC_API_KEY</code> secret to your
+        Cloudflare Worker (or enable the{" "}
+        <code className="bg-amber-900/50 px-1 rounded">[ai]</code> binding in{" "}
+        <code className="bg-amber-900/50 px-1 rounded">wrangler.toml</code>) and redeploy.
       </p>
     </div>
   );
