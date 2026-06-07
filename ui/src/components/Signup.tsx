@@ -68,9 +68,9 @@ export default function Signup({ onSuccess, onBackToLogin }: Props) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
-            <p className="text-gray-500 text-xs mt-1">Minimum 6 characters</p>
+            <p className="text-gray-500 text-xs mt-1">Minimum 8 characters</p>
           </div>
 
           <div>

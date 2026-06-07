@@ -1,6 +1,7 @@
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
+const MIN_PASSWORD_LENGTH = 8;
 
 async function hashPassword(pass) {
   const data = new TextEncoder().encode(pass);
@@ -84,6 +85,26 @@ async function resolveSession(env, cookie) {
   return username || null;
 }
 
+async function validateCsrf(request, env, username) {
+  const token = request.headers.get("X-CSRF-Token");
+  if (!token) return false;
+  const stored = env.USER_PROFILES
+    ? await env.USER_PROFILES.get(`csrf:${username}`)
+    : null;
+  return stored === token;
+}
+
+async function checkRateLimit(kv, key) {
+  const now = Date.now();
+  let rec = (await kv.get(key, { type: "json" })) || { count: 0, time: now };
+  if (now - rec.time > LOCKOUT_MS) { rec.count = 0; rec.time = now; }
+  if (rec.count >= MAX_ATTEMPTS) return { blocked: true, rec };
+  rec.count++;
+  rec.time = now;
+  await kv.put(key, JSON.stringify(rec));
+  return { blocked: false, rec };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -114,6 +135,13 @@ export default {
     const users = { ...defaultUsers, ...envUsers };
 
     if (url.pathname === "/signup" && request.method === "POST") {
+      // Rate-limit signups per IP to block mass account creation
+      if (env.LOGIN_ATTEMPTS) {
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const { blocked } = await checkRateLimit(env.LOGIN_ATTEMPTS, `signup:${ip}`);
+        if (blocked) return new Response("Too many signup attempts. Try again later.", { status: 429 });
+      }
+
       const form = await request.formData();
       const newUser = (form.get("username") || "").trim();
       const newPass = form.get("password") || "";
@@ -125,8 +153,8 @@ export default {
       if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
         return jsonResponse(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), { status: 400 });
       }
-      if (!newPass || newPass.length < 6) {
-        return jsonResponse(JSON.stringify({ error: "Password must be at least 6 characters." }), { status: 400 });
+      if (!newPass || newPass.length < MIN_PASSWORD_LENGTH) {
+        return jsonResponse(JSON.stringify({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }), { status: 400 });
       }
       if (newPass !== confirmPass) {
         return jsonResponse(JSON.stringify({ error: "Passwords do not match." }), { status: 400 });
@@ -161,23 +189,18 @@ export default {
       const user = form.get("username");
       const pass = form.get("password");
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-      const now = Date.now();
-      let record;
+
       if (env.LOGIN_ATTEMPTS) {
-        record = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" });
+        const stored = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" });
+        const now = Date.now();
+        const rec = stored || { count: 0, time: now };
+        if (now - rec.time <= LOCKOUT_MS && rec.count >= MAX_ATTEMPTS) {
+          return new Response("Too many attempts. Try again later.", { status: 429 });
+        }
       } else {
         console.warn("LOGIN_ATTEMPTS binding is not configured");
       }
-      if (!record) {
-        record = { count: 0, time: now };
-      }
-      if (now - record.time > LOCKOUT_MS) {
-        record.count = 0;
-        record.time = now;
-      }
-      if (record.count >= MAX_ATTEMPTS) {
-        return new Response("Too many attempts. Try again later.", { status: 429 });
-      }
+
       const hashed = await hashPassword(pass || "");
       let dbUser = null;
       try {
@@ -196,9 +219,7 @@ export default {
       }
       const dbMatch = dbUser && dbUser.password_hash === hashed;
       if ((users[user] && users[user] === hashed) || dbMatch) {
-        if (env.LOGIN_ATTEMPTS) {
-          await env.LOGIN_ATTEMPTS.delete(ip);
-        }
+        if (env.LOGIN_ATTEMPTS) await env.LOGIN_ATTEMPTS.delete(ip);
         const token = crypto.randomUUID();
         if (env.USER_PROFILES) {
           await env.USER_PROFILES.put(`session:${token}`, user, { expirationTtl: SESSION_TTL });
@@ -207,21 +228,25 @@ export default {
         return new Response("", {
           status: 302,
           headers: {
-            "Set-Cookie":
-              `session=${token}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+            "Set-Cookie": `session=${token}; Path=/; HttpOnly; SameSite=Lax${secure}`,
             Location: "/dashboard",
           },
         });
       }
-      record.count++;
-      record.time = now;
+
+      // Failed login — increment attempt counter
       if (env.LOGIN_ATTEMPTS) {
-        await env.LOGIN_ATTEMPTS.put(ip, JSON.stringify(record));
+        const now = Date.now();
+        const prev = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" }) || { count: 0, time: now };
+        if (now - prev.time > LOCKOUT_MS) { prev.count = 0; prev.time = now; }
+        prev.count++;
+        prev.time = now;
+        await env.LOGIN_ATTEMPTS.put(ip, JSON.stringify(prev));
       }
       return new Response("Unauthorized", { status: 401 });
     }
 
-if (url.pathname === "/api/profile") {
+    if (url.pathname === "/api/profile") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
       if (request.method === "GET") {
         const raw = env.USER_PROFILES ? await env.USER_PROFILES.get(`profile:${username}`) : null;
@@ -229,6 +254,9 @@ if (url.pathname === "/api/profile") {
         return jsonResponse(JSON.stringify(profile));
       }
       if (request.method === "POST") {
+        if (!(await validateCsrf(request, env, username))) {
+          return new Response("Forbidden", { status: 403 });
+        }
         const body = await request.json();
         await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
         return jsonResponse(JSON.stringify({ ok: true }));
@@ -280,12 +308,29 @@ if (url.pathname === "/api/profile") {
       return jsonResponse(JSON.stringify({ username }));
     }
 
+    if (url.pathname === "/api/csrf" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      let csrfToken = env.USER_PROFILES
+        ? await env.USER_PROFILES.get(`csrf:${username}`)
+        : null;
+      if (!csrfToken) {
+        csrfToken = crypto.randomUUID();
+        if (env.USER_PROFILES) {
+          await env.USER_PROFILES.put(`csrf:${username}`, csrfToken, { expirationTtl: SESSION_TTL });
+        }
+      }
+      return jsonResponse(JSON.stringify({ token: csrfToken }));
+    }
+
     if (url.pathname === "/api/health") {
       return jsonResponse(JSON.stringify({ ok: true }));
     }
 
     if (url.pathname === "/api/notes" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) {
+        return new Response("Forbidden", { status: 403 });
+      }
       if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
       const form = await request.formData();
       const name = form.get("Name");
@@ -302,6 +347,9 @@ if (url.pathname === "/api/profile") {
     if (url.pathname === "/api/chat" && request.method === "POST") {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
+      }
+      if (!(await validateCsrf(request, env, username))) {
+        return new Response("Forbidden", { status: 403 });
       }
       const { messages } = await request.json();
       const chatMessages = Array.isArray(messages)
@@ -390,6 +438,83 @@ if (url.pathname === "/api/profile") {
       }
 
       return new Response("AI not configured", { status: 503 });
+    }
+
+    if (url.pathname === "/api/request-password-reset" && request.method === "POST") {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      if (env.LOGIN_ATTEMPTS) {
+        const { blocked } = await checkRateLimit(env.LOGIN_ATTEMPTS, `reset_req:${ip}`);
+        if (blocked) return new Response("Too many requests. Try again later.", { status: 429 });
+      }
+      const body = await request.json().catch(() => ({}));
+      const resetUser = String(body.username || "").trim();
+      if (!resetUser) {
+        return jsonResponse(JSON.stringify({ error: "Username is required." }), { status: 400 });
+      }
+      // Check if user exists in D1 or env users
+      let userExists = !!users[resetUser];
+      if (!userExists && env.GRANT_MANAGER_DB) {
+        try {
+          const row = await env.GRANT_MANAGER_DB.prepare(
+            "SELECT username FROM users WHERE username = ?"
+          ).bind(resetUser).first();
+          userExists = !!row;
+        } catch { /* ignore */ }
+      }
+      if (!userExists) {
+        // Don't reveal whether the username exists
+        return jsonResponse(JSON.stringify({
+          ok: true,
+          message: "If that account exists, a reset token has been generated.",
+        }));
+      }
+      const resetToken = crypto.randomUUID();
+      if (env.LOGIN_ATTEMPTS) {
+        await env.LOGIN_ATTEMPTS.put(
+          `reset:${resetToken}`,
+          JSON.stringify({ username: resetUser, expiresAt: Date.now() + 3_600_000 }),
+          { expirationTtl: 3600 }
+        );
+      }
+      return jsonResponse(JSON.stringify({
+        ok: true,
+        token: resetToken,
+        message: "Reset token generated. In production this would be delivered via email.",
+      }));
+    }
+
+    if (url.pathname === "/api/reset-password" && request.method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const { token: resetToken, password: newPass, confirm_password: confirmPass } = body;
+      if (!resetToken || !newPass || !confirmPass) {
+        return jsonResponse(JSON.stringify({ error: "token, password, and confirm_password are required." }), { status: 400 });
+      }
+      if (newPass.length < MIN_PASSWORD_LENGTH) {
+        return jsonResponse(JSON.stringify({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }), { status: 400 });
+      }
+      if (newPass !== confirmPass) {
+        return jsonResponse(JSON.stringify({ error: "Passwords do not match." }), { status: 400 });
+      }
+      let resetData = null;
+      if (env.LOGIN_ATTEMPTS) {
+        resetData = await env.LOGIN_ATTEMPTS.get(`reset:${resetToken}`, { type: "json" });
+      }
+      if (!resetData || Date.now() > resetData.expiresAt) {
+        return jsonResponse(JSON.stringify({ error: "Reset token is invalid or has expired." }), { status: 400 });
+      }
+      const newHash = await hashPassword(newPass);
+      try {
+        await env.GRANT_MANAGER_DB.prepare(
+          "UPDATE users SET password_hash = ? WHERE username = ?"
+        ).bind(newHash, resetData.username).run();
+      } catch (err) {
+        console.error("Failed to update password", err);
+        return jsonResponse(JSON.stringify({ error: "Failed to update password." }), { status: 500 });
+      }
+      if (env.LOGIN_ATTEMPTS) {
+        await env.LOGIN_ATTEMPTS.delete(`reset:${resetToken}`);
+      }
+      return jsonResponse(JSON.stringify({ ok: true }));
     }
 
     if (url.pathname === "/logout") {

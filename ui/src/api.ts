@@ -2,6 +2,24 @@ import type { Grant, ChatMessage } from "./types";
 
 const BASE = "";
 
+// Module-level CSRF token cache — populated after login via fetchCsrfToken().
+let _csrfToken: string | null = null;
+
+export async function fetchCsrfToken(): Promise<void> {
+  try {
+    const res = await fetch(`${BASE}/api/csrf`, { credentials: "include" });
+    if (!res.ok) return;
+    const data = await res.json() as { token: string };
+    _csrfToken = data.token ?? null;
+  } catch {
+    // Non-fatal — requests without CSRF will get 403 and surface errors naturally
+  }
+}
+
+function csrfHeaders(): Record<string, string> {
+  return _csrfToken ? { "X-CSRF-Token": _csrfToken } : {};
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     throw new Error("Unauthenticated");
@@ -54,6 +72,7 @@ export async function updateNotes(grantName: string, notes: string): Promise<voi
   body.append("Notes/Actions", notes);
   const res = await fetch(`${BASE}/api/notes`, {
     method: "POST",
+    headers: csrfHeaders(),
     body,
     credentials: "include",
   });
@@ -70,7 +89,7 @@ export async function sendChat(
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
     body: JSON.stringify({ messages }),
     signal,
@@ -172,7 +191,7 @@ export async function fetchProfile(): Promise<UserProfile | null> {
 export async function saveProfile(profile: UserProfile): Promise<void> {
   const res = await fetch(`${BASE}/api/profile`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
     body: JSON.stringify(profile),
   });
@@ -188,6 +207,27 @@ export async function fetchMe(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function requestPasswordReset(username: string): Promise<{ token?: string; message: string }> {
+  const res = await fetch(`${BASE}/api/request-password-reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+  const data = await res.json() as { ok?: boolean; token?: string; message?: string; error?: string };
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return { token: data.token, message: data.message ?? "If that account exists, a reset link has been sent." };
+}
+
+export async function resetPassword(token: string, password: string, confirmPassword: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password, confirm_password: confirmPassword }),
+  });
+  const data = await res.json().catch(() => ({})) as { error?: string };
+  if (!res.ok) throw new Error(data.error || "Password reset failed");
 }
 
 export async function checkAuth(): Promise<boolean> {
