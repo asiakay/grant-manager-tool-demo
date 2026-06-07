@@ -409,10 +409,10 @@ function HasOpenAIKey() {
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">
-                  OpenAI API Key Not Configured
+                  Anthropic API Key Not Configured
                 </h3>
                 <p className="text-neutral-600 dark:text-neutral-300 mb-3">
-                  The chat agent requires an OpenAI API key. Requests will not
+                  The chat agent requires an Anthropic API key. Requests will not
                   work until one is configured.
                 </p>
                 <div className="mb-3">
@@ -427,7 +427,7 @@ function HasOpenAIKey() {
                     file in the project root:
                   </p>
                   <pre className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-2 text-sm font-mono text-red-700 dark:text-red-300 whitespace-pre-wrap">
-{`OPENAI_API_KEY=your_openai_api_key
+{`ANTHROPIC_API_KEY=your_anthropic_api_key
 # Optional - Cloudflare AI Gateway
 # GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/..`}
                   </pre>
@@ -448,7 +448,7 @@ function HasOpenAIKey() {
                     </a>{" "}
                     named{" "}
                     <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-red-600 dark:text-red-400 font-mono text-sm">
-                      OPENAI_API_KEY
+                      ANTHROPIC_API_KEY
                     </code>
                     , or{" "}
                     <a
