@@ -82,6 +82,8 @@ export default function GrantTable({
 
   const filtered = useMemo(() => {
     return grants.filter((g) => {
+      const name = String(g.Name);
+      if (filters.savedOnly && !candidates.has(name) && !watchlist.has(name)) return false;
       if (filters.type && g.Type !== filters.type) return false;
       if (filters.stage && g.Stage !== filters.stage) return false;
       if (filters.minScore) {
@@ -103,7 +105,7 @@ export default function GrantTable({
       }
       return true;
     });
-  }, [grants, filters]);
+  }, [grants, filters, candidates, watchlist]);
 
   const columns = useMemo(
     () => [
