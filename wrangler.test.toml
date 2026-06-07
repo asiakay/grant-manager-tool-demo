@@ -1,0 +1,20 @@
+name = "grant-manager-tool-demo-test"
+main = "worker.js"
+compatibility_date = "2024-05-29"
+
+# Miniflare in-process bindings for tests — no real KV/D1/AI needed
+[[kv_namespaces]]
+binding = "USER_PROFILES"
+id = "test-user-profiles"
+
+[[kv_namespaces]]
+binding = "LOGIN_ATTEMPTS"
+id = "test-login-attempts"
+
+[[d1_databases]]
+binding = "GRANT_MANAGER_DB"
+database_name = "grant-manager-test"
+database_id = "00000000-0000-0000-0000-000000000001"
+
+[ai]
+binding = "AI"
