@@ -62,6 +62,13 @@ export default function ChatPanel({ open, onClose }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    fetch("/api/ai-status")
+      .then((r) => r.json() as Promise<{ configured: boolean; provider: string | null }>)
+      .then((data) => { if (!data.configured) setAiUnavailable(true); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (open) {
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
@@ -172,7 +179,7 @@ export default function ChatPanel({ open, onClose }: Props) {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
             <h2 className="font-semibold text-white text-sm">AI Assistant</h2>
-            <span className="badge bg-gray-800 text-gray-400 text-xs">Llama 3</span>
+            <span className="badge bg-gray-800 text-gray-400 text-xs">Claude</span>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={handleClear} className="btn-ghost px-2 py-1 text-xs">
