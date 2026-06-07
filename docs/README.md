@@ -44,7 +44,7 @@ pip install -r requirements.txt
 
 ## Cloudflare Worker Demo
 
-A minimal Cloudflare Worker publishes a demo endpoint with a basic login page configured via the `USER_HASHES` environment variable. Failed login attempts are stored in the `LOGIN_ATTEMPTS` KV namespace to enforce a five-try, five-minute lockout. After logging in, the `/dashboard` view renders the program data schema table with links to `/schema` (JSON) and `/data` (CSV). Authenticated requests to `/api/grants` return grant rows scored with weights from the user's profile stored in the `USER_PROFILES` KV namespace. If that binding is missing, the Worker logs a warning and falls back to an empty profile, and `/api/grants` responds with an explanatory error.
+A minimal Cloudflare Worker publishes a demo endpoint with a basic login page configured via the `USER_HASHES` Cloudflare Secret (set with `wrangler secret put USER_HASHES`). Failed login attempts are stored in the `LOGIN_ATTEMPTS` KV namespace to enforce a five-try, five-minute lockout. After logging in, the `/dashboard` view renders the program data schema table with links to `/schema` (JSON) and `/data` (CSV). Authenticated requests to `/api/grants` return grant rows scored with weights from the user's profile stored in the `USER_PROFILES` KV namespace. If that binding is missing, the Worker logs a warning and falls back to an empty profile, and `/api/grants` responds with an explanatory error.
 
 The Worker relies on a D1 database. Run the migration before deploying:
 
