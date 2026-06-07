@@ -60,6 +60,7 @@ Access credentials available on request.
 ```
 Grants.gov API → Python pipeline (search · wrangle · score) → D1 Database → Cloudflare Worker (Dashboard + API)
 ```
+Weights are configurable per user. The scoring profile is stored in KV and applied at query time — not baked into the dataset.
 
 ### Stack
 - **Runtime:** Cloudflare Workers (edge, zero cold starts)
@@ -139,11 +140,10 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 This is an actively developed MVP. Current technical debt, in order of priority:
 
-- **Dual worker consolidation** — `worker.js` is the primary deployment; `worker/src/worker.ts` is a TypeScript rewrite in progress. Not yet unified.
+- **Dual worker confusion** — `wrangler.toml` points to `worker/src/worker.ts` but `worker.js` is the primary deployment. Consolidation in progress.
 - **CSV → D1 import** — No automated pipeline from scored.csv to the database yet. Currently manual via `/new_schema`.
 - **PDF pipeline** — `pdf_worker.ts` queue consumer is incomplete pending `GRANT_SUMMARIZER_URL` configuration.
 - **React scoring table** — `ui/ScoringTable.jsx` exists but is not yet integrated into the worker.
-- **Credential rotation** — `USER_HASHES` is stored as a Cloudflare Secret (not in config), but hashes from earlier commits remain in git history. Rotate passwords after any fresh deploy.
 
 ---
 
