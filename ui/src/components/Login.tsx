@@ -4,9 +4,10 @@ import { login } from "../api";
 interface Props {
   onSuccess: () => void;
   onSignUp: () => void;
+  onForgotPassword: () => void;
 }
 
-export default function Login({ onSuccess, onSignUp }: Props) {
+export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -64,6 +65,16 @@ export default function Login({ onSuccess, onSignUp }: Props) {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              className="text-gray-400 hover:text-gray-300 text-sm underline"
+            >
+              Forgot password?
+            </button>
           </div>
 
           <button

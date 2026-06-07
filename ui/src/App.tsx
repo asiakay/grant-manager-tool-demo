@@ -4,10 +4,11 @@ import Signup from "./components/Signup";
 import Dashboard from "./components/Dashboard";
 import ProfileSetup from "./components/ProfileSetup";
 import WelcomePage from "./components/WelcomePage";
-import { checkAuth, login, fetchProfile, saveProfile, fetchMe } from "./api";
+import ForgotPassword from "./components/ForgotPassword";
+import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
 
-type AuthState = "loading" | "unauthenticated" | "signup" | "profile-setup" | "welcome" | "authenticated";
+type AuthState = "loading" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
@@ -21,6 +22,7 @@ export default function App() {
       const [p, me] = await Promise.all([
         fetchProfile().catch(() => null),
         fetchMe(),
+        fetchCsrfToken(),
       ]);
       const hasWeights = p && p.weights && typeof p.weights === "object";
       setProfile(p);
@@ -43,6 +45,7 @@ export default function App() {
     const [p, me] = await Promise.all([
       fetchProfile().catch(() => null),
       fetchMe(),
+      fetchCsrfToken(),
     ]);
     const hasWeights = p && p.weights && typeof p.weights === "object";
     setProfile(p);
@@ -96,11 +99,21 @@ export default function App() {
     );
   }
 
+  if (auth === "forgot-password") {
+    return (
+      <ForgotPassword
+        onBack={() => setAuth("unauthenticated")}
+        onSuccess={() => setAuth("unauthenticated")}
+      />
+    );
+  }
+
   if (auth === "unauthenticated") {
     return (
       <Login
         onSuccess={handleLoginSuccess}
         onSignUp={() => setAuth("signup")}
+        onForgotPassword={() => setAuth("forgot-password")}
       />
     );
   }
