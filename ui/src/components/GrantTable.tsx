@@ -117,6 +117,7 @@ export default function GrantTable({
           </span>
         ),
         size: 200,
+        meta: { className: "" },
       }),
       columnHelper.accessor("Type", {
         header: "Type",
@@ -126,6 +127,7 @@ export default function GrantTable({
           </span>
         ),
         size: 90,
+        meta: { className: "hidden xl:table-cell" },
       }),
       columnHelper.accessor("Sponsor", {
         header: "Sponsor",
@@ -133,6 +135,7 @@ export default function GrantTable({
           <span className="text-gray-300 text-xs line-clamp-1">{info.getValue() || "—"}</span>
         ),
         size: 140,
+        meta: { className: "hidden md:table-cell" },
       }),
       columnHelper.accessor("Stage", {
         header: "Stage",
@@ -140,6 +143,7 @@ export default function GrantTable({
           <span className="text-gray-400 text-xs">{info.getValue() || "—"}</span>
         ),
         size: 90,
+        meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("Deadline/Next Cohort", {
         header: "Deadline",
@@ -150,26 +154,31 @@ export default function GrantTable({
           const db = new Date(String(b.original["Deadline/Next Cohort"] || "")).getTime();
           return (isNaN(da) ? Infinity : da) - (isNaN(db) ? Infinity : db);
         },
+        meta: { className: "hidden sm:table-cell" },
       }),
       columnHelper.accessor("Non-dilutive?", {
         header: "Non-dilutive",
         cell: (info) => <BoolCell value={info.getValue()} />,
         size: 100,
+        meta: { className: "hidden xl:table-cell" },
       }),
       columnHelper.accessor("Relevance", {
         header: "Rel",
         cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
         size: 55,
+        meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("Fit", {
         header: "Fit",
         cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
         size: 50,
+        meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("Ease", {
         header: "Ease",
         cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
         size: 55,
+        meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("score", {
         header: "Match ★",
@@ -180,6 +189,7 @@ export default function GrantTable({
           const sb = parseFloat(String(b.original.score ?? "0"));
           return sa - sb;
         },
+        meta: { className: "" },
       }),
       columnHelper.display({
         id: "actions",
@@ -208,6 +218,7 @@ export default function GrantTable({
           );
         },
         size: 60,
+        meta: { className: "" },
       }),
     ],
     [candidates, watchlist, onToggleCandidate, onToggleWatchlist]
@@ -243,7 +254,7 @@ export default function GrantTable({
                 <th
                   key={header.id}
                   style={{ width: header.getSize() }}
-                  className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""}`}
+                  className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -268,7 +279,7 @@ export default function GrantTable({
                 className={`cursor-pointer transition-colors border-b border-gray-800/50 hover:bg-gray-800/60 ${isCandidate ? "bg-brand-900/10" : isWatchlisted ? "bg-blue-900/10" : ""}`}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-3 py-2.5 align-middle max-w-xs">
+                  <td key={cell.id} className={`px-3 py-2.5 align-middle max-w-xs ${(cell.column.columnDef.meta as { className?: string })?.className ?? ""}`}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
