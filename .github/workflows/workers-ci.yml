@@ -1,26 +1,15 @@
-name: Cloudflare Workers CI/CD
+name: Deploy to Cloudflare Workers
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'worker.js'
-      - 'wrangler.toml'
-      - 'ui/**'
-      - 'agents-starter-1/**'
   pull_request:
     branches: [main]
-    paths:
-      - 'worker.js'
-      - 'wrangler.toml'
-      - 'ui/**'
-      - 'agents-starter-1/**'
   workflow_dispatch:
 
 jobs:
-  # ── Build & type-check on every PR ───────────────────────────────────────
-  validate:
-    name: Build UI
+  deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,141 +17,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install UI deps
-        working-directory: ui
-        run: npm ci
 
       - name: Build UI
         working-directory: ui
-        run: npm run build
+        run: npm ci && npm run build
 
-      - name: Upload UI build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-dist
-          path: ui/dist
-          retention-days: 1
+      - name: Deploy main worker
+        working-directory: .
+        run: npm ci && npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-  # ── Deploy on push to main (production) or any PR (preview) ─────────────
-  deploy:
-    name: Deploy to Cloudflare
-    runs-on: ubuntu-latest
-    needs: validate
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    environment:
-      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production' || 'preview' }}
-      url: https://grant-demo.workers.dev
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download UI build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ui-dist
-          path: ui/dist
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install root deps
-        run: npm ci
-
-      # ── Provision KV namespaces and D1 database if not yet created ────────
-      # Uses the Cloudflare REST API directly (not wrangler) so JSON output
-      # is always clean — wrangler mixes progress text into stdout even with
-      # --json, which breaks jq parsing.
-      - name: Provision Cloudflare resources
+      - name: Set Workers AI secrets
         run: |
-          CF="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
-          AUTH="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
-
-          # ── USER_PROFILES KV ─────────────────────────────────────────────
-          UP_ID=$(curl -sf -H "$AUTH" "$CF/storage/kv/namespaces?per_page=100" \
-            | jq -r '.result[] | select(.title == "USER_PROFILES") | .id' | head -1)
-          if [ -z "$UP_ID" ]; then
-            echo "Creating USER_PROFILES KV namespace..."
-            UP_ID=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
-              -d '{"title":"USER_PROFILES"}' "$CF/storage/kv/namespaces" \
-              | jq -r '.result.id')
-          fi
-          echo "USER_PROFILES id: $UP_ID"
-
-          # ── LOGIN_ATTEMPTS KV ─────────────────────────────────────────────
-          LA_ID=$(curl -sf -H "$AUTH" "$CF/storage/kv/namespaces?per_page=100" \
-            | jq -r '.result[] | select(.title == "LOGIN_ATTEMPTS") | .id' | head -1)
-          if [ -z "$LA_ID" ]; then
-            echo "Creating LOGIN_ATTEMPTS KV namespace..."
-            LA_ID=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
-              -d '{"title":"LOGIN_ATTEMPTS"}' "$CF/storage/kv/namespaces" \
-              | jq -r '.result.id')
-          fi
-          echo "LOGIN_ATTEMPTS id: $LA_ID"
-
-          # ── GRANT_MANAGER_DB D1 ───────────────────────────────────────────
-          # D1 API requires D1:Edit permission on the token. If it returns an
-          # auth error, fall back to the ID already committed in wrangler.toml.
-          D1_LIST=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100")
-          D1_SUCCESS=$(echo "$D1_LIST" | jq -r '.success')
-          if [ "$D1_SUCCESS" = "true" ]; then
-            DB_ID=$(echo "$D1_LIST" | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
-            if [ -z "$DB_ID" ]; then
-              echo "Creating grant-manager-db D1 database..."
-              D1_CREATE=$(curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
-                -d '{"name":"grant-manager-db"}' "$CF/d1/database")
-              DB_ID=$(echo "$D1_CREATE" | jq -r '(.result.uuid // .result.id) // empty' | head -1)
-              if [ -z "$DB_ID" ]; then
-                DB_ID=$(curl -s -H "$AUTH" "$CF/d1/database?per_page=100" \
-                  | jq -r '.result[] | select(.name == "grant-manager-db") | (.uuid // .id)' | head -1)
-              fi
-            fi
-          else
-            echo "⚠️  D1 API auth failed — using ID from wrangler.toml (add D1:Edit permission to token to enable provisioning)"
-            DB_ID=$(grep 'database_id' wrangler.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          fi
-          echo "GRANT_MANAGER_DB id: $DB_ID"
-
-          # ── Fail early if KV IDs are missing (D1 has fallback above) ──────
-          if [ -z "$UP_ID" ] || [ -z "$LA_ID" ] || [ -z "$DB_ID" ]; then
-            echo "❌ Failed to resolve one or more resource IDs"
-            exit 1
-          fi
-
-          # ── Patch wrangler.toml KV IDs with this account's values ─────────
-          sed -i \
-            "s/id = \"3613c184af7d4890a70f1c9d28583329\"/id = \"$UP_ID\"/" \
-            wrangler.toml
-          sed -i \
-            "s/id = \"713c8d1d9eb34d1ea13656bf40f14ccc\"/id = \"$LA_ID\"/" \
-            wrangler.toml
-          # Only patch D1 ID if it changed from the committed value
-          sed -i \
-            "s/database_id = \"e99396be-8043-41f6-9762-07c2b6fc4d3f\"/database_id = \"$DB_ID\"/" \
-            wrangler.toml
-
-          echo "✅ wrangler.toml patched for this account"
+          echo "$CLOUDFLARE_ACCOUNT_ID" | npx wrangler secret put CF_ACCOUNT_ID
+          echo "$CLOUDFLARE_API_TOKEN"   | npx wrangler secret put CF_AI_TOKEN
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Deploy to Cloudflare Workers
-        run: npx wrangler deploy --verbose 2>&1 | tee /tmp/deploy.log; grep -i "binding\|ai\|error\|warn" /tmp/deploy.log || true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Install agents-starter deps
+      - name: Deploy agents-starter
         working-directory: agents-starter-1
-        run: npm ci
-
-      - name: Deploy agents-starter to Cloudflare Workers
-        working-directory: agents-starter-1
-        run: npx wrangler deploy
+        run: npm ci && npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
