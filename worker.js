@@ -56,8 +56,6 @@ function computeScore(r, weights) {
        + wn.StackAlignment * (stack * 3)
        + wn.CadenceRecency * (cadence * 3);
 }
-}
-
 
 const SESSION_TTL = 86400; // 24 hours in seconds
 
