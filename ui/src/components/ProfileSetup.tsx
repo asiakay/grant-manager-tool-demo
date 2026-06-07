@@ -2,7 +2,42 @@ import { useState } from "react";
 import type { UserProfile } from "../api";
 import { DEFAULT_WEIGHTS } from "../api";
 
-const FIELDS: { key: keyof UserProfile["weights"]; label: string; description: string }[] = [
+// ── Step 1 data ────────────────────────────────────────────────────────────
+
+const FOCUS_AREAS = [
+  "Health & Medicine",
+  "Education & Workforce",
+  "Technology & Innovation",
+  "Housing & Community",
+  "Environment & Climate",
+  "Agriculture & Food",
+  "Social Services",
+  "Arts & Humanities",
+  "International Development",
+  "Veterans & Military",
+  "Research & Science",
+  "Justice & Safety",
+];
+
+const ORG_TYPES = [
+  { value: "nonprofit",   label: "Nonprofit / NGO" },
+  { value: "university",  label: "University / Research Institution" },
+  { value: "startup",     label: "Startup / Small Business" },
+  { value: "government",  label: "Government / Tribal" },
+  { value: "individual",  label: "Individual Researcher" },
+  { value: "hospital",    label: "Hospital / Health System" },
+];
+
+const STAGES = [
+  { value: "research",    label: "Early Research / Ideation" },
+  { value: "pilot",       label: "Pilot / Proof of Concept" },
+  { value: "growth",      label: "Growth / Scaling" },
+  { value: "established", label: "Established Program" },
+];
+
+// ── Step 2 data ────────────────────────────────────────────────────────────
+
+const WEIGHT_FIELDS: { key: keyof UserProfile["weights"]; label: string; description: string }[] = [
   { key: "Relevance",      label: "Relevance",       description: "How well the grant aligns with your mission" },
   { key: "Fit",            label: "Fit",              description: "How suitable you are as an applicant" },
   { key: "Ease",           label: "Ease",             description: "How straightforward the application process is" },
@@ -11,18 +46,13 @@ const FIELDS: { key: keyof UserProfile["weights"]; label: string; description: s
 ];
 
 const PRESETS: { label: string; weights: UserProfile["weights"] }[] = [
-  { label: "Balanced (default)", weights: DEFAULT_WEIGHTS },
-  { label: "Mission-first",      weights: { Relevance: 0.5, Fit: 0.3, Ease: 0.1, StackAlignment: 0.05, CadenceRecency: 0.05 } },
-  { label: "Easy wins",          weights: { Relevance: 0.2, Fit: 0.2, Ease: 0.5, StackAlignment: 0.05, CadenceRecency: 0.05 } },
-  { label: "Deadline-driven",    weights: { Relevance: 0.25, Fit: 0.25, Ease: 0.15, StackAlignment: 0.1, CadenceRecency: 0.25 } },
+  { label: "Balanced",       weights: DEFAULT_WEIGHTS },
+  { label: "Mission-first",  weights: { Relevance: 0.5,  Fit: 0.3,  Ease: 0.1,  StackAlignment: 0.05, CadenceRecency: 0.05 } },
+  { label: "Easy wins",      weights: { Relevance: 0.2,  Fit: 0.2,  Ease: 0.5,  StackAlignment: 0.05, CadenceRecency: 0.05 } },
+  { label: "Deadline-driven",weights: { Relevance: 0.25, Fit: 0.25, Ease: 0.15, StackAlignment: 0.1,  CadenceRecency: 0.25 } },
 ];
 
-interface Props {
-  initial?: UserProfile | null;
-  onSave: (profile: UserProfile) => void;
-  onSkip?: () => void;
-  saving?: boolean;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function normalize(raw: UserProfile["weights"]): UserProfile["weights"] {
   const total = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
@@ -35,51 +65,196 @@ function normalize(raw: UserProfile["weights"]): UserProfile["weights"] {
   };
 }
 
+function toSliders(w: UserProfile["weights"]): UserProfile["weights"] {
+  const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+  return {
+    Relevance:      Math.round((w.Relevance / total) * 100),
+    Fit:            Math.round((w.Fit / total) * 100),
+    Ease:           Math.round((w.Ease / total) * 100),
+    StackAlignment: Math.round((w.StackAlignment / total) * 100),
+    CadenceRecency: Math.round((w.CadenceRecency / total) * 100),
+  };
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
+
+interface Props {
+  initial?: UserProfile | null;
+  onSave: (profile: UserProfile) => void;
+  onSkip?: () => void;
+  saving?: boolean;
+}
+
 export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props) {
-  // Store as 0-100 integers for slider UX, normalize on save
-  const initialRaw = initial?.weights ?? DEFAULT_WEIGHTS;
-  const total0 = Object.values(initialRaw).reduce((a, b) => a + b, 0) || 1;
+  const [step, setStep] = useState<1 | 2>(1);
 
-  const [sliders, setSliders] = useState<UserProfile["weights"]>({
-    Relevance:      Math.round((initialRaw.Relevance / total0) * 100),
-    Fit:            Math.round((initialRaw.Fit / total0) * 100),
-    Ease:           Math.round((initialRaw.Ease / total0) * 100),
-    StackAlignment: Math.round((initialRaw.StackAlignment / total0) * 100),
-    CadenceRecency: Math.round((initialRaw.CadenceRecency / total0) * 100),
-  });
+  // Step 1 state
+  const [focusAreas, setFocusAreas] = useState<string[]>(initial?.focusAreas ?? []);
+  const [orgType, setOrgType]       = useState(initial?.orgType ?? "");
+  const [stage, setStage]           = useState(initial?.stage ?? "");
 
-  const totalPct = Object.values(sliders).reduce((a, b) => a + b, 0);
+  // Step 2 state (sliders 0-100)
+  const [sliders, setSliders] = useState<UserProfile["weights"]>(
+    toSliders(initial?.weights ?? DEFAULT_WEIGHTS)
+  );
 
-  function setField(key: keyof UserProfile["weights"], value: number) {
+  function toggleFocus(area: string) {
+    setFocusAreas(prev =>
+      prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]
+    );
+  }
+
+  function applyPreset(w: UserProfile["weights"]) {
+    setSliders(toSliders(w));
+  }
+
+  function setSlider(key: keyof UserProfile["weights"], value: number) {
     setSliders(prev => ({ ...prev, [key]: value }));
   }
 
-  function applyPreset(weights: UserProfile["weights"]) {
-    const total = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
-    setSliders({
-      Relevance:      Math.round((weights.Relevance / total) * 100),
-      Fit:            Math.round((weights.Fit / total) * 100),
-      Ease:           Math.round((weights.Ease / total) * 100),
-      StackAlignment: Math.round((weights.StackAlignment / total) * 100),
-      CadenceRecency: Math.round((weights.CadenceRecency / total) * 100),
-    });
-  }
+  const step1Valid = focusAreas.length > 0 && orgType && stage;
+  const totalPct   = Object.values(sliders).reduce((a, b) => a + b, 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ weights: normalize(sliders) });
+    onSave({ focusAreas, orgType, stage, weights: normalize(sliders) });
   }
+
+  // ── Step indicator ──────────────────────────────────────────────────────
+
+  const StepIndicator = () => (
+    <div className="flex items-center justify-center gap-2 mb-8">
+      {[1, 2].map(n => (
+        <div key={n} className="flex items-center gap-2">
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+            step === n ? "bg-brand-500 text-white" : n < step ? "bg-brand-800 text-brand-300" : "bg-gray-800 text-gray-500"
+          }`}>
+            {n < step ? "✓" : n}
+          </div>
+          <span className={`text-xs ${step === n ? "text-white" : "text-gray-500"}`}>
+            {n === 1 ? "Your context" : "Scoring weights"}
+          </span>
+          {n < 2 && <div className="w-8 h-px bg-gray-700 mx-1" />}
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── Step 1 ──────────────────────────────────────────────────────────────
+
+  if (step === 1) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-950 p-4">
+        <div className="w-full max-w-lg">
+          <div className="text-center mb-6">
+            <div className="text-4xl mb-3">🎯</div>
+            <h1 className="text-2xl font-bold text-white">Tell us about yourself</h1>
+            <p className="text-gray-400 text-sm mt-1">This helps us understand your context</p>
+          </div>
+
+          <StepIndicator />
+
+          <div className="card space-y-6">
+            {/* Focus areas */}
+            <div>
+              <label className="block text-sm font-semibold text-white mb-3">
+                Focus areas
+                <span className="ml-1 text-gray-500 font-normal">(select all that apply)</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {FOCUS_AREAS.map(area => {
+                  const active = focusAreas.includes(area);
+                  return (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => toggleFocus(area)}
+                      className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
+                        active
+                          ? "bg-brand-600/30 border-brand-500 text-brand-300"
+                          : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Org type */}
+            <div>
+              <label className="block text-sm font-semibold text-white mb-3">Organization type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {ORG_TYPES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setOrgType(value)}
+                    className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
+                      orgType === value
+                        ? "bg-brand-600/30 border-brand-500 text-brand-300"
+                        : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Stage */}
+            <div>
+              <label className="block text-sm font-semibold text-white mb-3">Current stage</label>
+              <div className="grid grid-cols-2 gap-2">
+                {STAGES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStage(value)}
+                    className={`text-left px-3 py-2 rounded-lg text-sm border transition-colors ${
+                      stage === value
+                        ? "bg-brand-600/30 border-brand-500 text-brand-300"
+                        : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                disabled={!step1Valid}
+                className="btn-primary flex-1 justify-center py-2.5"
+              >
+                Next: Scoring weights →
+              </button>
+              {onSkip && (
+                <button type="button" onClick={onSkip} className="btn-ghost px-4">Skip</button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 2 ──────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 p-4">
       <div className="w-full max-w-lg">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="text-4xl mb-3">⚖️</div>
-          <h1 className="text-2xl font-bold text-white">Customize your scoring</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            Adjust how much each factor matters when ranking grants
-          </p>
+          <h1 className="text-2xl font-bold text-white">Tune your scoring</h1>
+          <p className="text-gray-400 text-sm mt-1">Adjust how much each factor matters when ranking grants</p>
         </div>
+
+        <StepIndicator />
 
         <form onSubmit={handleSubmit} className="card space-y-6">
           {/* Presets */}
@@ -101,8 +276,8 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
           {/* Sliders */}
           <div className="space-y-5">
-            {FIELDS.map(({ key, label, description }) => {
-              const pct = sliders[key] as number;
+            {WEIGHT_FIELDS.map(({ key, label, description }) => {
+              const pct   = sliders[key] as number;
               const share = totalPct > 0 ? Math.round((pct / totalPct) * 100) : 0;
               return (
                 <div key={key}>
@@ -120,7 +295,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
                     min={0}
                     max={100}
                     value={pct}
-                    onChange={e => setField(key, Number(e.target.value))}
+                    onChange={e => setSlider(key, Number(e.target.value))}
                     className="w-full h-1.5 rounded-full appearance-none bg-gray-700 accent-brand-500 cursor-pointer"
                   />
                 </div>
@@ -128,12 +303,18 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
             })}
           </div>
 
-          {/* Weight total warning */}
           {totalPct === 0 && (
             <p className="text-xs text-yellow-400">Set at least one weight above zero.</p>
           )}
 
           <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="btn-ghost px-4"
+            >
+              ← Back
+            </button>
             <button
               type="submit"
               disabled={totalPct === 0 || saving}
@@ -148,11 +329,6 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
                 "Save & find my matches"
               )}
             </button>
-            {onSkip && (
-              <button type="button" onClick={onSkip} className="btn-ghost px-4">
-                Skip
-              </button>
-            )}
           </div>
         </form>
       </div>

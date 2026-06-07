@@ -22,9 +22,10 @@ export default function App() {
         fetchProfile().catch(() => null),
         fetchMe(),
       ]);
+      const hasWeights = p && p.weights && typeof p.weights === "object";
       setProfile(p);
       setUsername(me ?? "");
-      setAuth(p ? "welcome" : "profile-setup");
+      setAuth(hasWeights ? "welcome" : "profile-setup");
     });
   }, []);
 
@@ -43,9 +44,10 @@ export default function App() {
       fetchProfile().catch(() => null),
       fetchMe(),
     ]);
+    const hasWeights = p && p.weights && typeof p.weights === "object";
     setProfile(p);
     setUsername(me ?? "");
-    setAuth(p ? "welcome" : "profile-setup");
+    setAuth(hasWeights ? "welcome" : "profile-setup");
   }
 
   async function handleProfileSave(p: UserProfile) {
