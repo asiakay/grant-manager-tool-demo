@@ -332,6 +332,10 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
         grant={selectedGrant}
         onClose={() => setSelectedGrant(null)}
         onGrantUpdated={handleGrantUpdated}
+        watchlist={watchlist}
+        candidates={candidates}
+        onToggleWatchlist={toggleWatchlist}
+        onToggleCandidate={toggleCandidate}
       />
 
       {/* Chat panel */}

@@ -6,6 +6,10 @@ interface Props {
   grant: Grant | null;
   onClose: () => void;
   onGrantUpdated: (name: string, notes: string) => void;
+  watchlist: Set<string>;
+  candidates: Set<string>;
+  onToggleWatchlist: (name: string) => void;
+  onToggleCandidate: (name: string) => void;
 }
 
 const COLUMNS: (keyof Grant)[] = [
@@ -40,7 +44,7 @@ function ScoreBadge({ value }: { value: string | number }) {
   );
 }
 
-export default function GrantDrawer({ grant, onClose, onGrantUpdated }: Props) {
+export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate }: Props) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -107,11 +111,36 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated }: Props) {
                 <h2 className="text-lg font-semibold text-white leading-snug">{grant.Name}</h2>
                 <p className="text-gray-400 text-sm">{grant.Sponsor}</p>
               </div>
-              <button onClick={onClose} className="btn-ghost p-1.5 shrink-0" aria-label="Close">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {(() => {
+                  const name = String(grant.Name);
+                  const isCandidate = candidates.has(name);
+                  const isWatchlisted = watchlist.has(name);
+                  return (
+                    <>
+                      <button
+                        title={isCandidate ? "Remove from candidates" : "Mark as candidate"}
+                        onClick={() => onToggleCandidate(name)}
+                        className={`p-1.5 rounded transition-colors text-lg leading-none ${isCandidate ? "text-brand-400" : "text-gray-600 hover:text-gray-400"}`}
+                      >
+                        ★
+                      </button>
+                      <button
+                        title={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+                        onClick={() => onToggleWatchlist(name)}
+                        className={`p-1.5 rounded transition-colors text-base leading-none ${isWatchlisted ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
+                      >
+                        👁
+                      </button>
+                    </>
+                  );
+                })()}
+                <button onClick={onClose} className="btn-ghost p-1.5 ml-1" aria-label="Close">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Body */}
