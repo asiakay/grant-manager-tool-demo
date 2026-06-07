@@ -59,6 +59,21 @@ function computeScore(r, weights) {
 
 const SESSION_TTL = 86400; // 24 hours in seconds
 
+function jsonResponse(body, init = {}) {
+  const status = init.status ?? 200;
+  const extra = init.headers ?? {};
+  return new Response(body, {
+    ...init,
+    status,
+    headers: {
+      "content-type": "application/json",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+      ...extra,
+    },
+  });
+}
+
 async function resolveSession(env, cookie) {
   const match = cookie.match(/session=([^;]+)/);
   if (!match) return null;
@@ -104,28 +119,16 @@ export default {
       const confirmPass = form.get("confirm_password") || "";
 
       if (!newUser || newUser.length < 3 || newUser.length > 32) {
-        return new Response(JSON.stringify({ error: "Username must be 3–32 characters." }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ error: "Username must be 3–32 characters." }), { status: 400 });
       }
       if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
-        return new Response(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), { status: 400 });
       }
       if (!newPass || newPass.length < 6) {
-        return new Response(JSON.stringify({ error: "Password must be at least 6 characters." }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ error: "Password must be at least 6 characters." }), { status: 400 });
       }
       if (newPass !== confirmPass) {
-        return new Response(JSON.stringify({ error: "Passwords do not match." }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ error: "Passwords do not match." }), { status: 400 });
       }
 
       await env.GRANT_MANAGER_DB.prepare(
@@ -141,10 +144,7 @@ export default {
       ).bind(newUser).first();
 
       if (existing || users[newUser]) {
-        return new Response(JSON.stringify({ error: "Username is already taken." }), {
-          status: 409,
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ error: "Username is already taken." }), { status: 409 });
       }
 
       const hash = await hashPassword(newPass);
@@ -152,10 +152,7 @@ export default {
         "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
       ).bind(newUser, hash, Date.now()).run();
 
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 201,
-        headers: { "content-type": "application/json" },
-      });
+      return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
     }
 
     if (url.pathname === "/login" && request.method === "POST") {
@@ -228,12 +225,12 @@ if (url.pathname === "/api/profile") {
       if (request.method === "GET") {
         const raw = env.USER_PROFILES ? await env.USER_PROFILES.get(`profile:${username}`) : null;
         const profile = raw ? JSON.parse(raw) : null;
-        return new Response(JSON.stringify(profile), { headers: { "content-type": "application/json" } });
+        return jsonResponse(JSON.stringify(profile));
       }
       if (request.method === "POST") {
         const body = await request.json();
         await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
-        return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
+        return jsonResponse(JSON.stringify({ ok: true }));
       }
     }
 
@@ -266,22 +263,16 @@ if (url.pathname === "/api/profile") {
           }))
           .sort((a, b) => b.score - a.score);
       }
-      return new Response(JSON.stringify(results), {
-        headers: { "content-type": "application/json" },
-      });
+      return jsonResponse(JSON.stringify(results));
     }
 
     if (url.pathname === "/api/me") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      return new Response(JSON.stringify({ username }), {
-        headers: { "content-type": "application/json" },
-      });
+      return jsonResponse(JSON.stringify({ username }));
     }
 
     if (url.pathname === "/api/health") {
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json" },
-      });
+      return jsonResponse(JSON.stringify({ ok: true }));
     }
 
     if (url.pathname === "/api/notes" && request.method === "POST") {
@@ -296,9 +287,7 @@ if (url.pathname === "/api/profile") {
       )
         .bind(notes, name)
         .run();
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json" },
-      });
+      return jsonResponse(JSON.stringify({ ok: true }));
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
@@ -332,9 +321,7 @@ if (url.pathname === "/api/profile") {
         }
         const data = await anthropicRes.json();
         const text = data.content?.[0]?.text ?? "";
-        return new Response(JSON.stringify({ response: text }), {
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ response: text }));
       }
 
       if (env.AI) {
@@ -342,9 +329,7 @@ if (url.pathname === "/api/profile") {
           messages: chatMessages,
           stream: false,
         });
-        return new Response(JSON.stringify({ response: result.response }), {
-          headers: { "content-type": "application/json" },
-        });
+        return jsonResponse(JSON.stringify({ response: result.response }));
       }
 
       return new Response("AI binding not configured", { status: 503 });
@@ -366,7 +351,11 @@ if (url.pathname === "/api/profile") {
       });
     }
 
-    return env.ASSETS.fetch(request);
+    const assetRes = await env.ASSETS.fetch(request);
+    const newHeaders = new Headers(assetRes.headers);
+    newHeaders.set("X-Content-Type-Options", "nosniff");
+    newHeaders.set("Cache-Control", "public, max-age=86400");
+    return new Response(assetRes.body, { status: assetRes.status, headers: newHeaders });
   },
 };
 
