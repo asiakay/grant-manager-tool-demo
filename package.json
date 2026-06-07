@@ -9,12 +9,15 @@
     "example": "examples"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.13",
     "@cloudflare/workers-types": "^4.20250408.0",
     "typescript": "^5.0.0",
+    "vitest": "^4.1.8",
     "wrangler": "^4.98.0"
   },
   "scripts": {
     "test": "pytest grant_summarizer",
+    "test:worker": "vitest run",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "migrate": "wrangler d1 migrations apply GRANT_MANAGER_DB --remote"
