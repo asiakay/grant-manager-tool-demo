@@ -19,7 +19,7 @@ id = "713c8d1d9eb34d1ea13656bf40f14ccc"
 [[d1_databases]]
 binding = "GRANT_MANAGER_DB"
 database_name = "grant-manager-db"
-database_id = "e99396be-8043-41f6-9762-07c2b6fc4d3f"
+database_id = "your-d1-database-id-here"
 migrations_dir = "migrations"
 
 [ai]
