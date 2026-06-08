@@ -161,8 +161,13 @@ export async function exportCsv(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "grants.csv";
+  // Prefer the server-supplied filename from Content-Disposition; fall back to a static name.
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  a.download = match ? match[1] : "grants.csv";
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
