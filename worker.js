@@ -347,6 +347,117 @@ export default {
       return jsonResponse(JSON.stringify({ token: csrfToken }));
     }
 
+    if (url.pathname === "/api/live-search" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!env.SIMPLER_GRANTS_API_KEY) {
+        return jsonResponse(JSON.stringify({
+          error: "Live search is not configured. Set the SIMPLER_GRANTS_API_KEY secret.",
+          configured: false,
+        }), { status: 503 });
+      }
+
+      const q = (url.searchParams.get("q") || "").trim();
+      const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+      const pageSize = Math.min(25, Math.max(1, parseInt(url.searchParams.get("pageSize") || "25", 10)));
+
+      if (!q) return jsonResponse(JSON.stringify({ data: [], total: 0, page: 1, pageSize, configured: true }));
+
+      // Load user profile for scoring
+      let lsProfile = {};
+      if (env.USER_PROFILES) {
+        const raw = await env.USER_PROFILES.get(`profile:${username}`);
+        if (raw) { try { lsProfile = JSON.parse(raw); } catch { lsProfile = {}; } }
+      }
+      const lsWeights = (lsProfile.weights && typeof lsProfile.weights === "object") ? lsProfile.weights : null;
+
+      const searchStart = Date.now();
+      let apiRes;
+      try {
+        apiRes = await fetch("https://api.simpler.grants.gov/v1/opportunities/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-API-Key": env.SIMPLER_GRANTS_API_KEY },
+          body: JSON.stringify({
+            query: q,
+            filters: {
+              opportunity_status: { one_of: ["posted", "forecasted"] },
+              funding_instrument: { one_of: ["grant", "cooperative_agreement"] },
+            },
+            pagination: {
+              page_offset: page,
+              page_size: pageSize,
+              sort_order: [{ order_by: "relevancy", sort_direction: "descending" }],
+            },
+          }),
+        });
+      } catch (err) {
+        log("error", "live_search_fetch_failed", { ...reqCtx, error: String(err) });
+        return jsonResponse(JSON.stringify({ error: "Failed to reach Simpler Grants API." }), { status: 502 });
+      }
+
+      if (!apiRes.ok) {
+        const errText = await apiRes.text().catch(() => "");
+        log("error", "live_search_api_error", { ...reqCtx, status: apiRes.status, body: errText.slice(0, 200) });
+        return jsonResponse(JSON.stringify({ error: `Simpler Grants API returned ${apiRes.status}.` }), { status: 502 });
+      }
+
+      const apiData = await apiRes.json();
+
+      function fmtAward(floor, ceiling) {
+        const fmt = (n) => "$" + Number(n).toLocaleString("en-US");
+        if (floor && ceiling) return `${fmt(floor)} – ${fmt(ceiling)}`;
+        if (ceiling) return `Up to ${fmt(ceiling)}`;
+        if (floor) return `From ${fmt(floor)}`;
+        return "";
+      }
+
+      function capitalize(s) {
+        return s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") : "";
+      }
+
+      const data = (apiData.data || []).map((opp) => {
+        const summary = opp.summary || opp;
+        const grant = {
+          Type: capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
+          Name: opp.opportunity_title || summary.opportunity_title || "",
+          Sponsor: opp.agency_name || summary.agency_name || opp.agency_code || "",
+          "Source URL": opp.opportunity_id
+            ? `https://grants.gov/search-results-detail/${opp.opportunity_id}`
+            : "",
+          "Region/Eligibility": "",
+          "Deadline/Next Cohort": opp.close_date || summary.close_date || "",
+          Cadence: "",
+          Benefits: fmtAward(
+            opp.award_floor ?? summary.award_floor,
+            opp.award_ceiling ?? summary.award_ceiling
+          ),
+          "Eligibility (key conditions)": Array.isArray(opp.applicant_types)
+            ? opp.applicant_types.map(capitalize).join(", ")
+            : Array.isArray(summary.applicant_types)
+              ? summary.applicant_types.map(capitalize).join(", ")
+              : "",
+          Stage: capitalize(opp.opportunity_status || ""),
+          "Non-dilutive?": "Yes",
+          "Stack Required?": "No",
+          Relevance: 0,
+          Fit: 0,
+          Ease: 0,
+          "Weighted Score": 0,
+          "Notes/Actions": "",
+        };
+        return { ...grant, score: Math.round(computeScore(grant, lsWeights) * 100) / 100 };
+      });
+
+      const paginationInfo = apiData.pagination_info || {};
+      const total = paginationInfo.total_records ?? data.length;
+      log("info", "live_search_completed", { ...reqCtx, query: q, total, page, durationMs: Date.now() - searchStart });
+      return jsonResponse(JSON.stringify({ data, total, page, pageSize, configured: true }));
+    }
+
+    if (url.pathname === "/api/live-search-status") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      return jsonResponse(JSON.stringify({ configured: !!env.SIMPLER_GRANTS_API_KEY }));
+    }
+
     if (url.pathname === "/api/health") {
       return jsonResponse(JSON.stringify({ ok: true }));
     }

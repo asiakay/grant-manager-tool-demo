@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Grant, FilterState } from "../types";
 import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile } from "../api";
 import type { PagedGrants } from "../api";
+import LiveSearch from "./LiveSearch";
 import type { UserProfile } from "../api";
 import SummaryCards from "./SummaryCards";
 import GrantTable from "./GrantTable";
@@ -54,6 +55,7 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
+  const [liveSearchOpen, setLiveSearchOpen] = useState(false);
 
   useEffect(() => {
     fetchGrants()
@@ -170,6 +172,18 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Export CSV
+          </button>
+
+          <button
+            onClick={() => setLiveSearchOpen((o) => !o)}
+            className={`btn-outline gap-1.5 hidden sm:flex ${liveSearchOpen ? "ring-1 ring-green-500/50 border-green-700 text-green-300" : ""}`}
+            aria-label={liveSearchOpen ? "Hide live grant search" : "Search Simpler Grants.gov live"}
+            aria-expanded={liveSearchOpen}
+          >
+            <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            Live Search
           </button>
 
           <button
@@ -326,6 +340,17 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
                 </div>
               )}
             </div>
+
+            {/* Live Search */}
+            {liveSearchOpen && (
+              <LiveSearch
+                watchlist={watchlist}
+                candidates={candidates}
+                onToggleWatchlist={toggleWatchlist}
+                onToggleCandidate={toggleCandidate}
+                onRowClick={setSelectedGrant}
+              />
+            )}
 
             {/* Table */}
             <div className="card p-0 overflow-hidden">
