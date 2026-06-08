@@ -14,12 +14,12 @@ interface CardProps {
 
 function Card({ label, value, sub, icon, accent }: CardProps) {
   return (
-    <div className="card flex items-start gap-4">
-      <div className={`text-2xl p-2 rounded-lg ${accent}`}>{icon}</div>
+    <div className="card flex items-start gap-4" aria-label={sub ? `${label}: ${value}, ${sub}` : `${label}: ${value}`}>
+      <div className={`text-2xl p-2 rounded-lg ${accent}`} aria-hidden="true">{icon}</div>
       <div className="min-w-0">
         <p className="text-gray-400 text-xs font-medium uppercase tracking-wide">{label}</p>
-        <p className="text-2xl font-bold text-white mt-0.5">{value}</p>
-        {sub && <p className="text-gray-500 text-xs mt-0.5 truncate">{sub}</p>}
+        <p className="text-2xl font-bold text-white mt-0.5" aria-hidden="true">{value}</p>
+        {sub && <p className="text-gray-500 text-xs mt-0.5 truncate" aria-hidden="true">{sub}</p>}
       </div>
     </div>
   );

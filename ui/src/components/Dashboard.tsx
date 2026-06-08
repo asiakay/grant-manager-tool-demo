@@ -164,9 +164,9 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
           <button
             onClick={handleExport}
             className="btn-outline hidden sm:flex gap-1.5"
-            title="Export CSV"
+            aria-label="Export grants to CSV"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Export CSV
@@ -185,9 +185,9 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
           <button
             onClick={handleLogout}
             className="btn-ghost px-2.5"
-            title="Sign out"
+            aria-label="Sign out"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </button>
@@ -246,7 +246,9 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div className="col-span-2 sm:col-span-3 lg:col-span-1">
+                  <label htmlFor="filter-search" className="sr-only">Search by name or sponsor</label>
                   <input
+                    id="filter-search"
                     className="input"
                     placeholder="Search name, sponsor…"
                     value={filters.search}
@@ -254,8 +256,11 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
                   />
                 </div>
 
+                <label htmlFor="filter-type" className="sr-only">Filter by type</label>
                 <select
+                  id="filter-type"
                   className="input"
+                  aria-label="Filter by type"
                   value={filters.type}
                   onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))}
                 >
@@ -265,8 +270,11 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
                   ))}
                 </select>
 
+                <label htmlFor="filter-stage" className="sr-only">Filter by stage</label>
                 <select
+                  id="filter-stage"
                   className="input"
+                  aria-label="Filter by stage"
                   value={filters.stage}
                   onChange={(e) => setFilters((f) => ({ ...f, stage: e.target.value }))}
                 >
@@ -277,23 +285,28 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
                 </select>
 
                 <div>
+                  <label htmlFor="filter-score" className="sr-only">Minimum match score</label>
                   <input
+                    id="filter-score"
                     className="input"
                     type="number"
                     min={0}
                     max={10}
                     step={0.5}
                     placeholder="Min score (0–10)"
+                    aria-label="Minimum match score"
                     value={filters.minScore}
                     onChange={(e) => setFilters((f) => ({ ...f, minScore: e.target.value }))}
                   />
                 </div>
 
                 <div>
+                  <label htmlFor="filter-deadline" className="sr-only">Deadline before date</label>
                   <input
+                    id="filter-deadline"
                     className="input"
                     type="date"
-                    title="Deadline before"
+                    aria-label="Show grants with deadline before this date"
                     value={filters.deadlineBefore}
                     onChange={(e) =>
                       setFilters((f) => ({ ...f, deadlineBefore: e.target.value }))
@@ -346,7 +359,7 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
       {/* Profile modal */}
       {profileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div role="dialog" aria-modal="true" aria-label="Profile settings" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <ProfileSetup
               initial={profile}

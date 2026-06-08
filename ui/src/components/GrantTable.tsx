@@ -26,7 +26,7 @@ const columnHelper = createColumnHelper<Grant>();
 
 function ScoreCell({ value, max = 5 }: { value: string | number; max?: number }) {
   const n = parseFloat(String(value));
-  if (isNaN(n)) return <span className="text-gray-500">—</span>;
+  if (isNaN(n)) return <span className="text-gray-500" aria-label="No score">—</span>;
   const pct = n / max;
   const color =
     pct >= 0.65
@@ -34,7 +34,13 @@ function ScoreCell({ value, max = 5 }: { value: string | number; max?: number })
       : pct >= 0.35
         ? "text-yellow-400"
         : "text-red-400";
-  return <span className={`font-semibold ${color}`}>{n.toFixed(1)}</span>;
+  const level = pct >= 0.65 ? "high" : pct >= 0.35 ? "medium" : "low";
+  return (
+    <>
+      <span className={`font-semibold ${color}`} aria-hidden="true">{n.toFixed(1)}</span>
+      <span className="sr-only">{n.toFixed(1)} out of {max}, {level}</span>
+    </>
+  );
 }
 
 function BoolCell({ value }: { value: string | number }) {
@@ -48,23 +54,36 @@ function BoolCell({ value }: { value: string | number }) {
 
 function DeadlineCell({ value }: { value: string | number }) {
   const raw = String(value || "");
-  if (!raw) return <span className="text-gray-500">—</span>;
+  if (!raw) return <span className="text-gray-500" aria-label="No deadline">—</span>;
   const d = new Date(raw);
   if (isNaN(d.getTime())) return <span className="text-gray-300 text-xs">{raw}</span>;
   const now = Date.now();
-  const diff = d.getTime() - now;
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-  const color =
-    days < 0
-      ? "text-gray-500 line-through"
-      : days < 30
-        ? "text-red-400"
-        : days < 90
-          ? "text-yellow-400"
-          : "text-gray-300";
+  const days = Math.ceil((d.getTime() - now) / (1000 * 60 * 60 * 24));
+  const isPast = days < 0;
+  const isUrgent = !isPast && days < 30;
+  const isSoon = !isPast && days < 90;
+  const color = isPast
+    ? "text-gray-500 line-through"
+    : isUrgent
+      ? "text-red-400"
+      : isSoon
+        ? "text-yellow-400"
+        : "text-gray-300";
+  const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const urgencyText = isPast ? "Past" : isUrgent ? "Urgent" : isSoon ? "Soon" : "";
   return (
-    <span className={`text-xs ${color}`}>
-      {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+    <span className="inline-flex items-center gap-1 flex-wrap" aria-label={isPast ? `Deadline passed: ${dateStr}` : urgencyText ? `Deadline: ${dateStr}, ${urgencyText}` : `Deadline: ${dateStr}`}>
+      <span className={`text-xs ${color}`} aria-hidden="true">{dateStr}</span>
+      {isUrgent && (
+        <span className="inline-block px-1 py-px text-[10px] font-bold uppercase tracking-wide bg-red-900/50 text-red-300 rounded leading-none">
+          Urgent
+        </span>
+      )}
+      {!isUrgent && isSoon && (
+        <span className="inline-block px-1 py-px text-[10px] font-bold uppercase tracking-wide bg-yellow-900/40 text-yellow-400 rounded leading-none">
+          Soon
+        </span>
+      )}
     </span>
   );
 }
@@ -206,18 +225,20 @@ export default function GrantTable({
           return (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <button
-                title={isCandidate ? "Remove from candidates" : "Mark as candidate"}
+                aria-label={isCandidate ? `Remove ${name} from candidates` : `Mark ${name} as candidate`}
+                aria-pressed={isCandidate}
                 onClick={() => onToggleCandidate(name)}
                 className={`p-1 rounded transition-colors text-base leading-none ${isCandidate ? "text-brand-400" : "text-gray-600 hover:text-gray-400"}`}
               >
-                ★
+                <span aria-hidden="true">★</span>
               </button>
               <button
-                title={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+                aria-label={isWatchlisted ? `Remove ${name} from watchlist` : `Add ${name} to watchlist`}
+                aria-pressed={isWatchlisted}
                 onClick={() => onToggleWatchlist(name)}
                 className={`p-1 rounded transition-colors text-sm leading-none ${isWatchlisted ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
               >
-                👁
+                <span aria-hidden="true">👁</span>
               </button>
             </div>
           );
@@ -256,24 +277,29 @@ export default function GrantTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border-separate border-spacing-0">
+      <table className="w-full text-sm border-separate border-spacing-0" aria-label="Grant opportunities">
         <thead>
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
-              {hg.headers.map((header) => (
-                <th
-                  key={header.id}
-                  style={{ width: header.getSize() }}
-                  className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
-                  onClick={header.column.getToggleSortingHandler()}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getIsSorted() === "asc" && " ↑"}
-                    {header.column.getIsSorted() === "desc" && " ↓"}
-                  </span>
-                </th>
-              ))}
+              {hg.headers.map((header) => {
+                const sorted = header.column.getIsSorted();
+                const ariaSort = sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : header.column.getCanSort() ? "none" : undefined;
+                return (
+                  <th
+                    key={header.id}
+                    style={{ width: header.getSize() }}
+                    aria-sort={ariaSort}
+                    className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {sorted === "asc" && <span aria-hidden="true"> ↑</span>}
+                      {sorted === "desc" && <span aria-hidden="true"> ↓</span>}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           ))}
         </thead>
@@ -299,26 +325,28 @@ export default function GrantTable({
         </tbody>
       </table>
       <div className="flex items-center justify-between px-3 py-2.5 border-t border-gray-800 text-xs text-gray-500">
-        <span>
+        <span aria-live="polite" aria-atomic="true">
           {filtered.length === grants.length
             ? `${grants.length} grants`
             : `${filtered.length} of ${grants.length} grants`}
         </span>
         {pageCount > 1 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" role="navigation" aria-label="Pagination">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={safePage === 1}
+              aria-label="Previous page"
               className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               ‹ Prev
             </button>
-            <span className="tabular-nums">
-              {safePage} / {pageCount}
+            <span className="tabular-nums" aria-live="polite" aria-atomic="true">
+              Page {safePage} of {pageCount}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={safePage === pageCount}
+              aria-label="Next page"
               className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               Next ›
