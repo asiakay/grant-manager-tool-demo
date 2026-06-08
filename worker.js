@@ -548,6 +548,38 @@ export default {
       return jsonResponse(JSON.stringify({ ok: true }));
     }
 
+    if (url.pathname === "/data" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      const columns = await getColumns(env.GRANT_MANAGER_DB);
+      if (columns.length === 0) {
+        return new Response("No data available", { status: 404 });
+      }
+      const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+      ).all();
+
+      function csvCell(val) {
+        const s = val === null || val === undefined ? "" : String(val);
+        return s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      }
+
+      const header = columns.map(csvCell).join(",");
+      const dataRows = rows.map((r) => columns.map((c) => csvCell(r[c])).join(","));
+      const csv = [header, ...dataRows].join("\r\n") + "\r\n";
+
+      const date = new Date().toISOString().slice(0, 10);
+      log("info", "csv_exported", { ...reqCtx, rowCount: rows.length });
+      return new Response(csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="grants-${date}.csv"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     if (url.pathname === "/logout") {
       const match = cookie.match(/session=([^;]+)/);
       if (match && env.USER_PROFILES) {

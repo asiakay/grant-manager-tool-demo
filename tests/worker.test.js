@@ -701,3 +701,51 @@ describe("POST /api/reset-password", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /data — CSV export
+// ---------------------------------------------------------------------------
+
+describe("GET /data — CSV export", () => {
+  beforeEach(seedPrograms);
+
+  it("rejects unauthenticated requests with 401", async () => {
+    const res = await fetch(new Request("http://localhost/data"));
+    expect(res.status).toBe(401);
+  });
+
+  it("returns a CSV file with correct headers", async () => {
+    const { token } = await createAndLoginUser("csv1", "password1x");
+    const res = await authedGet("/data", token);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/csv");
+    const disposition = res.headers.get("content-disposition") ?? "";
+    expect(disposition).toContain("attachment");
+    expect(disposition).toContain(".csv");
+  });
+
+  it("returns all rows as valid CSV", async () => {
+    const { token } = await createAndLoginUser("csv2", "password1x");
+    const res = await authedGet("/data", token);
+    const text = await res.text();
+    const lines = text.trim().split("\r\n");
+    // header + 3 data rows
+    expect(lines.length).toBe(4);
+    expect(lines[0]).toContain("Name");
+    const names = ["Grant Alpha", "Grant Beta", "Grant Gamma"];
+    for (const name of names) {
+      expect(lines.some((l) => l.includes(name))).toBe(true);
+    }
+  });
+
+  it("properly escapes values containing commas and quotes", async () => {
+    const { token } = await createAndLoginUser("csv3", "password1x");
+    await env.GRANT_MANAGER_DB.prepare(
+      `INSERT INTO programs ("Name","Sponsor","Relevance","Fit","Ease","Stack Required?","Cadence","Deadline / Next Cohort")
+       VALUES ('Grant, Tricky "One"', 'Sponsor', '1', '1', '1', 'No', 'Annual', NULL)`
+    ).run();
+    const res = await authedGet("/data", token);
+    const text = await res.text();
+    expect(text).toContain('"Grant, Tricky ""One"""');
+  });
+});
