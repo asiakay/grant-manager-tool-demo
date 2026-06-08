@@ -165,11 +165,14 @@ export default function ChatPanel({ open, onClose }: Props) {
     <>
       {/* Backdrop (mobile) */}
       {open && (
-        <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={onClose} />
+        <div aria-hidden="true" className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={onClose} />
       )}
 
       {/* Panel */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="AI Chat Assistant"
         className={`fixed right-0 top-0 h-full w-full max-w-sm bg-gray-900 border-l border-gray-800 z-40 flex flex-col transition-transform duration-300 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
@@ -180,11 +183,11 @@ export default function ChatPanel({ open, onClose }: Props) {
             <span className="badge bg-gray-800 text-gray-400 text-xs">Claude</span>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={handleClear} className="btn-ghost px-2 py-1 text-xs">
+            <button onClick={handleClear} className="btn-ghost px-2 py-1 text-xs" aria-label="Clear conversation">
               Clear
             </button>
-            <button onClick={onClose} className="btn-ghost p-1.5" aria-label="Close chat">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onClick={onClose} className="btn-ghost p-1.5" aria-label="Close AI chat">
+              <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -194,21 +197,27 @@ export default function ChatPanel({ open, onClose }: Props) {
         {aiUnavailable && <NoAiKeyBanner />}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div
+          role="log"
+          aria-live="polite"
+          aria-label="Chat messages"
+          className="flex-1 overflow-y-auto px-4 py-4"
+        >
           {messages.map((msg, i) => (
             <MessageBubble key={i} msg={msg} />
           ))}
           {loading && messages[messages.length - 1]?.content === "" && (
-            <div className="flex justify-start mb-3">
-              <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-xs font-bold mr-2 shrink-0">
+            <div className="flex justify-start mb-3" aria-label="AI is typing" role="status">
+              <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-xs font-bold mr-2 shrink-0" aria-hidden="true">
                 AI
               </div>
               <div className="bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-3">
-                <div className="flex gap-1">
+                <div className="flex gap-1" aria-hidden="true">
                   <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
                   <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
                   <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
                 </div>
+                <span className="sr-only">AI is typing…</span>
               </div>
             </div>
           )}
@@ -226,6 +235,7 @@ export default function ChatPanel({ open, onClose }: Props) {
           <div className="flex gap-2 items-end">
             <textarea
               ref={textareaRef}
+              aria-label="Message input"
               className="input resize-none flex-1 min-h-[2.5rem] max-h-32 leading-relaxed"
               rows={1}
               placeholder="Ask about grants… (Enter to send)"
@@ -241,17 +251,19 @@ export default function ChatPanel({ open, onClose }: Props) {
             {loading ? (
               <button
                 onClick={handleStop}
+                aria-label="Stop generating"
                 className="btn-outline px-3 py-2 shrink-0 text-red-400 border-red-800 hover:bg-red-900/20"
               >
-                ■
+                <span aria-hidden="true">■</span>
               </button>
             ) : (
               <button
                 onClick={handleSend}
                 disabled={!input.trim()}
+                aria-label="Send message"
                 className="btn-primary px-3 py-2 shrink-0"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </button>

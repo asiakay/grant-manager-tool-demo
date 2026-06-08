@@ -32,15 +32,18 @@ const COLUMNS: (keyof Grant)[] = [
 
 function ScoreBadge({ value }: { value: string | number }) {
   const n = parseFloat(String(value));
-  if (isNaN(n)) return <span className="text-gray-400">—</span>;
+  if (isNaN(n)) return <span className="text-gray-400" aria-label="No score">—</span>;
   const color =
     n >= 7
       ? "bg-green-900/50 text-green-300"
       : n >= 4
         ? "bg-yellow-900/50 text-yellow-300"
         : "bg-red-900/50 text-red-300";
+  const level = n >= 7 ? "high" : n >= 4 ? "medium" : "low";
   return (
-    <span className={`badge ${color} font-semibold text-sm px-2 py-0.5`}>{n.toFixed(1)}</span>
+    <span className={`badge ${color} font-semibold text-sm px-2 py-0.5`} aria-label={`${n.toFixed(1)}, ${level}`}>
+      <span aria-hidden="true">{n.toFixed(1)}</span>
+    </span>
   );
 }
 
@@ -50,12 +53,15 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (grant) {
       setNotes(String(grant["Notes/Actions"] || ""));
       setSaved(false);
       setSaveError("");
+      // Move focus into the drawer when it opens
+      setTimeout(() => closeBtnRef.current?.focus(), 50);
     }
   }, [grant]);
 
@@ -90,6 +96,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
     <>
       {/* Backdrop */}
       <div
+        aria-hidden="true"
         className={`fixed inset-0 bg-black/60 z-40 transition-opacity duration-200 ${grant ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={onClose}
       />
@@ -97,6 +104,10 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
       {/* Drawer */}
       <div
         ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
+        aria-label={grant ? `Grant details: ${grant.Name}` : "Grant details"}
         className={`fixed right-0 top-0 h-full w-full max-w-xl bg-gray-900 border-l border-gray-800 z-50 flex flex-col transition-transform duration-300 ease-out ${grant ? "translate-x-0" : "translate-x-full"}`}
       >
         {grant && (
@@ -108,7 +119,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   <span className="badge bg-gray-800 text-gray-300 text-xs">{grant.Type || "—"}</span>
                   <ScoreBadge value={grant["Weighted Score"]} />
                 </div>
-                <h2 className="text-lg font-semibold text-white leading-snug">{grant.Name}</h2>
+                <h2 id="drawer-title" className="text-lg font-semibold text-white leading-snug">{grant.Name}</h2>
                 <p className="text-gray-400 text-sm">{grant.Sponsor}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -119,24 +130,26 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   return (
                     <>
                       <button
-                        title={isCandidate ? "Remove from candidates" : "Mark as candidate"}
+                        aria-label={isCandidate ? "Remove from candidates" : "Mark as candidate"}
+                        aria-pressed={isCandidate}
                         onClick={() => onToggleCandidate(name)}
                         className={`p-1.5 rounded transition-colors text-lg leading-none ${isCandidate ? "text-brand-400" : "text-gray-600 hover:text-gray-400"}`}
                       >
-                        ★
+                        <span aria-hidden="true">★</span>
                       </button>
                       <button
-                        title={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+                        aria-label={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+                        aria-pressed={isWatchlisted}
                         onClick={() => onToggleWatchlist(name)}
                         className={`p-1.5 rounded transition-colors text-base leading-none ${isWatchlisted ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
                       >
-                        👁
+                        <span aria-hidden="true">👁</span>
                       </button>
                     </>
                   );
                 })()}
-                <button onClick={onClose} className="btn-ghost p-1.5 ml-1" aria-label="Close">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <button ref={closeBtnRef} onClick={onClose} className="btn-ghost p-1.5 ml-1" aria-label="Close grant details">
+                  <svg className="w-5 h-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -183,10 +196,11 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
 
               {/* Notes editor */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="grant-notes" className="block text-sm font-medium text-gray-300 mb-2">
                   Notes / Actions
                 </label>
                 <textarea
+                  id="grant-notes"
                   className="input resize-none h-28 leading-relaxed"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
