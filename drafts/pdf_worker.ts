@@ -1,3 +1,26 @@
+/**
+ * PDF Processing Queue Worker (under development — not deployed)
+ *
+ * Purpose: Cloudflare Queue consumer that picks up PDFs uploaded to R2,
+ * calls the grant_summarizer service to extract structured data, and writes
+ * CSV + Markdown back to R2. Optionally enqueues the resulting CSV for
+ * downstream scoring.
+ *
+ * To deploy this worker you will need to provision:
+ *   1. An R2 bucket bound as PDF_BUCKET
+ *   2. A Cloudflare Queue (producer + consumer) — pass the CSV key via message body
+ *   3. A deployed GRANT_SUMMARIZER_URL endpoint (see grant_summarizer/ for the
+ *      Python implementation; host it as a Worker or external service)
+ *   4. Optionally a second Queue bound as SCORE_QUEUE for downstream scoring
+ *
+ * Wire up in a dedicated wrangler.toml, e.g.:
+ *   name = "pdf-worker"
+ *   main = "drafts/pdf_worker.ts"
+ *   [[queues.consumers]]
+ *   queue = "pdf-ingest"
+ *   max_batch_size = 10
+ */
+
 export interface Env {
   PDF_BUCKET: R2Bucket;
   GRANT_SUMMARIZER_URL: string;
@@ -27,7 +50,7 @@ export default {
         const resp = await fetch(env.GRANT_SUMMARIZER_URL, {
           method: 'POST',
           headers: { 'content-type': 'application/pdf' },
-          body: pdfArray
+          body: pdfArray,
         });
         if (!resp.ok) {
           throw new Error(`summarizer status ${resp.status}`);
@@ -45,5 +68,5 @@ export default {
         message.retry();
       }
     }
-  }
+  },
 };
