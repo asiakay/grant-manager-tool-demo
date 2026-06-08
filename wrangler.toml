@@ -27,3 +27,7 @@ binding = "AI"
 
 [observability.logs]
 enabled = true
+
+# Set via: wrangler secret put SIMPLER_GRANTS_API_KEY
+# Get a key at: https://simpler.grants.gov/developer
+# Without this secret, /api/live-search returns 503.

@@ -242,6 +242,26 @@ export async function resetPassword(token: string, password: string, confirmPass
   if (!res.ok) throw new Error(data.error || "Password reset failed");
 }
 
+export async function liveSearch(q: string, page = 1, pageSize = 25): Promise<PagedGrants & { configured: boolean }> {
+  const params = new URLSearchParams({ q, page: String(page), pageSize: String(pageSize) });
+  const res = await fetch(`${BASE}/api/live-search?${params}`, { credentials: "include" });
+  if (res.status === 503) {
+    return { data: [], total: 0, page: 1, pageSize, configured: false };
+  }
+  return handleResponse<PagedGrants & { configured: boolean }>(res);
+}
+
+export async function fetchLiveSearchStatus(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/api/live-search-status`, { credentials: "include" });
+    if (!res.ok) return false;
+    const data = await res.json() as { configured: boolean };
+    return data.configured;
+  } catch {
+    return false;
+  }
+}
+
 export async function checkAuth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/api/grants`, {
