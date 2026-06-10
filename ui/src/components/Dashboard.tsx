@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Grant, FilterState } from "../types";
-import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile } from "../api";
+import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile, fetchMe } from "../api";
 import type { PagedGrants } from "../api";
 import LiveSearch from "./LiveSearch";
 import type { UserProfile } from "../api";
@@ -9,6 +9,7 @@ import GrantTable from "./GrantTable";
 import GrantDrawer from "./GrantDrawer";
 import ChatPanel from "./ChatPanel";
 import ProfileSetup from "./ProfileSetup";
+import AdminUpload from "./AdminUpload";
 
 const WATCHLIST_KEY = "gm_watchlist";
 const CANDIDATES_KEY = "gm_candidates";
@@ -56,6 +57,8 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
   const [liveSearchOpen, setLiveSearchOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminUploadOpen, setAdminUploadOpen] = useState(false);
 
   useEffect(() => {
     fetchGrants()
@@ -69,7 +72,18 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
       })
       .finally(() => setLoading(false));
     fetchProfile().then(setProfile).catch(() => {});
+    fetchMe().then((me) => setIsAdmin(me?.isAdmin ?? false)).catch(() => {});
   }, [onLogout]);
+
+  const reloadGrants = useCallback(async () => {
+    try {
+      const { data, total } = await fetchGrants();
+      setGrants(data);
+      setGrantsTotal(total);
+    } catch {
+      // keep the current table on refresh failure
+    }
+  }, []);
 
   async function handleProfileSave(p: UserProfile) {
     setProfileSaving(true);
@@ -160,6 +174,19 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
               </svg>
               <span className="text-xs">{profile ? "My Profile" : "Set profile"}</span>
               {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400" />}
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              onClick={() => setAdminUploadOpen(true)}
+              className="btn-outline hidden sm:flex gap-1.5 border-amber-700 text-amber-300 hover:bg-amber-900/30"
+              aria-label="Admin: upload grants CSV"
+            >
+              <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Upload CSV
             </button>
           )}
 
@@ -381,6 +408,13 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
       {/* Chat panel */}
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+
+      {/* Admin CSV upload */}
+      <AdminUpload
+        open={adminUploadOpen}
+        onClose={() => setAdminUploadOpen(false)}
+        onUploaded={reloadGrants}
+      />
 
       {/* Profile modal */}
       {profileOpen && (

@@ -20,6 +20,76 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
+const PROGRAMS_SCHEMA = `CREATE TABLE IF NOT EXISTS programs (
+  "Type" TEXT,
+  "Name" TEXT PRIMARY KEY,
+  "Sponsor" TEXT,
+  "Source URL" TEXT,
+  "Region / Eligibility" TEXT,
+  "Deadline / Next Cohort" TEXT,
+  "Cadence" TEXT,
+  "Benefits" TEXT,
+  "Eligibility (key conditions)" TEXT,
+  "Stage" TEXT,
+  "Non-dilutive?" TEXT,
+  "Stack Required?" TEXT,
+  "Relevance" TEXT,
+  "Fit" TEXT,
+  "Ease" TEXT,
+  "Weighted Score" TEXT,
+  "Notes / Actions" TEXT
+)`;
+
+function getAdminUsers(env) {
+  const raw = typeof env.ADMIN_USERS === "string" && env.ADMIN_USERS.trim() !== ""
+    ? env.ADMIN_USERS
+    : "demo";
+  return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+}
+
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_UPLOAD_ROWS = 2000;
+
+// RFC 4180 CSV parser: quoted fields, escaped quotes, CRLF/LF/CR line endings.
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += c;
+    }
+  }
+  if (field !== "" || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
+}
+
+// Match CSV headers to DB columns ignoring case and whitespace, so
+// "Deadline/Next Cohort" and "Deadline / Next Cohort" map to the same column.
+function normalizeHeader(h) {
+  return String(h || "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
 const DEFAULT_WEIGHTS = { Relevance: 0.3, Fit: 0.3, Ease: 0.2, StackAlignment: 0.1, CadenceRecency: 0.1 };
 
 function computeStackAlignment(r) {
@@ -330,7 +400,7 @@ export default {
 
     if (url.pathname === "/api/me") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      return jsonResponse(JSON.stringify({ username }));
+      return jsonResponse(JSON.stringify({ username, isAdmin: getAdminUsers(env).has(username) }));
     }
 
     if (url.pathname === "/api/csrf" && request.method === "GET") {
@@ -479,6 +549,103 @@ export default {
         .bind(notes, name)
         .run();
       return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    if (url.pathname === "/api/admin/upload-csv" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!getAdminUsers(env).has(username)) {
+        log("warn", "admin_upload_forbidden", reqCtx);
+        return new Response("Forbidden", { status: 403 });
+      }
+      if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "admin-upload-csv" });
+        return new Response("Forbidden", { status: 403 });
+      }
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+
+      const form = await request.formData();
+      const file = form.get("file");
+      const mode = form.get("mode") === "replace" ? "replace" : "merge";
+      if (!file || typeof file === "string") {
+        return jsonResponse(JSON.stringify({ error: "Missing CSV file upload (form field \"file\")." }), { status: 400 });
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        return jsonResponse(JSON.stringify({ error: "CSV file too large (max 5 MB)." }), { status: 413 });
+      }
+
+      const rows = parseCsv(await file.text());
+      if (rows.length < 2) {
+        return jsonResponse(JSON.stringify({ error: "CSV must contain a header row and at least one data row." }), { status: 400 });
+      }
+      if (rows.length - 1 > MAX_UPLOAD_ROWS) {
+        return jsonResponse(JSON.stringify({ error: `CSV exceeds the ${MAX_UPLOAD_ROWS}-row limit.` }), { status: 400 });
+      }
+
+      const db = env.GRANT_MANAGER_DB;
+      await db.prepare(PROGRAMS_SCHEMA).run();
+      const columns = await getColumns(db);
+      const colByNorm = new Map(columns.map((c) => [normalizeHeader(c), c]));
+
+      const headers = rows[0];
+      const mapping = headers.map((h) => colByNorm.get(normalizeHeader(h)) ?? null);
+      const unknownColumns = headers.filter((h, i) => !mapping[i] && String(h).trim() !== "");
+      const nameIdx = mapping.indexOf("Name");
+      if (nameIdx === -1) {
+        return jsonResponse(JSON.stringify({ error: 'CSV must include a "Name" column.', unknownColumns }), { status: 400 });
+      }
+
+      // Deduplicate by Name (last row wins); rows without a Name are skipped.
+      const byName = new Map();
+      let skipped = 0;
+      for (const row of rows.slice(1)) {
+        const name = String(row[nameIdx] ?? "").trim();
+        if (!name) { skipped++; continue; }
+        const record = {};
+        headers.forEach((h, i) => {
+          if (mapping[i]) record[mapping[i]] = row[i] ?? "";
+        });
+        record.Name = name;
+        byName.set(name, record);
+      }
+      if (byName.size === 0) {
+        return jsonResponse(JSON.stringify({ error: "No rows with a non-empty Name were found." }), { status: 400 });
+      }
+
+      const names = [...byName.keys()];
+      let updated = 0;
+      if (mode === "replace") {
+        await db.prepare("DELETE FROM programs").run();
+      } else {
+        // Delete-then-insert keeps merge working even on tables created
+        // without a PRIMARY KEY on Name (where ON CONFLICT would fail).
+        for (let i = 0; i < names.length; i += 50) {
+          const chunk = names.slice(i, i + 50);
+          const placeholders = chunk.map(() => "?").join(",");
+          const { results: existing } = await db.prepare(
+            `SELECT "Name" FROM programs WHERE "Name" IN (${placeholders})`
+          ).bind(...chunk).all();
+          updated += existing.length;
+          if (existing.length > 0) {
+            await db.prepare(`DELETE FROM programs WHERE "Name" IN (${placeholders})`).bind(...chunk).run();
+          }
+        }
+      }
+
+      const insertCols = [...new Set(mapping.filter(Boolean))];
+      const insertStmt = db.prepare(
+        `INSERT INTO programs (${insertCols.map((c) => `"${c}"`).join(",")})
+         VALUES (${insertCols.map(() => "?").join(",")})`
+      );
+      const statements = [...byName.values()].map((r) =>
+        insertStmt.bind(...insertCols.map((c) => r[c] ?? ""))
+      );
+      for (let i = 0; i < statements.length; i += 50) {
+        await db.batch(statements.slice(i, i + 50));
+      }
+
+      const inserted = byName.size - (mode === "replace" ? 0 : updated);
+      log("info", "admin_csv_uploaded", { ...reqCtx, mode, inserted, updated, skipped, unknownColumns });
+      return jsonResponse(JSON.stringify({ ok: true, mode, inserted, updated, skipped, total: byName.size, unknownColumns }));
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
