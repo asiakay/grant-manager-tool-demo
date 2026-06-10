@@ -26,7 +26,7 @@ export default function App() {
       ]);
       const hasWeights = p && p.weights && typeof p.weights === "object";
       setProfile(p);
-      setUsername(me ?? "");
+      setUsername(me?.username ?? "");
       setAuth(hasWeights ? "welcome" : "profile-setup");
     });
   }, []);
@@ -49,7 +49,7 @@ export default function App() {
     ]);
     const hasWeights = p && p.weights && typeof p.weights === "object";
     setProfile(p);
-    setUsername(me ?? "");
+    setUsername(me?.username ?? "");
     setAuth(hasWeights ? "welcome" : "profile-setup");
   }
 

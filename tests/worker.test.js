@@ -751,6 +751,166 @@ describe("GET /data — CSV export", () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/admin/upload-csv
+// ---------------------------------------------------------------------------
+
+describe("POST /api/admin/upload-csv", () => {
+  // The built-in demo account is the default admin (ADMIN_USERS unset).
+  async function loginAdmin() {
+    const res = await fetch(formRequest("http://localhost/login", { username: "demo", password: "demo" }));
+    const token = res.headers.get("Set-Cookie")?.match(/session=([^;]+)/)?.[1];
+    const csrfRes = await fetch(new Request("http://localhost/api/csrf", {
+      headers: { Cookie: `session=${token}` },
+    }));
+    return { token, csrf: (await csrfRes.json()).token };
+  }
+
+  function csvRequest(token, csrf, csvText, mode = "merge", headers = {}) {
+    const body = new FormData();
+    body.append("file", new File([csvText], "grants.csv", { type: "text/csv" }));
+    body.append("mode", mode);
+    return new Request("http://localhost/api/admin/upload-csv", {
+      method: "POST",
+      headers: { Cookie: `session=${token}`, ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...headers },
+      body,
+    });
+  }
+
+  const SAMPLE_CSV =
+    'Name,Sponsor,Type,Relevance,Fit,Ease\r\n' +
+    'Upload Grant One,Sponsor X,Grant,3,2,1\r\n' +
+    '"Upload, Grant ""Two""",Sponsor Y,Fellowship,1,3,2\r\n';
+
+  it("rejects unauthenticated requests with 401", async () => {
+    const res = await fetch(new Request("http://localhost/api/admin/upload-csv", { method: "POST" }));
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects non-admin users with 403", async () => {
+    const { token, csrf } = await createAndLoginUser("notadmin", "password1x");
+    const res = await fetch(csvRequest(token, csrf, SAMPLE_CSV));
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects admin request without CSRF token with 403", async () => {
+    const { token } = await loginAdmin();
+    const res = await fetch(csvRequest(token, null, SAMPLE_CSV));
+    expect(res.status).toBe(403);
+  });
+
+  it("imports CSV rows that then appear in /api/grants", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await fetch(csvRequest(token, csrf, SAMPLE_CSV));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.inserted).toBe(2);
+    expect(body.updated).toBe(0);
+
+    const grantsRes = await authedGet("/api/grants", token);
+    const { data, total } = await grantsRes.json();
+    expect(total).toBe(2);
+    const names = data.map((g) => g.Name);
+    expect(names).toContain("Upload Grant One");
+    expect(names).toContain('Upload, Grant "Two"');
+    const sponsor = data.find((g) => g.Name === 'Upload, Grant "Two"').Sponsor;
+    expect(sponsor).toBe("Sponsor Y");
+  });
+
+  it("merge mode updates existing grants by Name instead of duplicating", async () => {
+    const { token, csrf } = await loginAdmin();
+    await fetch(csvRequest(token, csrf, SAMPLE_CSV));
+    const res = await fetch(csvRequest(token, csrf,
+      "Name,Sponsor\nUpload Grant One,New Sponsor\nBrand New Grant,Sponsor Z\n"));
+    const body = await res.json();
+    expect(body.inserted).toBe(1);
+    expect(body.updated).toBe(1);
+
+    const { data, total } = await (await authedGet("/api/grants", token)).json();
+    expect(total).toBe(3);
+    expect(data.find((g) => g.Name === "Upload Grant One").Sponsor).toBe("New Sponsor");
+  });
+
+  it("replace mode deletes existing grants before importing", async () => {
+    const { token, csrf } = await loginAdmin();
+    await fetch(csvRequest(token, csrf, SAMPLE_CSV));
+    const res = await fetch(csvRequest(token, csrf,
+      "Name,Sponsor\nOnly Grant,Sponsor R\n", "replace"));
+    const body = await res.json();
+    expect(body.inserted).toBe(1);
+
+    const { data, total } = await (await authedGet("/api/grants", token)).json();
+    expect(total).toBe(1);
+    expect(data[0].Name).toBe("Only Grant");
+  });
+
+  it("matches headers ignoring case and spacing around slashes", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await fetch(csvRequest(token, csrf,
+      "name,Deadline/Next Cohort\nSpacing Grant,2026-12-01\n"));
+    expect(res.status).toBe(200);
+
+    const { data } = await (await authedGet("/api/grants", token)).json();
+    const g = data.find((x) => x.Name === "Spacing Grant");
+    expect(g["Deadline / Next Cohort"]).toBe("2026-12-01");
+  });
+
+  it("reports unknown columns and skips rows without a Name", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await fetch(csvRequest(token, csrf,
+      "Name,Sponsor,Bogus Column\nGood Grant,Sponsor A,x\n,Sponsor B,y\n"));
+    const body = await res.json();
+    expect(body.inserted).toBe(1);
+    expect(body.skipped).toBe(1);
+    expect(body.unknownColumns).toContain("Bogus Column");
+  });
+
+  it("returns 400 when the Name column is missing", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await fetch(csvRequest(token, csrf, "Sponsor,Type\nSomeone,Grant\n"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/Name/);
+  });
+
+  it("returns 400 for a CSV with no data rows", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await fetch(csvRequest(token, csrf, "Name,Sponsor\n"));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when the file field is missing", async () => {
+    const { token, csrf } = await loginAdmin();
+    const body = new FormData();
+    body.append("mode", "merge");
+    const res = await fetch(new Request("http://localhost/api/admin/upload-csv", {
+      method: "POST",
+      headers: { Cookie: `session=${token}`, "X-CSRF-Token": csrf },
+      body,
+    }));
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/me — admin flag
+// ---------------------------------------------------------------------------
+
+describe("GET /api/me — admin flag", () => {
+  it("reports isAdmin:true for the demo admin account", async () => {
+    const res = await fetch(formRequest("http://localhost/login", { username: "demo", password: "demo" }));
+    const token = res.headers.get("Set-Cookie")?.match(/session=([^;]+)/)?.[1];
+    const me = await (await authedGet("/api/me", token)).json();
+    expect(me.isAdmin).toBe(true);
+  });
+
+  it("reports isAdmin:false for a regular user", async () => {
+    const { token } = await createAndLoginUser("regular", "password1x");
+    const me = await (await authedGet("/api/me", token)).json();
+    expect(me.isAdmin).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/live-search and /api/live-search-status
 // ---------------------------------------------------------------------------
 

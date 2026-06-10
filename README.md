@@ -106,6 +106,20 @@ Weights are configurable per user. The scoring profile is stored in KV and appli
 
 Full schema definition: [docs/data_contract.json](docs/data_contract.json).
 
+### Admin CSV Upload
+
+Admin users see an **Upload CSV** button on the dashboard that bulk-imports grants
+into D1 via `POST /api/admin/upload-csv`. The CSV needs a header row with a `Name`
+column; other recognized columns (Type, Sponsor, Source URL, Deadline / Next Cohort,
+Benefits, Relevance, Fit, Ease, …) are matched case- and whitespace-insensitively,
+and unknown columns are ignored. Two import modes:
+
+- **Merge** (default) — inserts new grants and updates existing ones, matched by Name.
+- **Replace** — wipes the `programs` table before importing.
+
+Admins are configured with the `ADMIN_USERS` var in `wrangler.toml`
+(comma-separated usernames; defaults to the built-in `demo` account).
+
 ---
 
 ## Quick Deploy

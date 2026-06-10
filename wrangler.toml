@@ -8,6 +8,11 @@ assets = { directory = "ui/dist", not_found_handling = "single-page-application"
 [build]
 command = "cd ui && npm install && npm run build"
 
+[vars]
+# Comma-separated usernames allowed to use admin features (CSV grant upload).
+# Defaults to "demo" when unset.
+ADMIN_USERS = "demo"
+
 [[kv_namespaces]]
 binding = "USER_PROFILES"
 id = "3613c184af7d4890a70f1c9d28583329"

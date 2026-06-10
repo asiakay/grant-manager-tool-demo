@@ -210,15 +210,49 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
   if (!res.ok) throw new Error("Failed to save profile");
 }
 
-export async function fetchMe(): Promise<string | null> {
+export interface MeInfo {
+  username: string;
+  isAdmin: boolean;
+}
+
+export async function fetchMe(): Promise<MeInfo | null> {
   try {
     const res = await fetch(`${BASE}/api/me`, { credentials: "include" });
     if (!res.ok) return null;
-    const data = await res.json() as { username: string };
-    return data.username ?? null;
+    const data = await res.json() as { username?: string; isAdmin?: boolean };
+    if (!data.username) return null;
+    return { username: data.username, isAdmin: data.isAdmin ?? false };
   } catch {
     return null;
   }
+}
+
+export interface CsvUploadResult {
+  ok: boolean;
+  mode: "merge" | "replace";
+  inserted: number;
+  updated: number;
+  skipped: number;
+  total: number;
+  unknownColumns: string[];
+}
+
+export async function uploadGrantsCsv(file: File, mode: "merge" | "replace"): Promise<CsvUploadResult> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("mode", mode);
+  const res = await fetch(`${BASE}/api/admin/upload-csv`, {
+    method: "POST",
+    headers: csrfHeaders(),
+    body,
+    credentials: "include",
+  });
+  if (res.status === 401) throw new Error("Unauthenticated");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error || `Upload failed (${res.status})`);
+  }
+  return res.json();
 }
 
 export async function requestPasswordReset(username: string): Promise<{ token?: string; message: string }> {
