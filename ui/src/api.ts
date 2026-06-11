@@ -66,6 +66,7 @@ export interface PagedGrants {
   total: number;
   page: number;
   pageSize: number;
+  scoringReady?: boolean;
 }
 
 export async function fetchGrants(page = 1, pageSize = 500): Promise<PagedGrants> {

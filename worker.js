@@ -439,8 +439,105 @@ async function syncGrantsWithD1(env, query) {
   return { success: true, inserted: opportunities.length, message: `Successfully loaded ${opportunities.length} active opportunities to local storage.` };
 }
 
+// Scores all grants in D1 against a specific user's profile using AI and
+// caches the results in KV under user_scores:{username}.
+async function scoreGrantsForUser(username, profile, env) {
+  const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
+  if (!hasAI || !env.GRANT_MANAGER_DB || !env.USER_PROFILES) return;
+
+  const focusAreas = Array.isArray(profile.focusAreas) ? profile.focusAreas.join(", ") : "";
+  const orgType = profile.orgType || "";
+  const stage = profile.stage || "";
+  if (!focusAreas && !orgType && !stage) return;
+
+  const tableColumns = await getColumns(env.GRANT_MANAGER_DB);
+  const hasNewSchema = tableColumns.includes("source_url");
+  const nameCol    = hasNewSchema ? "name"    : '"Name"';
+  const sponsorCol = hasNewSchema ? "sponsor" : '"Sponsor"';
+  const benefitsCol = hasNewSchema ? "benefits" : '"Benefits"';
+  const eligCol    = hasNewSchema ? "eligibility_conditions" : '"Eligibility (key conditions)"';
+  const typeCol    = hasNewSchema ? "type"    : '"Type"';
+  const stageCol   = hasNewSchema ? "stage"   : '"Stage"';
+  const sourceUrlCol = hasNewSchema ? "source_url" : '"Source URL"';
+
+  const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
+    `SELECT ${nameCol} as name, ${sponsorCol} as sponsor, ${benefitsCol} as benefits,
+            ${eligCol} as eligibility_conditions, ${typeCol} as type,
+            ${stageCol} as stage, ${sourceUrlCol} as source_url
+     FROM programs ORDER BY rowid`
+  ).all();
+
+  if (!grants.length) return;
+
+  const profileSummary = [
+    focusAreas && `Focus areas: ${focusAreas}`,
+    orgType && `Organization type: ${orgType}`,
+    stage && `Stage: ${stage}`,
+  ].filter(Boolean).join("\n");
+
+  async function runAI(messages) {
+    if (env.AI) {
+      const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
+      return r.response || "";
+    }
+    const r = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+      { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
+    );
+    const d = await r.json();
+    return d.result?.response ?? "";
+  }
+
+  // Load existing scores so we can merge rather than overwrite
+  let existingScores = {};
+  try {
+    const raw = await env.USER_PROFILES.get(`user_scores:${username}`);
+    if (raw) existingScores = JSON.parse(raw);
+  } catch { /* start fresh */ }
+
+  const scores = { ...existingScores };
+
+  for (const grant of grants) {
+    try {
+      const context = [
+        `Grant: ${grant.name}`,
+        grant.sponsor && `Sponsor: ${grant.sponsor}`,
+        grant.type && `Type: ${grant.type}`,
+        grant.stage && `Stage: ${grant.stage}`,
+        grant.benefits && `Benefits: ${grant.benefits}`,
+        grant.eligibility_conditions && `Eligibility: ${grant.eligibility_conditions}`,
+      ].filter(Boolean).join("\n");
+
+      const prompt = `You are evaluating a grant opportunity for a specific user profile.
+
+User profile:
+${profileSummary}
+
+Grant:
+${context}
+
+Score this grant for this user on three dimensions (integers 0-3):
+- relevance: How well does this grant's purpose match the user's focus areas? 0=unrelated, 3=direct match.
+- fit: How well does this grant's eligibility match the user's org type and stage? 0=ineligible, 3=ideal match.
+- ease: How easy is this grant to pursue given the user's profile? 0=very difficult, 3=straightforward.
+
+Respond with ONLY a JSON object. Example: {"relevance":2,"fit":1,"ease":3}`;
+
+      const text = await runAI([{ role: "user", content: prompt }]);
+      const match = text.match(/\{[^}]+\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        const clamp = (v) => Math.min(3, Math.max(0, parseInt(v, 10) || 0));
+        scores[grant.name] = { relevance: clamp(parsed.relevance), fit: clamp(parsed.fit), ease: clamp(parsed.ease) };
+      }
+    } catch { /* skip this grant */ }
+  }
+
+  await env.USER_PROFILES.put(`user_scores:${username}`, JSON.stringify(scores));
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const requestId = crypto.randomUUID();
     const url = new URL(request.url);
     const reqStart = Date.now();
@@ -615,7 +712,11 @@ export default {
         const body = await request.json();
         await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
         log("info", "profile_saved", reqCtx);
-        return jsonResponse(JSON.stringify({ ok: true }));
+        // Clear stale scores so the UI reflects "scoring in progress" immediately,
+        // then recompute in the background after this response is sent.
+        if (env.USER_PROFILES) await env.USER_PROFILES.delete(`user_scores:${username}`);
+        ctx.waitUntil(scoreGrantsForUser(username, body, env));
+        return jsonResponse(JSON.stringify({ ok: true, scoring: true }));
       }
     }
 
@@ -643,6 +744,16 @@ export default {
         ? profile.weights
         : null;
 
+      // Load per-user AI scores computed against this user's profile.
+      let userScores = {};
+      if (env.USER_PROFILES) {
+        try {
+          const raw = await env.USER_PROFILES.get(`user_scores:${username}`);
+          if (raw) userScores = JSON.parse(raw);
+        } catch { /* fall back to keyword scoring */ }
+      }
+      const scoringReady = Object.keys(userScores).length > 0;
+
       const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
       const pageSize = Math.min(500, Math.max(1, parseInt(url.searchParams.get("pageSize") || "100", 10)));
 
@@ -654,17 +765,25 @@ export default {
             `SELECT * FROM programs`
         ).all();
         scored = rows
-          .map((r) => ({
-            ...r,
-            score: Math.round(computeScore(r, userWeights, profile) * 100) / 100,
-          }))
+          .map((r) => {
+            // Prefer per-user AI scores; fall back to DB scores + keyword match.
+            const us = userScores[r.name] || userScores[r.Name];
+            const rowWithScores = us ? { ...r, relevance: us.relevance, fit: us.fit, ease: us.ease } : r;
+            return {
+              ...r,
+              relevance: rowWithScores.relevance,
+              fit: rowWithScores.fit,
+              ease: rowWithScores.ease,
+              score: Math.round(computeScore(rowWithScores, userWeights, profile) * 100) / 100,
+            };
+          })
           .sort((a, b) => b.score - a.score);
       }
       const total = scored.length;
       const start = (page - 1) * pageSize;
       const data = scored.slice(start, start + pageSize);
-      log("info", "grants_fetched", { ...reqCtx, total, page, pageSize, durationMs: Date.now() - grantsStart });
-      return jsonResponse(JSON.stringify({ data, total, page, pageSize }));
+      log("info", "grants_fetched", { ...reqCtx, total, page, pageSize, scoringReady, durationMs: Date.now() - grantsStart });
+      return jsonResponse(JSON.stringify({ data, total, page, pageSize, scoringReady }));
     }
 
     if (url.pathname === "/api/me") {

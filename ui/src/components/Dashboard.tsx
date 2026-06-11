@@ -53,6 +53,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [scoringInProgress, setScoringInProgress] = useState(false);
 
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
@@ -61,9 +62,10 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
 
   useEffect(() => {
     fetchGrants()
-      .then(({ data, total }: PagedGrants) => {
+      .then(({ data, total, scoringReady }: PagedGrants) => {
         setGrants(data);
         setGrantsTotal(total);
+        setScoringInProgress(scoringReady === false);
         // Deep link: /?grant=<name> opens that grant's detail drawer
         const linked = new URLSearchParams(window.location.search).get("grant");
         if (linked) {
@@ -92,11 +94,13 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
       await saveProfile(p);
       setProfile(p);
       setProfileOpen(false);
-      // Reload grants with new profile scoring
+      setScoringInProgress(true);
+      // Reload grants — scores are recomputing in the background on the server
       setLoading(true);
-      const { data: updated, total } = await fetchGrants();
+      const { data: updated, total, scoringReady } = await fetchGrants();
       setGrants(updated);
       setGrantsTotal(total);
+      setScoringInProgress(scoringReady === false);
     } catch {
       // ignore
     } finally {
@@ -267,7 +271,13 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
 
         {!loading && !error && (
           <>
-            {profile && (
+            {profile && scoringInProgress && (
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/40 text-sm text-amber-300">
+                <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                <span>Scoring grants against your profile… Results will update shortly.</span>
+              </div>
+            )}
+            {profile && !scoringInProgress && (
               <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-brand-900/20 border border-brand-800/40 text-sm text-brand-300">
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
