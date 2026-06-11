@@ -1,7 +1,24 @@
 import { useState, type FormEvent } from "react";
 import type { Grant } from "../types";
 import { liveSearch } from "../api";
+import type { UserProfile } from "../api";
 import DeadlineBadge from "./DeadlineBadge";
+
+// Maps focus area labels to effective search terms for Simpler Grants API.
+const FOCUS_AREA_QUERIES: Record<string, string> = {
+  "Health & Medicine":         "health medicine clinical",
+  "Education & Workforce":     "education workforce training",
+  "Technology & Innovation":   "technology innovation research",
+  "Housing & Community":       "affordable housing community development",
+  "Environment & Climate":     "climate environment clean energy",
+  "Agriculture & Food":        "agriculture food rural",
+  "Social Services":           "social services community welfare",
+  "Arts & Humanities":         "arts humanities culture",
+  "International Development": "international development global",
+  "Veterans & Military":       "veterans military service members",
+  "Research & Science":        "research science scientific",
+  "Justice & Safety":          "justice safety equity law",
+};
 
 interface Props {
   watchlist: Set<string>;
@@ -9,9 +26,10 @@ interface Props {
   onToggleWatchlist: (name: string) => void;
   onToggleCandidate: (name: string) => void;
   onRowClick: (grant: Grant) => void;
+  profile?: UserProfile | null;
 }
 
-export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, onToggleCandidate, onRowClick }: Props) {
+export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, onToggleCandidate, onRowClick, profile }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Grant[]>([]);
   const [total, setTotal] = useState(0);
@@ -19,6 +37,11 @@ export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
+
+  const suggestions = (profile?.focusAreas ?? []).map(fa => ({
+    label: fa,
+    query: FOCUS_AREA_QUERIES[fa] ?? fa,
+  }));
 
   const PAGE_SIZE = 25;
 
@@ -89,6 +112,22 @@ export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, o
           )}
         </button>
       </form>
+
+      {suggestions.length > 0 && !searched && (
+        <div className="flex flex-wrap gap-2">
+          <span className="text-gray-500 text-xs self-center">From your profile:</span>
+          {suggestions.map(({ label, query: sq }) => (
+            <button
+              key={label}
+              type="button"
+              className="px-2.5 py-1 rounded-full text-xs bg-brand-900/40 text-brand-300 border border-brand-700/40 hover:bg-brand-800/50 transition-colors"
+              onClick={() => { setQuery(sq); runSearch(sq, 1); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-900/30 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-sm" role="alert">
