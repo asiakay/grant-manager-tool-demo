@@ -904,6 +904,113 @@ export default {
       return jsonResponse(JSON.stringify({ ok: true, mode, inserted, updated, skipped, total: byName.size, unknownColumns }));
     }
 
+    if (url.pathname === "/api/admin/score-grants" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!getAdminUsers(env).has(username)) return new Response("Forbidden", { status: 403 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+
+      const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
+      if (!hasAI) return new Response("AI not configured", { status: 503 });
+
+      const body = await request.json().catch(() => ({}));
+      const batch = Math.min(20, Math.max(1, parseInt(body.batch ?? "5", 10)));
+      const rescore = body.rescore === true;
+
+      const filter = rescore
+        ? "ORDER BY id LIMIT ?"
+        : "WHERE (relevance IS NULL OR relevance = 0) AND (fit IS NULL OR fit = 0) ORDER BY id LIMIT ?";
+      const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT id, name, sponsor, source_url, benefits, eligibility_conditions, type, stage FROM programs ${filter}`
+      ).bind(batch).all();
+
+      if (grants.length === 0) {
+        return jsonResponse(JSON.stringify({ ok: true, scored: 0, message: "No unscored grants found." }));
+      }
+
+      async function fetchPageText(pageUrl) {
+        if (!pageUrl) return "";
+        try {
+          const res = await fetch(pageUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!res.ok) return "";
+          const html = await res.text();
+          // Strip tags and collapse whitespace; cap at 2000 chars so it fits in the prompt.
+          return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
+        } catch {
+          return "";
+        }
+      }
+
+      async function scoreWithAI(grant, pageText) {
+        const context = [
+          `Name: ${grant.name}`,
+          `Sponsor: ${grant.sponsor || "Unknown"}`,
+          `Type: ${grant.type || ""}`,
+          `Stage: ${grant.stage || ""}`,
+          `Benefits: ${grant.benefits || ""}`,
+          `Eligibility: ${grant.eligibility_conditions || ""}`,
+          pageText ? `Page content excerpt:\n${pageText}` : "",
+        ].filter(Boolean).join("\n");
+
+        const prompt = `Score this grant opportunity on three dimensions, each from 0 to 3 (integers only).
+
+Definitions:
+- relevance (0-3): How clearly does this grant describe a real, specific funding opportunity with defined purpose and scope? 0=vague/unclear, 3=very clear and specific.
+- fit (0-3): How broadly applicable is this grant across different org types (nonprofits, startups, researchers, govt)? 0=very narrow, 3=widely accessible.
+- ease (0-3): How easy is it to apply? Consider rolling deadlines, simple requirements, no match required. 0=complex/burdensome, 3=straightforward.
+
+Grant:
+${context}
+
+Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1,"ease":3}`;
+
+        const messages = [{ role: "user", content: prompt }];
+        let text = "";
+        if (env.AI) {
+          const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
+          text = result.response || "";
+        } else {
+          const res = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+            { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
+          );
+          const data = await res.json();
+          text = data.result?.response ?? "";
+        }
+        const match = text.match(/\{[^}]+\}/);
+        if (!match) return null;
+        try {
+          const parsed = JSON.parse(match[0]);
+          const clamp = (v) => Math.min(3, Math.max(0, parseInt(v, 10) || 0));
+          return { relevance: clamp(parsed.relevance), fit: clamp(parsed.fit), ease: clamp(parsed.ease) };
+        } catch { return null; }
+      }
+
+      let scored = 0;
+      const errors = [];
+      for (const grant of grants) {
+        try {
+          const pageText = await fetchPageText(grant.source_url);
+          const scores = await scoreWithAI(grant, pageText);
+          if (scores) {
+            const weighted = Math.round((scores.relevance * 0.3 + scores.fit * 0.3 + scores.ease * 0.2) * 100) / 100;
+            await env.GRANT_MANAGER_DB.prepare(
+              `UPDATE programs SET relevance = ?, fit = ?, ease = ?, weighted_score = ? WHERE id = ?`
+            ).bind(scores.relevance, scores.fit, scores.ease, weighted, grant.id).run();
+            scored++;
+          }
+        } catch (e) {
+          errors.push({ name: grant.name, error: String(e).slice(0, 100) });
+        }
+      }
+
+      log("info", "grants_scored", { ...reqCtx, scored, errors: errors.length });
+      return jsonResponse(JSON.stringify({ ok: true, scored, total: grants.length, errors }));
+    }
+
     if (url.pathname === "/api/chat" && request.method === "POST") {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });
