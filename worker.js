@@ -645,32 +645,32 @@ export default {
       const data = (apiData.data || []).map((opp) => {
         const summary = opp.summary || opp;
         const grant = {
-          type: capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
-          name: opp.opportunity_title || summary.opportunity_title || "",
-          sponsor: opp.agency_name || summary.agency_name || opp.agency_code || "",
-          source_url: opp.opportunity_id
+          "Type": capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
+          "Name": opp.opportunity_title || summary.opportunity_title || "",
+          "Sponsor": opp.agency_name || summary.agency_name || opp.agency_code || "",
+          "Source URL": opp.opportunity_id
             ? `https://grants.gov/search-results-detail/${opp.opportunity_id}`
             : "",
-          region_eligibility: "",
-          deadline: opp.close_date || summary.close_date || "",
-          cadence: "",
-          benefits: fmtAward(
+          "Region/Eligibility": "",
+          "Deadline/Next Cohort": opp.close_date || summary.close_date || "",
+          "Cadence": "",
+          "Benefits": fmtAward(
             opp.award_floor ?? summary.award_floor,
             opp.award_ceiling ?? summary.award_ceiling
           ),
-          eligibility_conditions: Array.isArray(opp.applicant_types)
+          "Eligibility (key conditions)": Array.isArray(opp.applicant_types)
             ? opp.applicant_types.map(capitalize).join(", ")
             : Array.isArray(summary.applicant_types)
               ? summary.applicant_types.map(capitalize).join(", ")
               : "",
-          stage: capitalize(opp.opportunity_status || ""),
-          non_dilutive: 1,
-          stack_required: 0,
-          relevance: 0,
-          fit: 0,
-          ease: 0,
-          weighted_score: 0,
-          notes: "",
+          "Stage": capitalize(opp.opportunity_status || ""),
+          "Non-dilutive?": "Yes",
+          "Stack Required?": "No",
+          "Relevance": 0,
+          "Fit": 0,
+          "Ease": 0,
+          "Weighted Score": 0,
+          "Notes/Actions": "",
         };
         return { ...grant, score: Math.round(computeScore(grant, lsWeights, lsProfile) * 100) / 100 };
       });
