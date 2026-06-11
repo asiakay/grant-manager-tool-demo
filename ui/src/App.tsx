@@ -38,6 +38,7 @@ export default function App() {
   async function handleSignupSuccess(user: string, password: string) {
     try {
       await login(user, password);
+      await fetchCsrfToken();
       setUsername(user);
       setAuth("profile-setup");
     } catch {
