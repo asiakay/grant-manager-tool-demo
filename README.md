@@ -4,7 +4,9 @@
 
 **[https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev](https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev)**
 
-603 non-dilutive grants loaded, personalized scoring live. Access credentials available on request.
+603 non-dilutive grants loaded, personalized scoring live.
+
+> **Demo login:** username `demo` · password `demo`
 
 ---
 
@@ -68,7 +70,7 @@ A full data pipeline runs from Grants.gov API search through normalization, scor
 
 **[View the live dashboard →](https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev)**
 
-Access credentials available on request.
+> **Demo login:** username `demo` · password `demo`
 
 ---
 
@@ -213,7 +215,7 @@ This tool was built on personal time, with no institutional support. The IP belo
 
 This repository is source-available for evaluation purposes. Licensing inquiries welcome.
 
-For access credentials, partnership discussions, or licensing: [LinkedIn](https://www.linkedin.com/in/asia-lakay-grady/)
+For partnership discussions or licensing: [LinkedIn](https://www.linkedin.com/in/asia-lakay-grady/)
 
 ---
 
