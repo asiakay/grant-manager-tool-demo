@@ -277,8 +277,8 @@ export async function scoreGrants(rescore = false, batch = 10): Promise<ScoreGra
       const data = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(data.error || `Error ${res.status}`);
     }
-    // Non-JSON (e.g. Cloudflare error pages) — don't dump raw HTML
-    throw new Error(`Server error (${res.status}). Check Worker logs for details.`);
+    // Non-JSON (e.g. Cloudflare HTML error pages) — don't dump raw HTML
+    throw new Error(`Server error (${res.status})`);
   }
   return res.json();
 }

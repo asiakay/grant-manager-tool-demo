@@ -913,6 +913,8 @@ export default {
       const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
       if (!hasAI) return new Response("AI not configured", { status: 503 });
 
+      try {
+
       const body = await request.json().catch(() => ({}));
       const batch = Math.min(20, Math.max(1, parseInt(body.batch ?? "5", 10)));
       const rescore = body.rescore === true;
@@ -1016,6 +1018,10 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
 
       log("info", "grants_scored", { ...reqCtx, scored, errors: errors.length });
       return jsonResponse(JSON.stringify({ ok: true, scored, total: grants.length, errors }));
+      } catch (e) {
+        log("error", "score_grants_failed", { ...reqCtx, error: String(e) });
+        return jsonResponse(JSON.stringify({ error: String(e) }), { status: 500 });
+      }
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
