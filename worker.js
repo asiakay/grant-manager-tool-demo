@@ -920,10 +920,10 @@ export default {
       const rescore = body.rescore === true;
 
       const filter = rescore
-        ? "ORDER BY id LIMIT ?"
-        : "WHERE (relevance IS NULL OR relevance = 0) AND (fit IS NULL OR fit = 0) ORDER BY id LIMIT ?";
+        ? "ORDER BY rowid LIMIT ?"
+        : "WHERE (relevance IS NULL OR relevance = 0) AND (fit IS NULL OR fit = 0) ORDER BY rowid LIMIT ?";
       const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
-        `SELECT id, name, sponsor, source_url, benefits, eligibility_conditions, type, stage FROM programs ${filter}`
+        `SELECT rowid as _rowid, name, sponsor, source_url, benefits, eligibility_conditions, type, stage FROM programs ${filter}`
       ).bind(batch).all();
 
       if (grants.length === 0) {
@@ -1007,8 +1007,8 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
           if (scores) {
             const weighted = Math.round((scores.relevance * 0.3 + scores.fit * 0.3 + scores.ease * 0.2) * 100) / 100;
             await env.GRANT_MANAGER_DB.prepare(
-              `UPDATE programs SET relevance = ?, fit = ?, ease = ?, weighted_score = ? WHERE id = ?`
-            ).bind(scores.relevance, scores.fit, scores.ease, weighted, grant.id).run();
+              `UPDATE programs SET relevance = ?, fit = ?, ease = ?, weighted_score = ? WHERE name = ?`
+            ).bind(scores.relevance, scores.fit, scores.ease, weighted, grant.name).run();
             scored++;
           }
         } catch (e) {
