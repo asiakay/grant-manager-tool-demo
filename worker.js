@@ -92,6 +92,84 @@ function normalizeHeader(h) {
 
 const DEFAULT_WEIGHTS = { Relevance: 0.3, Fit: 0.3, Ease: 0.2, StackAlignment: 0.1, CadenceRecency: 0.1 };
 
+// Maps user-facing focus area labels to keywords searched in grant text fields.
+const FOCUS_AREA_KEYWORDS = {
+  "Health & Medicine":        ["health", "medicine", "medical", "clinical", "biomedical", "disease", "drug", "therapeutics", "patient"],
+  "Education & Workforce":    ["education", "workforce", "training", "learning", "student", "school", "academic", "career"],
+  "Technology & Innovation":  ["technology", "innovation", "tech", "software", "digital", "engineering", "data", "ai", "computing"],
+  "Housing & Community":      ["housing", "community", "neighborhood", "affordable", "urban", "rural", "infrastructure"],
+  "Environment & Climate":    ["environment", "climate", "energy", "sustainability", "clean", "emissions", "carbon", "ecology"],
+  "Agriculture & Food":       ["agriculture", "food", "farm", "crop", "nutrition", "rural", "livestock"],
+  "Social Services":          ["social", "welfare", "poverty", "disability", "elderly", "child", "family", "services"],
+  "Arts & Humanities":        ["arts", "humanities", "culture", "museum", "heritage", "creative", "media"],
+  "International Development":["international", "global", "developing", "foreign", "overseas", "aid"],
+  "Veterans & Military":      ["veteran", "military", "defense", "armed forces", "service member"],
+  "Research & Science":       ["research", "science", "scientific", "laboratory", "study", "investigation"],
+  "Justice & Safety":         ["justice", "safety", "law", "crime", "court", "police", "legal", "equity"],
+};
+
+const ORG_TYPE_KEYWORDS = {
+  "Nonprofit/NGO":                    ["nonprofit", "ngo", "foundation", "charitable", "501(c)"],
+  "University/Research Institution":  ["university", "college", "academic", "institution", "research institution"],
+  "Startup/Small Business":           ["startup", "small business", "entrepreneur", "company", "commercial", "industry"],
+  "Government/Tribal":                ["government", "tribal", "municipality", "state", "federal", "public"],
+  "Individual Researcher":            ["individual", "researcher", "investigator", "pi ", "principal investigator"],
+  "Hospital/Health System":           ["hospital", "health system", "clinic", "medical center"],
+};
+
+const STAGE_KEYWORDS = {
+  "Early Research / Ideation":  ["early", "exploratory", "pilot", "proof of concept", "ideation", "basic research", "preliminary"],
+  "Pilot / Proof of Concept":   ["pilot", "proof of concept", "demonstration", "feasibility"],
+  "Growth / Scaling":           ["scale", "scaling", "expansion", "growth", "replication"],
+  "Established Program":        ["established", "sustained", "continuation", "operational", "ongoing"],
+};
+
+// Returns 0-1 profile match score based on how well a grant's text matches the user profile.
+function computeProfileMatch(r, profile) {
+  const focusAreas = Array.isArray(profile.focusAreas) ? profile.focusAreas : [];
+  const orgType    = profile.orgType  || "";
+  const stage      = profile.stage    || "";
+
+  if (!focusAreas.length && !orgType && !stage) return 0;
+
+  // Concatenate searchable text from the grant record (lower-cased)
+  const text = [
+    r["Program Name"] || r["Name"] || "",
+    r["Description"] || r["Summary"] || "",
+    r["Category"] || r["Focus Area"] || "",
+    r["Eligibility"] || r["Eligible Applicants"] || "",
+    r["Sponsor"] || r["Agency"] || "",
+  ].join(" ").toLowerCase();
+
+  let hits = 0;
+  let checks = 0;
+
+  // Focus area match — any keyword hit from any selected area counts
+  if (focusAreas.length) {
+    const focusKeywords = focusAreas.flatMap(fa => FOCUS_AREA_KEYWORDS[fa] || []);
+    if (focusKeywords.length) {
+      checks++;
+      if (focusKeywords.some(kw => text.includes(kw))) hits++;
+    }
+  }
+
+  // Org type match
+  const orgKeywords = ORG_TYPE_KEYWORDS[orgType] || [];
+  if (orgKeywords.length) {
+    checks++;
+    if (orgKeywords.some(kw => text.includes(kw))) hits++;
+  }
+
+  // Stage match
+  const stageKeywords = STAGE_KEYWORDS[stage] || [];
+  if (stageKeywords.length) {
+    checks++;
+    if (stageKeywords.some(kw => text.includes(kw))) hits++;
+  }
+
+  return checks ? hits / checks : 0;
+}
+
 function computeStackAlignment(r) {
   const s = String(r["Stack Required?"] || "").toLowerCase().trim();
   return (s === "yes" || s === "y") ? 1.0 : 0.2;
@@ -109,7 +187,7 @@ function computeCadenceRecency(r) {
   return Math.max(0, Math.min(1, 1 - daysUntil / 365));
 }
 
-function computeScore(r, weights) {
+function computeScore(r, weights, profile) {
   const w = weights || DEFAULT_WEIGHTS;
   const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
   const wn = {
@@ -126,11 +204,16 @@ function computeScore(r, weights) {
   const cadence    = computeCadenceRecency(r);
   // Relevance/Fit/Ease are 0-3; stack and cadence are 0-1.
   // Multiply stack/cadence by 3 so all components share the same scale.
-  return wn.Relevance * relevance
+  const baseScore = wn.Relevance * relevance
        + wn.Fit * fit
        + wn.Ease * ease
        + wn.StackAlignment * (stack * 3)
        + wn.CadenceRecency * (cadence * 3);
+
+  // Profile match bonus: up to +0.6 added on top of the 0-3 base score.
+  // Grants matching the user's focus areas, org type, and stage rank higher.
+  const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
+  return baseScore + profileMatch * 0.6;
 }
 
 const SESSION_TTL = 86400; // 24 hours in seconds
@@ -387,7 +470,7 @@ export default {
         scored = rows
           .map((r) => ({
             ...r,
-            score: Math.round(computeScore(r, userWeights) * 100) / 100,
+            score: Math.round(computeScore(r, userWeights, profile) * 100) / 100,
           }))
           .sort((a, b) => b.score - a.score);
       }
@@ -514,7 +597,7 @@ export default {
           "Weighted Score": 0,
           "Notes/Actions": "",
         };
-        return { ...grant, score: Math.round(computeScore(grant, lsWeights) * 100) / 100 };
+        return { ...grant, score: Math.round(computeScore(grant, lsWeights, lsProfile) * 100) / 100 };
       });
 
       const paginationInfo = apiData.pagination_info || {};
