@@ -53,7 +53,8 @@ export async function login(username: string, password: string): Promise<void> {
   });
   // Worker redirects to /dashboard on success with Set-Cookie
   if (res.status === 302 || res.status === 0 || res.ok) return;
-  const text = await res.text();
+  const text = await res.text().catch(() => "");
+  if (!text || text.trimStart().startsWith("<")) throw new Error("Server error. Please try again.");
   throw new Error(text || "Login failed");
 }
 
