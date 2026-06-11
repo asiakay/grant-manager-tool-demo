@@ -695,6 +695,7 @@ export default {
 
         grantContext = combined.map(r =>
           `• ${r.Name} | ${r.Sponsor} | ${r.Type || ""} | ${r.Stage || ""}\n` +
+          `  Link: ${url.origin}/?grant=${encodeURIComponent(r.Name)}\n` +
           `  Deadline: ${r["Deadline / Next Cohort"] || "N/A"} | Relevance: ${r.Relevance} | Fit: ${r.Fit} | Ease: ${r.Ease}\n` +
           `  Benefits: ${r.Benefits || "N/A"}\n` +
           `  Eligibility: ${r["Eligibility (key conditions)"] || "N/A"}` +
@@ -707,7 +708,10 @@ export default {
       const systemPrompt =
         `You are a grant research assistant. The user has a database of ${totalCount} grant opportunities. ` +
         `Answer questions using the grant data below. Reference grants by name, compare opportunities, ` +
-        `highlight deadlines and eligibility. Be concise and specific.\n\n` +
+        `highlight deadlines and eligibility. Be concise and specific. ` +
+        `Every time you mention a grant, format its name as a markdown link to its page in this app ` +
+        `using the exact Link URL provided for that grant, e.g. [Grant Name](https://app/?grant=...). ` +
+        `Never invent URLs — only use the Link values from the grant data.\n\n` +
         (grantContext ? `GRANTS FROM DATABASE:\n${grantContext}` : "Could not load grant data.");
 
       const aiMessages = [{ role: "system", content: systemPrompt }, ...chatMessages];

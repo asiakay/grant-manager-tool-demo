@@ -62,7 +62,17 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
 
   useEffect(() => {
     fetchGrants()
-      .then(({ data, total }: PagedGrants) => { setGrants(data); setGrantsTotal(total); })
+      .then(({ data, total }: PagedGrants) => {
+        setGrants(data);
+        setGrantsTotal(total);
+        // Deep link: /?grant=<name> opens that grant's detail drawer
+        const linked = new URLSearchParams(window.location.search).get("grant");
+        if (linked) {
+          const target = linked.trim().toLowerCase();
+          const g = data.find((x) => String(x.Name).trim().toLowerCase() === target);
+          if (g) setSelectedGrant(g);
+        }
+      })
       .catch((e) => {
         if (e.message === "Unauthenticated") {
           onLogout();
@@ -126,6 +136,17 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
       return next;
     });
   }, []);
+
+  const openGrantByName = useCallback((name: string) => {
+    const target = name.trim().toLowerCase();
+    const g = grants.find((x) => String(x.Name).trim().toLowerCase() === target);
+    if (g) {
+      setSelectedGrant(g);
+    } else {
+      // Not in the loaded page of grants — surface the closest matches in the table
+      setFilters((f) => ({ ...f, search: name }));
+    }
+  }, [grants]);
 
   const handleGrantUpdated = useCallback((name: string, notes: string) => {
     setGrants((prev) =>
@@ -407,7 +428,7 @@ export default function Dashboard({ onLogout, onBackToProfile }: Props) {
       />
 
       {/* Chat panel */}
-      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} onGrantLink={openGrantByName} />
 
       {/* Admin CSV upload */}
       <AdminUpload

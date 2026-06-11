@@ -1,13 +1,69 @@
-import { useRef, useState, useEffect, type KeyboardEvent } from "react";
+import { useRef, useState, useEffect, type KeyboardEvent, type ReactNode } from "react";
 import type { ChatMessage } from "../types";
 import { sendChat } from "../api";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  onGrantLink?: (name: string) => void;
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+// Extracts the grant name from an in-app link (/?grant=<name>), or null for external URLs.
+function grantNameFromUrl(href: string): string | null {
+  try {
+    const u = new URL(href, window.location.origin);
+    if (u.origin === window.location.origin) {
+      return u.searchParams.get("grant");
+    }
+  } catch {
+    // not a valid URL
+  }
+  return null;
+}
+
+// Minimal inline markdown: [text](url) links and **bold**. The AI is instructed
+// to cite grants as markdown links pointing back into this app.
+function renderInlineMarkdown(text: string, onGrantLink?: (name: string) => void): ReactNode[] {
+  const re = /\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*/g;
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    if (m[1] !== undefined) {
+      const label = m[1];
+      const href = m[2];
+      const grantName = grantNameFromUrl(href);
+      const inApp = grantName !== null && onGrantLink !== undefined;
+      nodes.push(
+        <a
+          key={nodes.length}
+          href={href}
+          className="text-brand-400 underline underline-offset-2 hover:text-brand-300"
+          target={inApp ? undefined : "_blank"}
+          rel={inApp ? undefined : "noopener noreferrer"}
+          onClick={
+            inApp
+              ? (e) => {
+                  e.preventDefault();
+                  onGrantLink(grantName);
+                }
+              : undefined
+          }
+        >
+          {label}
+        </a>
+      );
+    } else {
+      nodes.push(<strong key={nodes.length}>{m[3]}</strong>);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function MessageBubble({ msg, onGrantLink }: { msg: ChatMessage; onGrantLink?: (name: string) => void }) {
   const isUser = msg.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
@@ -24,7 +80,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         }`}
         style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
       >
-        {msg.content}
+        {isUser ? msg.content : renderInlineMarkdown(msg.content, onGrantLink)}
       </div>
     </div>
   );
@@ -43,7 +99,7 @@ function NoAiKeyBanner() {
   );
 }
 
-export default function ChatPanel({ open, onClose }: Props) {
+export default function ChatPanel({ open, onClose, onGrantLink }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -204,7 +260,7 @@ export default function ChatPanel({ open, onClose }: Props) {
           className="flex-1 overflow-y-auto px-4 py-4"
         >
           {messages.map((msg, i) => (
-            <MessageBubble key={i} msg={msg} />
+            <MessageBubble key={i} msg={msg} onGrantLink={onGrantLink} />
           ))}
           {loading && messages[messages.length - 1]?.content === "" && (
             <div className="flex justify-start mb-3" aria-label="AI is typing" role="status">
