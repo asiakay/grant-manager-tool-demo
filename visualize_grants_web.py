@@ -47,9 +47,16 @@ from flask import (
 )
 
 app = Flask(__name__)
-# Simple demo credentials; replace with a proper auth system in production.
-app.secret_key = "dev-secret"
-USERS = {"client": "demo"}
+_secret = os.environ.get("FLASK_SECRET_KEY")
+if not _secret:
+    logging.warning(
+        "FLASK_SECRET_KEY is not set; using an insecure default. "
+        "Set it before running in any non-throwaway environment: "
+        "export FLASK_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    )
+    _secret = "dev-secret-do-not-use-in-production"
+app.secret_key = _secret
+USERS = {"client": os.environ.get("DEMO_PASSWORD", "demo")}
 
 
 DEFAULT_MASTER = pd.DataFrame(
