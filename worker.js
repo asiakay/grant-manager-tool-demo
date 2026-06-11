@@ -132,13 +132,16 @@ function computeProfileMatch(r, profile) {
 
   if (!focusAreas.length && !orgType && !stage) return 0;
 
-  // Concatenate searchable text from the grant record (lower-cased)
+  // Concatenate all searchable text from the grant record (lower-cased).
+  // Schema columns: Name, Sponsor, "Eligibility (key conditions)", "Region / Eligibility",
+  // "Notes / Actions", Type — no free-text description field exists in the DB.
   const text = [
-    r["Program Name"] || r["Name"] || "",
-    r["Description"] || r["Summary"] || "",
-    r["Category"] || r["Focus Area"] || "",
-    r["Eligibility"] || r["Eligible Applicants"] || "",
-    r["Sponsor"] || r["Agency"] || "",
+    r["Name"] || "",
+    r["Sponsor"] || "",
+    r["Eligibility (key conditions)"] || r["Eligibility"] || "",
+    r["Region / Eligibility"] || r["Region/Eligibility"] || "",
+    r["Type"] || "",
+    r["Notes / Actions"] || r["Notes/Actions"] || "",
   ].join(" ").toLowerCase();
 
   let hits = 0;
