@@ -73,8 +73,18 @@ npx wrangler dev --local
 ### Secrets in local dev
 Do not put `USER_HASHES` in `wrangler.toml`. For local development, use a `.dev.vars` file (gitignored):
 ```
-USER_HASHES={"admin":"<sha256hex>"}
+USER_HASHES={"admin":"pbkdf2$600000$<salt_hex>$<key_hex>"}
 ```
+Generate the hash value with Node (no dependencies needed):
+```js
+const s = crypto.getRandomValues(new Uint8Array(16));
+const k = await crypto.subtle.importKey('raw', new TextEncoder().encode('yourpassword'), 'PBKDF2', false, ['deriveBits']);
+const d = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: s, iterations: 600000 }, k, 256);
+const h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
+console.log('pbkdf2$600000$' + h(s) + '$' + h(d));
+```
+Legacy SHA-256 hashes (64-char hex) are still accepted and will be auto-upgraded to PBKDF2 on the user's next successful login.
+
 Wrangler loads `.dev.vars` automatically during `wrangler dev`.
 
 ### Running the data pipeline

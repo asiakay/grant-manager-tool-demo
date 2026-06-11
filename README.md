@@ -85,7 +85,7 @@ Weights are configurable per user. The scoring profile is stored in KV and appli
 - **Storage:** KV (user profiles, session state) · R2 (PDF documents)
 - **AI:** Cloudflare Workers AI — Llama-3-8B via `/api/chat`
 - **Data pipeline:** Python 3.9+ (search, wrangle, score, summarize)
-- **Auth:** SHA-256 hashing · session cookies · login attempt lockout *(SHA-256 is a fast hash, not a KDF — acceptable for a demo but not production. Production deployments should replace `hashPassword` in `worker.js` with PBKDF2 via the [WebCrypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/). See [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).)*
+- **Auth:** PBKDF2-HMAC-SHA256 (600 000 iterations, random salt) via [WebCrypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/) · session cookies · login attempt lockout · lazy hash upgrade (SHA-256 legacy hashes are re-hashed on next successful login)
 
 ---
 
@@ -158,8 +158,17 @@ wrangler kv:namespace create LOGIN_ATTEMPTS
 wrangler r2 bucket create pdf-bucket
 
 # 4. Set credentials as a secret (never in wrangler.toml)
+#    USER_HASHES values must be PBKDF2 hashes. Generate one with:
+#      node -e "
+#        const s=crypto.getRandomValues(new Uint8Array(16));
+#        const k=await crypto.subtle.importKey('raw',new TextEncoder().encode('yourpassword'),'PBKDF2',false,['deriveBits']);
+#        const d=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:s,iterations:600000},k,256);
+#        const h=b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+#        console.log('pbkdf2\$600000\$'+h(s)+'\$'+h(d));
+#      "
+#    Then: wrangler secret put USER_HASHES
+#    Paste: {"admin":"pbkdf2$600000$<salt>$<hash>"}
 wrangler secret put USER_HASHES
-# When prompted, paste JSON: {"admin":"<sha256hex>","user":"<sha256hex>"}
 
 # 5. Apply migrations and deploy
 cd worker

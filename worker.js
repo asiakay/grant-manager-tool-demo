@@ -7,12 +7,74 @@ const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 const MIN_PASSWORD_LENGTH = 8;
 
-async function hashPassword(pass) {
-  const data = new TextEncoder().encode(pass);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
+const PBKDF2_ITERATIONS = 600_000;
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_KEY_BYTES  = 32;
+
+function toHex(buf) {
+  return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// Returns a PBKDF2-HMAC-SHA256 hash string: "pbkdf2$<iters>$<salt_hex>$<key_hex>"
+async function hashPassword(pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveBits"]
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS },
+    keyMaterial,
+    PBKDF2_KEY_BYTES * 8
+  );
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(salt)}$${toHex(derived)}`;
+}
+
+// Constant-time buffer equality (prevents timing attacks).
+function bufEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+// Verifies a password against a stored hash.
+// Accepts both PBKDF2 ("pbkdf2$...") and legacy SHA-256 (64-char hex).
+// Returns { ok: boolean, legacy: boolean } — callers should re-hash on legacy match.
+async function verifyPassword(stored, pass) {
+  if (typeof stored !== "string") return { ok: false, legacy: false };
+
+  if (stored.startsWith("pbkdf2$")) {
+    const parts = stored.split("$");
+    if (parts.length !== 4) return { ok: false, legacy: false };
+    const [, iters, saltHex, keyHex] = parts;
+    const iterations = parseInt(iters, 10);
+    if (!iterations || saltHex.length % 2 !== 0 || keyHex.length % 2 !== 0) {
+      return { ok: false, legacy: false };
+    }
+    const salt = new Uint8Array(saltHex.match(/.{2}/g).map((h) => parseInt(h, 16)));
+    const expected = new Uint8Array(keyHex.match(/.{2}/g).map((h) => parseInt(h, 16)));
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveBits"]
+    );
+    const derived = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+      keyMaterial,
+      expected.byteLength * 8
+    );
+    return { ok: bufEqual(new Uint8Array(derived), expected), legacy: false };
+  }
+
+  // Legacy SHA-256 path (64-char hex). Used for backward compat with old USER_HASHES values.
+  if (/^[0-9a-f]{64}$/i.test(stored)) {
+    const data = new TextEncoder().encode(pass);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    const hex = toHex(hash);
+    return { ok: hex === stored.toLowerCase(), legacy: true };
+  }
+
+  return { ok: false, legacy: false };
 }
 
 async function getColumns(db) {
@@ -275,28 +337,28 @@ export default {
     const username = await resolveSession(env, cookie);
     const loggedIn = !!username;
     const reqCtx = { requestId, method: request.method, path: url.pathname, user: username ?? undefined };
-    // Hash the password at runtime so it always matches the same algorithm
-    // used for incoming login attempts. Environment-provided users may supply
-    // either hashed or plain-text passwords; the latter are hashed here so the
-    // configuration is more forgiving in development setups.
-    const demoHash = await hashPassword("demo");
-    const defaultUsers = { demo: demoHash };
+    // USER_HASHES must contain pre-computed hashes — either the new PBKDF2 format
+    // ("pbkdf2$600000$<salt_hex>$<key_hex>") or legacy SHA-256 (64-char hex, still
+    // accepted for backward compat). Plain-text passwords are no longer auto-hashed
+    // here because PBKDF2 hashes are salted and cannot be deterministically re-derived.
+    // The demo user is seeded into D1 via migration 0003; no default is injected here.
     let envUsers = {};
     if (env.USER_HASHES) {
       try {
         const raw = JSON.parse(env.USER_HASHES);
-        envUsers = {};
-        for (const [u, secret] of Object.entries(raw)) {
-          envUsers[u] = /^[0-9a-f]{64}$/i.test(secret)
-            ? secret.toLowerCase()
-            : await hashPassword(secret);
+        for (const [u, h] of Object.entries(raw)) {
+          if (typeof h === "string" && (h.startsWith("pbkdf2$") || /^[0-9a-f]{64}$/i.test(h))) {
+            envUsers[u] = h;
+          } else {
+            log("warn", "user_hashes_bad_format", { requestId, user: u });
+          }
         }
       } catch (err) {
         log("warn", "invalid_user_hashes", { requestId, error: String(err) });
       }
     }
 
-    const users = { ...defaultUsers, ...envUsers };
+    const users = envUsers;
 
     if (url.pathname === "/signup" && request.method === "POST") {
       // Rate-limit signups per IP to block mass account creation
@@ -326,14 +388,6 @@ export default {
       if (newPass !== confirmPass) {
         return jsonResponse(JSON.stringify({ error: "Passwords do not match." }), { status: 400 });
       }
-
-      await env.GRANT_MANAGER_DB.prepare(
-        `CREATE TABLE IF NOT EXISTS users (
-          username TEXT PRIMARY KEY,
-          password_hash TEXT NOT NULL,
-          created_at INTEGER NOT NULL
-        )`
-      ).run();
 
       const existing = await env.GRANT_MANAGER_DB.prepare(
         "SELECT username FROM users WHERE username = ?"
@@ -371,24 +425,41 @@ export default {
         log("warn", "login_attempts_binding_missing", { requestId });
       }
 
-      const hashed = await hashPassword(pass || "");
       let dbUser = null;
       try {
-        await env.GRANT_MANAGER_DB.prepare(
-          `CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            password_hash TEXT NOT NULL,
-            created_at INTEGER NOT NULL
-          )`
-        ).run();
         dbUser = await env.GRANT_MANAGER_DB.prepare(
           "SELECT password_hash FROM users WHERE username = ?"
         ).bind(user).first();
       } catch (err) {
         log("warn", "login_d1_lookup_failed", { requestId, error: String(err) });
       }
-      const dbMatch = dbUser && dbUser.password_hash === hashed;
-      if ((users[user] && users[user] === hashed) || dbMatch) {
+
+      // Check D1 user first, then env users.
+      let matchOk = false;
+      let needsRehash = false;
+      if (dbUser) {
+        const { ok, legacy } = await verifyPassword(dbUser.password_hash, pass || "");
+        matchOk = ok;
+        needsRehash = ok && legacy;
+      } else if (users[user]) {
+        const { ok } = await verifyPassword(users[user], pass || "");
+        matchOk = ok;
+        // Env users can't be auto-upgraded (secret is outside our write scope).
+      }
+
+      if (matchOk) {
+        // Lazy-upgrade legacy SHA-256 D1 hashes to PBKDF2 on successful login.
+        if (needsRehash && env.GRANT_MANAGER_DB) {
+          try {
+            const upgraded = await hashPassword(pass);
+            await env.GRANT_MANAGER_DB.prepare(
+              "UPDATE users SET password_hash = ? WHERE username = ?"
+            ).bind(upgraded, user).run();
+            log("info", "password_hash_upgraded", { requestId, user });
+          } catch (err) {
+            log("warn", "password_hash_upgrade_failed", { requestId, error: String(err) });
+          }
+        }
         if (env.LOGIN_ATTEMPTS) await env.LOGIN_ATTEMPTS.delete(ip);
         const token = crypto.randomUUID();
         if (env.USER_PROFILES) {
