@@ -30,15 +30,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Set worker secrets
-        # Plain `secret put` applies and deploys each secret immediately.
-        # Mixing in `versions secret put` leaves an undeployed version behind,
-        # which makes any later plain `secret put` fail with
-        # "latest version isn't currently deployed".
+        # `versions secret put` updates secrets on the already-deployed version
+        # without creating a new deployment, avoiding the "latest version isn't
+        # currently deployed" error that plain `secret put` triggers when called
+        # multiple times in sequence.
         run: |
-          echo "$CLOUDFLARE_ACCOUNT_ID" | npx wrangler secret put CF_ACCOUNT_ID
-          echo "$CLOUDFLARE_API_TOKEN"  | npx wrangler secret put CF_AI_TOKEN
+          echo "$CLOUDFLARE_ACCOUNT_ID" | npx wrangler versions secret put CF_ACCOUNT_ID
+          echo "$CLOUDFLARE_API_TOKEN"  | npx wrangler versions secret put CF_AI_TOKEN
           if [ -n "$SIMPLER_GRANTS_API_KEY" ]; then
-            echo "$SIMPLER_GRANTS_API_KEY" | npx wrangler secret put SIMPLER_GRANTS_API_KEY
+            echo "$SIMPLER_GRANTS_API_KEY" | npx wrangler versions secret put SIMPLER_GRANTS_API_KEY
           else
             echo "SIMPLER_GRANTS_API_KEY repo secret not set — skipping (live search stays disabled)"
           fi
