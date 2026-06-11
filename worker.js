@@ -403,7 +403,7 @@ async function syncGrantsWithD1(env, query) {
     const name = opp.opportunity_title || summary.opportunity_title || "Untitled Grant";
     const type = capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant");
     const sponsor = opp.agency_name || summary.agency_name || opp.agency_code || "Unknown Agency";
-    const sourceUrl = opp.opportunity_id ? `https://grants.gov/search-results-detail/${opp.opportunity_id}` : "";
+    const sourceUrl = opp.opportunity_id ? `https://www.grants.gov/search-results-detail/${opp.opportunity_id}` : "";
     const deadline = opp.close_date || summary.close_date || "";
     const benefits = fmtAward(opp.award_floor ?? summary.award_floor, opp.award_ceiling ?? summary.award_ceiling);
     const eligibility = Array.isArray(opp.applicant_types)
@@ -717,7 +717,7 @@ export default {
           "Name": opp.opportunity_title || summary.opportunity_title || "",
           "Sponsor": opp.agency_name || summary.agency_name || opp.agency_code || "",
           "Source URL": opp.opportunity_id
-            ? `https://grants.gov/search-results-detail/${opp.opportunity_id}`
+            ? `https://www.grants.gov/search-results-detail/${opp.opportunity_id}`
             : "",
           "Region/Eligibility": "",
           "Deadline/Next Cohort": opp.close_date || summary.close_date || "",
