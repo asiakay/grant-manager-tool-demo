@@ -259,6 +259,27 @@ export async function fetchMe(): Promise<MeInfo | null> {
   }
 }
 
+export interface AdminUser {
+  email: string;
+  isAdmin: boolean;
+}
+
+export async function fetchAdminUsers(): Promise<AdminUser[]> {
+  const res = await fetch(`${BASE}/api/admin/users`, { credentials: "include" });
+  return handleResponse<AdminUser[]>(res);
+}
+
+export async function setAdminStatus(email: string, isAdmin: boolean): Promise<void> {
+  const res = await fetch(`${BASE}/api/admin/set-admin`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    body: JSON.stringify({ email, isAdmin }),
+  });
+  const data = await res.json().catch(() => ({})) as { error?: string };
+  if (!res.ok) throw new Error(data.error || "Failed to update admin status");
+}
+
 export interface CsvUploadResult {
   ok: boolean;
   mode: "merge" | "replace";

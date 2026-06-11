@@ -113,6 +113,19 @@ function getAdminUsers(env) {
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
 }
 
+async function isAdminUser(env, username) {
+  if (getAdminUsers(env).has(username)) return true;
+  if (env.GRANT_MANAGER_DB) {
+    try {
+      const row = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT is_admin FROM users WHERE username = ?"
+      ).bind(username).first();
+      return row?.is_admin === 1;
+    } catch { return false; }
+  }
+  return false;
+}
+
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_UPLOAD_ROWS = 2000;
 
@@ -902,7 +915,48 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
 
     if (url.pathname === "/api/me") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      return jsonResponse(JSON.stringify({ username, isAdmin: getAdminUsers(env).has(username) }));
+      return jsonResponse(JSON.stringify({ username, isAdmin: await isAdminUser(env, username) }));
+    }
+
+    if (url.pathname === "/api/admin/users" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+      const { results } = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT username, is_admin FROM users ORDER BY created_at ASC"
+      ).all();
+      // Merge in env-var admins that may not be in D1 (legacy bootstrap accounts)
+      const envAdmins = getAdminUsers(env);
+      const rows = results.map((r) => ({ email: r.username, isAdmin: r.is_admin === 1 || envAdmins.has(r.username) }));
+      return jsonResponse(JSON.stringify(rows));
+    }
+
+    if (url.pathname === "/api/admin/set-admin" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+      const body = await request.json().catch(() => ({}));
+      const targetEmail = String(body.email || "").trim().toLowerCase();
+      const makeAdmin = body.isAdmin === true;
+      if (!targetEmail) {
+        return jsonResponse(JSON.stringify({ error: "email is required." }), { status: 400 });
+      }
+      // Prevent removing your own admin access
+      if (targetEmail === username && !makeAdmin) {
+        return jsonResponse(JSON.stringify({ error: "You cannot remove your own admin access." }), { status: 400 });
+      }
+      const target = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT username FROM users WHERE username = ?"
+      ).bind(targetEmail).first();
+      if (!target) {
+        return jsonResponse(JSON.stringify({ error: "No account found with that email." }), { status: 404 });
+      }
+      await env.GRANT_MANAGER_DB.prepare(
+        "UPDATE users SET is_admin = ? WHERE username = ?"
+      ).bind(makeAdmin ? 1 : 0, targetEmail).run();
+      log("info", "admin_set", { requestId, by: username, target: targetEmail, isAdmin: makeAdmin });
+      return jsonResponse(JSON.stringify({ ok: true }));
     }
 
     if (url.pathname === "/api/csrf" && request.method === "GET") {
@@ -1055,7 +1109,7 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
 
     if (url.pathname === "/api/admin/upload-csv" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      if (!getAdminUsers(env).has(username)) {
+      if (!(await isAdminUser(env, username))) {
         log("warn", "admin_upload_forbidden", reqCtx);
         return new Response("Forbidden", { status: 403 });
       }
@@ -1159,7 +1213,7 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
 
     if (url.pathname === "/api/admin/score-grants" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      if (!getAdminUsers(env).has(username)) return new Response("Forbidden", { status: 403 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
       if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
       if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
 
