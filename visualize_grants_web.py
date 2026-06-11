@@ -495,7 +495,7 @@ def index():
                         {% endif %}
                     </section>
                     <footer>
-                        <p>Need help? Run <code>python wrangle_grants.py --help</code> or contact the ops team.</p>
+                        <p>Need help? Run <code>python scripts/wrangle_grants.py --help</code> or contact the ops team.</p>
                     </footer>
                 </main>
             </body>

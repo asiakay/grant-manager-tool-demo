@@ -1,5 +1,5 @@
 wrangle:
-	python wrangle_grants.py --input data/csvs --out out/master.csv
+	python scripts/wrangle_grants.py --input data/csvs --out out/master.csv
 
 score: wrangle
 	python program_scoring.py out/master.csv --out out/scored.csv
