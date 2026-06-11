@@ -58,7 +58,7 @@ export default function Login({ onSuccess, onDemoSuccess, onSignUp, onForgotPass
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Username</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Email or username</label>
             <input
               className="input"
               type="text"
@@ -66,6 +66,7 @@ export default function Login({ onSuccess, onDemoSuccess, onSignUp, onForgotPass
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              placeholder="you@example.com"
             />
           </div>
 

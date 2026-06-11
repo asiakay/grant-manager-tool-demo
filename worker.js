@@ -602,11 +602,11 @@ async function handleRequest(request, env, ctx) {
       const newPass = form.get("password") || "";
       const confirmPass = form.get("confirm_password") || "";
 
-      if (!newUser || newUser.length < 3 || newUser.length > 32) {
-        return jsonResponse(JSON.stringify({ error: "Username must be 3–32 characters." }), { status: 400 });
+      if (!newUser || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newUser)) {
+        return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
       }
-      if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
-        return jsonResponse(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), { status: 400 });
+      if (newUser.length > 254) {
+        return jsonResponse(JSON.stringify({ error: "Email address is too long." }), { status: 400 });
       }
       if (!newPass || newPass.length < MIN_PASSWORD_LENGTH) {
         return jsonResponse(JSON.stringify({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }), { status: 400 });
@@ -630,8 +630,8 @@ async function handleRequest(request, env, ctx) {
       }
 
       if (existing || users[newUser]) {
-        log("info", "signup_username_taken", { requestId, username: newUser });
-        return jsonResponse(JSON.stringify({ error: "Username is already taken." }), { status: 409 });
+        log("info", "signup_email_taken", { requestId });
+        return jsonResponse(JSON.stringify({ error: "An account with that email already exists." }), { status: 409 });
       }
 
       const hash = await hashPassword(newPass);
