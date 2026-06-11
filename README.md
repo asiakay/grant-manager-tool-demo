@@ -1,8 +1,15 @@
 # FoundationPlanner
+
+## 🔗 Live Demo
+
+**[https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev](https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev)**
+
+603 non-dilutive grants loaded, personalized scoring live. Access credentials available on request.
+
+---
+
 **A data-driven grant discovery and scoring engine for mission-aligned organizations.**
 Built on Cloudflare's edge infrastructure. 603 non-dilutive funding opportunities. Personalized match scoring. AI-assisted research. Live in production.
-
-[![Live Demo](https://img.shields.io/badge/Live_Demo-grant--manager--tool--demo.asialakaygrady--6d4.workers.dev-1D9E75?style=flat-square)](https://grant-manager-tool-demo.asialakaygrady-6d4.workers.dev)
 
 ---
 
