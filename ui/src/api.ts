@@ -31,8 +31,8 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function signup(username: string, email: string, password: string, confirmPassword: string): Promise<void> {
-  const body = new URLSearchParams({ username, email, password, confirm_password: confirmPassword });
+export async function signup(email: string, password: string, confirmPassword: string): Promise<void> {
+  const body = new URLSearchParams({ username: email, password, confirm_password: confirmPassword });
   const res = await fetch(`${BASE}/signup`, {
     method: "POST",
     body,

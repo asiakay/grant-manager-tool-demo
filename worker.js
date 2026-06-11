@@ -599,18 +599,14 @@ async function handleRequest(request, env, ctx) {
 
       const form = await request.formData();
       const newUser = (form.get("username") || "").trim().toLowerCase();
-      const newEmail = (form.get("email") || "").trim().toLowerCase();
       const newPass = form.get("password") || "";
       const confirmPass = form.get("confirm_password") || "";
 
-      if (!newUser || newUser.length < 3 || newUser.length > 32) {
-        return jsonResponse(JSON.stringify({ error: "Username must be 3–32 characters." }), { status: 400 });
-      }
-      if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
-        return jsonResponse(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), { status: 400 });
-      }
-      if (!newEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)) {
+      if (!newUser || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newUser)) {
         return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
+      }
+      if (newUser.length > 254) {
+        return jsonResponse(JSON.stringify({ error: "Email address is too long." }), { status: 400 });
       }
       if (!newPass || newPass.length < MIN_PASSWORD_LENGTH) {
         return jsonResponse(JSON.stringify({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }), { status: 400 });
@@ -626,30 +622,29 @@ async function handleRequest(request, env, ctx) {
       let existing = null;
       try {
         existing = await env.GRANT_MANAGER_DB.prepare(
-          "SELECT username FROM users WHERE username = ? OR email = ?"
-        ).bind(newUser, newEmail).first();
+          "SELECT username FROM users WHERE username = ?"
+        ).bind(newUser).first();
       } catch (err) {
         log("error", "signup_db_lookup_failed", { requestId, error: String(err) });
         return jsonResponse(JSON.stringify({ error: "Database error. Please try again." }), { status: 503 });
       }
 
       if (existing || users[newUser]) {
-        const taken = existing?.username === newUser || users[newUser] ? "Username is already taken." : "An account with that email already exists.";
-        log("info", "signup_conflict", { requestId, username: newUser });
-        return jsonResponse(JSON.stringify({ error: taken }), { status: 409 });
+        log("info", "signup_email_taken", { requestId });
+        return jsonResponse(JSON.stringify({ error: "An account with that email already exists." }), { status: 409 });
       }
 
       const hash = await hashPassword(newPass);
       try {
         await env.GRANT_MANAGER_DB.prepare(
           "INSERT INTO users (username, password_hash, email, created_at) VALUES (?, ?, ?, ?)"
-        ).bind(newUser, hash, newEmail, Date.now()).run();
+        ).bind(newUser, hash, newUser, Date.now()).run();
       } catch (err) {
         log("error", "signup_db_insert_failed", { requestId, error: String(err) });
         return jsonResponse(JSON.stringify({ error: "Could not create account. Please try again." }), { status: 503 });
       }
 
-      log("info", "signup_success", { requestId, username: newUser });
+      log("info", "signup_success", { requestId });
       return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
     }
 
@@ -1424,12 +1419,12 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       if (!resetEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(resetEmail)) {
         return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
       }
-      // Look up user by email — don't reveal whether the address is registered
+      // Email IS the username — look up directly
       let resetUsername = null;
       if (env.GRANT_MANAGER_DB) {
         try {
           const row = await env.GRANT_MANAGER_DB.prepare(
-            "SELECT username FROM users WHERE email = ?"
+            "SELECT username FROM users WHERE username = ?"
           ).bind(resetEmail).first();
           if (row) resetUsername = row.username;
         } catch { /* ignore */ }
