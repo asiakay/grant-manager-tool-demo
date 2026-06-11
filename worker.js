@@ -599,6 +599,7 @@ async function handleRequest(request, env, ctx) {
 
       const form = await request.formData();
       const newUser = (form.get("username") || "").trim().toLowerCase();
+      const newEmail = (form.get("email") || "").trim().toLowerCase();
       const newPass = form.get("password") || "";
       const confirmPass = form.get("confirm_password") || "";
 
@@ -607,6 +608,9 @@ async function handleRequest(request, env, ctx) {
       }
       if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
         return jsonResponse(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), { status: 400 });
+      }
+      if (!newEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)) {
+        return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
       }
       if (!newPass || newPass.length < MIN_PASSWORD_LENGTH) {
         return jsonResponse(JSON.stringify({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }), { status: 400 });
@@ -622,23 +626,24 @@ async function handleRequest(request, env, ctx) {
       let existing = null;
       try {
         existing = await env.GRANT_MANAGER_DB.prepare(
-          "SELECT username FROM users WHERE username = ?"
-        ).bind(newUser).first();
+          "SELECT username FROM users WHERE username = ? OR email = ?"
+        ).bind(newUser, newEmail).first();
       } catch (err) {
         log("error", "signup_db_lookup_failed", { requestId, error: String(err) });
         return jsonResponse(JSON.stringify({ error: "Database error. Please try again." }), { status: 503 });
       }
 
       if (existing || users[newUser]) {
-        log("info", "signup_username_taken", { requestId, username: newUser });
-        return jsonResponse(JSON.stringify({ error: "Username is already taken." }), { status: 409 });
+        const taken = existing?.username === newUser || users[newUser] ? "Username is already taken." : "An account with that email already exists.";
+        log("info", "signup_conflict", { requestId, username: newUser });
+        return jsonResponse(JSON.stringify({ error: taken }), { status: 409 });
       }
 
       const hash = await hashPassword(newPass);
       try {
         await env.GRANT_MANAGER_DB.prepare(
-          "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
-        ).bind(newUser, hash, Date.now()).run();
+          "INSERT INTO users (username, password_hash, email, created_at) VALUES (?, ?, ?, ?)"
+        ).bind(newUser, hash, newEmail, Date.now()).run();
       } catch (err) {
         log("error", "signup_db_insert_failed", { requestId, error: String(err) });
         return jsonResponse(JSON.stringify({ error: "Could not create account. Please try again." }), { status: 503 });
@@ -1415,40 +1420,77 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
         if (blocked) return new Response("Too many requests. Try again later.", { status: 429 });
       }
       const body = await request.json().catch(() => ({}));
-      const resetUser = String(body.username || "").trim();
-      if (!resetUser) {
-        return jsonResponse(JSON.stringify({ error: "Username is required." }), { status: 400 });
+      const resetEmail = String(body.email || "").trim().toLowerCase();
+      if (!resetEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(resetEmail)) {
+        return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
       }
-      // Check if user exists in D1 or env users
-      let userExists = !!users[resetUser];
-      if (!userExists && env.GRANT_MANAGER_DB) {
+      // Look up user by email — don't reveal whether the address is registered
+      let resetUsername = null;
+      if (env.GRANT_MANAGER_DB) {
         try {
           const row = await env.GRANT_MANAGER_DB.prepare(
-            "SELECT username FROM users WHERE username = ?"
-          ).bind(resetUser).first();
-          userExists = !!row;
+            "SELECT username FROM users WHERE email = ?"
+          ).bind(resetEmail).first();
+          if (row) resetUsername = row.username;
         } catch { /* ignore */ }
       }
-      if (!userExists) {
-        // Don't reveal whether the username exists
+      if (!resetUsername) {
         return jsonResponse(JSON.stringify({
           ok: true,
-          message: "If that account exists, a reset token has been generated.",
+          message: "If an account with that email exists, a reset token has been sent.",
         }));
       }
       const resetToken = crypto.randomUUID();
       if (env.LOGIN_ATTEMPTS) {
         await env.LOGIN_ATTEMPTS.put(
           `reset:${resetToken}`,
-          JSON.stringify({ username: resetUser, expiresAt: Date.now() + 3_600_000 }),
+          JSON.stringify({ username: resetUsername, expiresAt: Date.now() + 3_600_000 }),
           { expirationTtl: 3600 }
         );
       }
-      log("info", "password_reset_requested", { requestId, username: resetUser });
+      log("info", "password_reset_requested", { requestId, username: resetUsername });
+      // Send reset token by email if Resend is configured
+      if (env.RESEND_API_KEY) {
+        try {
+          const emailRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "onboarding@resend.dev",
+              to: resetEmail,
+              subject: "Reset your Grant Manager password",
+              text: [
+                "You requested a password reset for your Grant Manager account.",
+                "",
+                `Your reset token is: ${resetToken}`,
+                "",
+                "Enter this token on the reset password page along with your new password.",
+                "This token expires in 1 hour.",
+                "",
+                "If you didn't request this, you can safely ignore this email.",
+              ].join("\n"),
+            }),
+          });
+          if (!emailRes.ok) {
+            const errText = await emailRes.text();
+            console.error("Resend error:", emailRes.status, errText);
+          }
+        } catch (err) {
+          console.error("Resend fetch failed:", err);
+        }
+        return jsonResponse(JSON.stringify({
+          ok: true,
+          message: "If an account with that email exists, a reset token has been sent. Check your inbox.",
+        }));
+      }
+      // Dev fallback: return token directly when Resend is not configured
       return jsonResponse(JSON.stringify({
         ok: true,
         token: resetToken,
-        message: "Reset token generated and auto-filled below. Enter your new password to complete the reset.",
+        message: "Reset token generated (email not configured — token shown for development).",
       }));
     }
 

@@ -9,6 +9,7 @@ interface Props {
 
 export default function Signup({ onSuccess, onBackToLogin }: Props) {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -36,7 +37,7 @@ export default function Signup({ onSuccess, onBackToLogin }: Props) {
     setError("");
     setLoading(true);
     try {
-      await signup(username, password, confirmPassword);
+      await signup(username, email, password, confirmPassword);
       onSuccess(username, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-up failed");
@@ -75,6 +76,20 @@ export default function Signup({ onSuccess, onBackToLogin }: Props) {
               pattern="[a-zA-Z0-9_]+"
               title="Letters, numbers, and underscores only"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
+            <input
+              className="input"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="you@example.com"
+            />
+            <p className="text-gray-500 text-xs mt-1">Used to recover your password if you forget it</p>
           </div>
 
           <div>

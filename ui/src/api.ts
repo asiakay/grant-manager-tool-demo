@@ -31,8 +31,8 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function signup(username: string, password: string, confirmPassword: string): Promise<void> {
-  const body = new URLSearchParams({ username, password, confirm_password: confirmPassword });
+export async function signup(username: string, email: string, password: string, confirmPassword: string): Promise<void> {
+  const body = new URLSearchParams({ username, email, password, confirm_password: confirmPassword });
   const res = await fetch(`${BASE}/signup`, {
     method: "POST",
     body,
@@ -315,15 +315,15 @@ export async function scoreGrants(rescore = false, batch = 10): Promise<ScoreGra
   return res.json();
 }
 
-export async function requestPasswordReset(username: string): Promise<{ token?: string; message: string }> {
+export async function requestPasswordReset(email: string): Promise<{ token?: string; message: string }> {
   const res = await fetch(`${BASE}/api/request-password-reset`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ email }),
   });
   const data = await res.json() as { ok?: boolean; token?: string; message?: string; error?: string };
   if (!res.ok) throw new Error(data.error || "Request failed");
-  return { token: data.token, message: data.message ?? "If that account exists, a reset link has been sent." };
+  return { token: data.token, message: data.message ?? "If that account exists, a reset email has been sent." };
 }
 
 export async function resetPassword(token: string, password: string, confirmPassword: string): Promise<void> {

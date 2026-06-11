@@ -9,7 +9,7 @@ interface Props {
 
 export default function ForgotPassword({ onBack, onSuccess }: Props) {
   const [step, setStep] = useState<"request" | "reset" | "done">("request");
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,7 +39,7 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
     setError("");
     setLoading(true);
     try {
-      const result = await requestPasswordReset(username);
+      const result = await requestPasswordReset(email);
       setMessage(result.message);
       if (result.token) {
         setResetToken(result.token);
@@ -73,7 +73,7 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
           <div className="text-4xl mb-3">🔑</div>
           <h1 className="text-2xl font-bold text-white">Reset Password</h1>
           <p className="text-gray-400 text-sm mt-1">
-            {step === "request" ? "Enter your username to get a reset token" : step === "reset" ? "Enter your new password below" : ""}
+            {step === "request" ? "Enter your email address to receive a reset token" : step === "reset" ? "Enter the token from your email and a new password" : ""}
           </p>
         </div>
 
@@ -94,14 +94,15 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Username</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
               <input
                 className="input"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
+                placeholder="you@example.com"
               />
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5">
@@ -137,9 +138,9 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
                 required
                 placeholder="Enter your reset token"
               />
-              {resetToken && (
-                <p className="text-green-500 text-xs mt-1">Token auto-filled — enter your new password below.</p>
-              )}
+              <p className="text-gray-500 text-xs mt-1">
+                {resetToken ? "Token auto-filled (email not configured)" : "Check your inbox for the reset token"}
+              </p>
             </div>
             <div>
               <div className="flex items-center justify-between mb-1.5">
