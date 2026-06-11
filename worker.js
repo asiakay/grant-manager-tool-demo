@@ -328,6 +328,97 @@ async function checkRateLimit(kv, key) {
   return { blocked: false, rec };
 }
 
+async function fetchFromSimplerGrants(env, query, page = 1, pageSize = 25) {
+  if (!env.SIMPLER_GRANTS_API_KEY) {
+    throw new Error("Missing required credential binding: SIMPLER_GRANTS_API_KEY.");
+  }
+  const response = await fetch("https://api.simpler.grants.gov/v1/opportunities/search", {
+    method: "POST",
+    headers: {
+      "X-API-Key": env.SIMPLER_GRANTS_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      filters: {
+        opportunity_status: { one_of: ["posted", "forecasted"] },
+        funding_instrument: { one_of: ["grant", "cooperative_agreement"] },
+      },
+      pagination: {
+        page_offset: page,
+        page_size: pageSize,
+        sort_order: [{ order_by: "relevancy", sort_direction: "descending" }],
+      },
+    }),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`Upstream API failed with status ${response.status}: ${errText.slice(0, 200)}`);
+  }
+  return await response.json();
+}
+
+async function syncGrantsWithD1(env, query) {
+  if (!env.GRANT_MANAGER_DB) {
+    throw new Error("D1 binding (GRANT_MANAGER_DB) is missing.");
+  }
+  const apiData = await fetchFromSimplerGrants(env, query, 1, 25);
+  const opportunities = apiData?.data || apiData?.data?.oppHits || apiData?.items || [];
+  if (opportunities.length === 0) {
+    return { success: true, inserted: 0, message: "Sync complete. No records returned from server filters." };
+  }
+
+  await env.GRANT_MANAGER_DB.prepare(PROGRAMS_SCHEMA).run();
+
+  function fmtAward(floor, ceiling) {
+    const fmt = (n) => "$" + Number(n).toLocaleString("en-US");
+    if (floor && ceiling) return `${fmt(floor)} – ${fmt(ceiling)}`;
+    if (ceiling) return `Up to ${fmt(ceiling)}`;
+    if (floor) return `From ${fmt(floor)}`;
+    return "";
+  }
+
+  function capitalize(s) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") : "";
+  }
+
+  const insertStmt = env.GRANT_MANAGER_DB.prepare(`
+    INSERT INTO programs (
+      type, name, sponsor, source_url, region_eligibility, deadline, cadence, benefits,
+      eligibility_conditions, stage, non_dilutive, stack_required, relevance, fit, ease,
+      weighted_score, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name) DO UPDATE SET
+      type = excluded.type,
+      sponsor = excluded.sponsor,
+      source_url = excluded.source_url,
+      deadline = excluded.deadline,
+      benefits = excluded.benefits,
+      eligibility_conditions = excluded.eligibility_conditions,
+      stage = excluded.stage
+  `);
+
+  const statements = opportunities.map((opp) => {
+    const summary = opp.summary || opp;
+    const name = opp.opportunity_title || summary.opportunity_title || "Untitled Grant";
+    const type = capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant");
+    const sponsor = opp.agency_name || summary.agency_name || opp.agency_code || "Unknown Agency";
+    const sourceUrl = opp.opportunity_id ? `https://grants.gov/search-results-detail/${opp.opportunity_id}` : "";
+    const deadline = opp.close_date || summary.close_date || "";
+    const benefits = fmtAward(opp.award_floor ?? summary.award_floor, opp.award_ceiling ?? summary.award_ceiling);
+    const eligibility = Array.isArray(opp.applicant_types)
+      ? opp.applicant_types.map(capitalize).join(", ")
+      : Array.isArray(summary.applicant_types)
+        ? summary.applicant_types.map(capitalize).join(", ")
+        : "";
+    const stage = capitalize(opp.opportunity_status || "");
+    return insertStmt.bind(type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0, 0, 0, 0, 0, "");
+  });
+
+  await env.GRANT_MANAGER_DB.batch(statements);
+  return { success: true, inserted: opportunities.length, message: `Successfully loaded ${opportunities.length} active opportunities to local storage.` };
+}
+
 export default {
   async fetch(request, env) {
     const requestId = crypto.randomUUID();
@@ -599,36 +690,13 @@ export default {
       const lsWeights = (lsProfile.weights && typeof lsProfile.weights === "object") ? lsProfile.weights : null;
 
       const searchStart = Date.now();
-      let apiRes;
+      let apiData;
       try {
-        apiRes = await fetch("https://api.simpler.grants.gov/v1/opportunities/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-API-Key": env.SIMPLER_GRANTS_API_KEY },
-          body: JSON.stringify({
-            query: q,
-            filters: {
-              opportunity_status: { one_of: ["posted", "forecasted"] },
-              funding_instrument: { one_of: ["grant", "cooperative_agreement"] },
-            },
-            pagination: {
-              page_offset: page,
-              page_size: pageSize,
-              sort_order: [{ order_by: "relevancy", sort_direction: "descending" }],
-            },
-          }),
-        });
+        apiData = await fetchFromSimplerGrants(env, q, page, pageSize);
       } catch (err) {
         log("error", "live_search_fetch_failed", { ...reqCtx, error: String(err) });
-        return jsonResponse(JSON.stringify({ error: "Failed to reach Simpler Grants API." }), { status: 502 });
+        return jsonResponse(JSON.stringify({ error: err.message || "Failed to reach Simpler Grants API." }), { status: 502 });
       }
-
-      if (!apiRes.ok) {
-        const errText = await apiRes.text().catch(() => "");
-        log("error", "live_search_api_error", { ...reqCtx, status: apiRes.status, body: errText.slice(0, 200) });
-        return jsonResponse(JSON.stringify({ error: `Simpler Grants API returned ${apiRes.status}.` }), { status: 502 });
-      }
-
-      const apiData = await apiRes.json();
 
       function fmtAward(floor, ceiling) {
         const fmt = (n) => "$" + Number(n).toLocaleString("en-US");
@@ -679,6 +747,18 @@ export default {
       const total = paginationInfo.total_records ?? data.length;
       log("info", "live_search_completed", { ...reqCtx, query: q, total, page, durationMs: Date.now() - searchStart });
       return jsonResponse(JSON.stringify({ data, total, page, pageSize, configured: true }));
+    }
+
+    if (url.pathname === "/api/sync" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      try {
+        const queryTerm = url.searchParams.get("query") || "";
+        const syncResult = await syncGrantsWithD1(env, queryTerm);
+        return jsonResponse(JSON.stringify(syncResult));
+      } catch (err) {
+        log("error", "database_sync_route_failed", { ...reqCtx, error: String(err) });
+        return jsonResponse(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+      }
     }
 
     if (url.pathname === "/api/live-search-status") {
@@ -1049,6 +1129,10 @@ export default {
       newHeaders.set("Cache-Control", "public, max-age=86400");
     }
     return new Response(assetRes.body, { status: assetRes.status, headers: newHeaders });
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncGrantsWithD1(env, ""));
   },
 };
 
