@@ -27,6 +27,19 @@ export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) 
     }
   }
 
+  async function handleTryDemo() {
+    setError("");
+    setLoading(true);
+    try {
+      await login("demo", "demo");
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Demo login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950 p-4">
       <div className="w-full max-w-sm">
@@ -91,7 +104,29 @@ export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) 
               "Sign in"
             )}
           </button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-700" />
+            </div>
+            <div className="relative flex justify-center text-xs text-gray-500">
+              <span className="bg-gray-900 px-2">or</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleTryDemo}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-600 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium py-2.5 transition-colors disabled:opacity-50"
+          >
+            Try the demo
+          </button>
         </form>
+
+        <p className="text-center text-gray-600 text-xs mt-3">
+          Demo account: <span className="font-mono text-gray-500">demo</span> / <span className="font-mono text-gray-500">demo</span>
+        </p>
 
         <p className="text-center text-gray-500 text-sm mt-4">
           Don't have an account?{" "}
