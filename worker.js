@@ -881,7 +881,17 @@ export default {
     const assetRes = await env.ASSETS.fetch(request);
     const newHeaders = new Headers(assetRes.headers);
     newHeaders.set("X-Content-Type-Options", "nosniff");
-    newHeaders.set("Cache-Control", "public, max-age=86400");
+    const assetType = assetRes.headers.get("content-type") || "";
+    if (assetType.includes("text/html")) {
+      // Never cache HTML: a stale index.html references hashed bundles that
+      // vanish on the next deploy, leaving users a blank page until refresh.
+      newHeaders.set("Cache-Control", "no-cache");
+    } else if (url.pathname.startsWith("/assets/")) {
+      // Vite content-hashes bundle filenames, so these are safe to cache hard.
+      newHeaders.set("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      newHeaders.set("Cache-Control", "public, max-age=86400");
+    }
     return new Response(assetRes.body, { status: assetRes.status, headers: newHeaders });
   },
 };
