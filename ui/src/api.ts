@@ -55,6 +55,13 @@ export async function login(username: string, password: string): Promise<void> {
   if (res.status === 302 || res.status === 0 || res.ok) return;
   const text = await res.text().catch(() => "");
   if (!text || text.trimStart().startsWith("<")) throw new Error("Server error. Please try again.");
+  try {
+    const parsed = JSON.parse(text) as { error?: string };
+    if (parsed.error) throw new Error(parsed.error);
+  } catch (e) {
+    if (e instanceof SyntaxError) throw new Error(text || "Login failed");
+    throw e;
+  }
   throw new Error(text || "Login failed");
 }
 
