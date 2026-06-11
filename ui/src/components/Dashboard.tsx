@@ -54,6 +54,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [scoringInProgress, setScoringInProgress] = useState(false);
+  const [scoringProgress, setScoringProgress] = useState<{scored: number; total: number} | null>(null);
 
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
@@ -62,10 +63,11 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
 
   useEffect(() => {
     fetchGrants()
-      .then(({ data, total, scoringReady }: PagedGrants) => {
+      .then(({ data, total, scoringReady, scoredCount, totalGrants }: PagedGrants) => {
         setGrants(data);
         setGrantsTotal(total);
         setScoringInProgress(scoringReady === false);
+        if (scoredCount !== undefined && totalGrants !== undefined) setScoringProgress({ scored: scoredCount, total: totalGrants });
         // Deep link: /?grant=<name> opens that grant's detail drawer
         const linked = new URLSearchParams(window.location.search).get("grant");
         if (linked) {
@@ -86,6 +88,22 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
     fetchMe().then((me) => setIsAdmin(me?.isAdmin ?? false)).catch(() => {});
   }, [onLogout]);
 
+  // Poll every 20s while scoring is in progress so the list updates as batches complete.
+  useEffect(() => {
+    if (!scoringInProgress) return;
+    const id = setInterval(() => {
+      fetchGrants()
+        .then(({ data, total, scoringReady, scoredCount, totalGrants }) => {
+          setGrants(data);
+          setGrantsTotal(total);
+          setScoringInProgress(scoringReady === false);
+          if (scoredCount !== undefined && totalGrants !== undefined) setScoringProgress({ scored: scoredCount, total: totalGrants });
+        })
+        .catch(() => {});
+    }, 20000);
+    return () => clearInterval(id);
+  }, [scoringInProgress]);
+
 
 
   async function handleProfileSave(p: UserProfile) {
@@ -97,10 +115,11 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
       setScoringInProgress(true);
       // Reload grants — scores are recomputing in the background on the server
       setLoading(true);
-      const { data: updated, total, scoringReady } = await fetchGrants();
+      const { data: updated, total, scoringReady, scoredCount, totalGrants } = await fetchGrants();
       setGrants(updated);
       setGrantsTotal(total);
       setScoringInProgress(scoringReady === false);
+      if (scoredCount !== undefined && totalGrants !== undefined) setScoringProgress({ scored: scoredCount, total: totalGrants });
     } catch {
       // ignore
     } finally {
@@ -274,7 +293,10 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
             {profile && scoringInProgress && (
               <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/40 text-sm text-amber-300">
                 <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                <span>Scoring grants against your profile… Results will update shortly.</span>
+                <span>
+                  Scoring grants against your profile…
+                  {scoringProgress && ` (${scoringProgress.scored} of ${scoringProgress.total} done)`}
+                </span>
               </div>
             )}
             {profile && !scoringInProgress && (
