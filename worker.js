@@ -667,8 +667,30 @@ export default {
       let scored = [];
       if (columns.length > 0) {
         const { results: rows } = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM programs`).all();
+        const hasNewSchema = columns.includes("source_url");
         scored = rows
-          .map((r) => ({ ...r, score: computeScore(r, userWeights, profile) }))
+          .map((r) => {
+            const g = hasNewSchema ? {
+              "Type": r.type ?? "",
+              "Name": r.name ?? "",
+              "Sponsor": r.sponsor ?? "",
+              "Source URL": r.source_url ?? "",
+              "Region/Eligibility": r.region_eligibility ?? "",
+              "Deadline/Next Cohort": r.deadline ?? "",
+              "Cadence": r.cadence ?? "",
+              "Benefits": r.benefits ?? "",
+              "Eligibility (key conditions)": r.eligibility_conditions ?? "",
+              "Stage": r.stage ?? "",
+              "Non-dilutive?": r.non_dilutive ?? "",
+              "Stack Required?": r.stack_required ?? "",
+              "Relevance": r.relevance ?? 0,
+              "Fit": r.fit ?? 0,
+              "Ease": r.ease ?? 0,
+              "Weighted Score": r.weighted_score ?? 0,
+              "Notes/Actions": r.notes ?? "",
+            } : r;
+            return { ...g, score: computeScore(g, userWeights, profile) };
+          })
           .sort((a, b) => b.score - a.score);
       }
       const total = scored.length;
