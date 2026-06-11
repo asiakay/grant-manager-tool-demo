@@ -20,24 +20,28 @@ async function getColumns(db) {
   return results.map((r) => r.name);
 }
 
+// Schema is managed by migrations/. This constant is only used as a fallback
+// safety-net CREATE IF NOT EXISTS for the CSV-upload path on environments that
+// haven't run migrations yet. It matches the post-migration (0002) schema.
 const PROGRAMS_SCHEMA = `CREATE TABLE IF NOT EXISTS programs (
-  "Type" TEXT,
-  "Name" TEXT PRIMARY KEY,
-  "Sponsor" TEXT,
-  "Source URL" TEXT,
-  "Region / Eligibility" TEXT,
-  "Deadline / Next Cohort" TEXT,
-  "Cadence" TEXT,
-  "Benefits" TEXT,
-  "Eligibility (key conditions)" TEXT,
-  "Stage" TEXT,
-  "Non-dilutive?" TEXT,
-  "Stack Required?" TEXT,
-  "Relevance" TEXT,
-  "Fit" TEXT,
-  "Ease" TEXT,
-  "Weighted Score" TEXT,
-  "Notes / Actions" TEXT
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  type             TEXT,
+  name             TEXT NOT NULL UNIQUE,
+  sponsor          TEXT,
+  source_url       TEXT,
+  region_eligibility TEXT,
+  deadline         TEXT,
+  cadence          TEXT,
+  benefits         TEXT,
+  eligibility_conditions TEXT,
+  stage            TEXT,
+  non_dilutive     INTEGER,
+  stack_required   INTEGER,
+  relevance        REAL,
+  fit              REAL,
+  ease             REAL,
+  weighted_score   REAL,
+  notes            TEXT
 )`;
 
 function getAdminUsers(env) {
@@ -133,15 +137,13 @@ function computeProfileMatch(r, profile) {
   if (!focusAreas.length && !orgType && !stage) return 0;
 
   // Concatenate all searchable text from the grant record (lower-cased).
-  // Schema columns: Name, Sponsor, "Eligibility (key conditions)", "Region / Eligibility",
-  // "Notes / Actions", Type — no free-text description field exists in the DB.
   const text = [
-    r["Name"] || "",
-    r["Sponsor"] || "",
-    r["Eligibility (key conditions)"] || r["Eligibility"] || "",
-    r["Region / Eligibility"] || r["Region/Eligibility"] || "",
-    r["Type"] || "",
-    r["Notes / Actions"] || r["Notes/Actions"] || "",
+    r.name || "",
+    r.sponsor || "",
+    r.eligibility_conditions || "",
+    r.region_eligibility || "",
+    r.type || "",
+    r.notes || "",
   ].join(" ").toLowerCase();
 
   let hits = 0;
@@ -174,14 +176,13 @@ function computeProfileMatch(r, profile) {
 }
 
 function computeStackAlignment(r) {
-  const s = String(r["Stack Required?"] || "").toLowerCase().trim();
-  return (s === "yes" || s === "y") ? 1.0 : 0.2;
+  return (r.stack_required === 1) ? 1.0 : 0.2;
 }
 
 function computeCadenceRecency(r) {
-  const cadence = String(r["Cadence"] || "").toLowerCase();
+  const cadence = String(r.cadence || "").toLowerCase();
   if (cadence.includes("rolling")) return 1.0;
-  const raw = r["Deadline/Next Cohort"] || r["Deadline / Next Cohort"];
+  const raw = r.deadline;
   if (!raw) return 0;
   const deadline = new Date(raw);
   if (isNaN(deadline.getTime())) return 0;
@@ -200,9 +201,9 @@ function computeScore(r, weights, profile) {
     StackAlignment: (w.StackAlignment ?? 0) / total,
     CadenceRecency: (w.CadenceRecency ?? 0) / total,
   };
-  const relevance  = parseFloat(r.Relevance) || 0;
-  const fit        = parseFloat(r.Fit) || 0;
-  const ease       = parseFloat(r.Ease) || 0;
+  const relevance  = parseFloat(r.relevance) || 0;
+  const fit        = parseFloat(r.fit) || 0;
+  const ease       = parseFloat(r.ease) || 0;
   const stack      = computeStackAlignment(r);
   const cadence    = computeCadenceRecency(r);
   // Relevance/Fit/Ease are 0-3; stack and cadence are 0-1.
@@ -468,7 +469,7 @@ export default {
       let scored = [];
       if (columns.length > 0) {
         const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
-          `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+            `SELECT * FROM programs`
         ).all();
         scored = rows
           .map((r) => ({
@@ -573,32 +574,32 @@ export default {
       const data = (apiData.data || []).map((opp) => {
         const summary = opp.summary || opp;
         const grant = {
-          Type: capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
-          Name: opp.opportunity_title || summary.opportunity_title || "",
-          Sponsor: opp.agency_name || summary.agency_name || opp.agency_code || "",
-          "Source URL": opp.opportunity_id
+          type: capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
+          name: opp.opportunity_title || summary.opportunity_title || "",
+          sponsor: opp.agency_name || summary.agency_name || opp.agency_code || "",
+          source_url: opp.opportunity_id
             ? `https://grants.gov/search-results-detail/${opp.opportunity_id}`
             : "",
-          "Region/Eligibility": "",
-          "Deadline/Next Cohort": opp.close_date || summary.close_date || "",
-          Cadence: "",
-          Benefits: fmtAward(
+          region_eligibility: "",
+          deadline: opp.close_date || summary.close_date || "",
+          cadence: "",
+          benefits: fmtAward(
             opp.award_floor ?? summary.award_floor,
             opp.award_ceiling ?? summary.award_ceiling
           ),
-          "Eligibility (key conditions)": Array.isArray(opp.applicant_types)
+          eligibility_conditions: Array.isArray(opp.applicant_types)
             ? opp.applicant_types.map(capitalize).join(", ")
             : Array.isArray(summary.applicant_types)
               ? summary.applicant_types.map(capitalize).join(", ")
               : "",
-          Stage: capitalize(opp.opportunity_status || ""),
-          "Non-dilutive?": "Yes",
-          "Stack Required?": "No",
-          Relevance: 0,
-          Fit: 0,
-          Ease: 0,
-          "Weighted Score": 0,
-          "Notes/Actions": "",
+          stage: capitalize(opp.opportunity_status || ""),
+          non_dilutive: 1,
+          stack_required: 0,
+          relevance: 0,
+          fit: 0,
+          ease: 0,
+          weighted_score: 0,
+          notes: "",
         };
         return { ...grant, score: Math.round(computeScore(grant, lsWeights, lsProfile) * 100) / 100 };
       });
@@ -626,11 +627,11 @@ export default {
       }
       if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
       const form = await request.formData();
-      const name = form.get("Name");
-      const notes = form.get("Notes/Actions") ?? "";
-      if (!name) return new Response("Missing Name", { status: 400 });
+      const name = form.get("name");
+      const notes = form.get("notes") ?? "";
+      if (!name) return new Response("Missing name", { status: 400 });
       await env.GRANT_MANAGER_DB.prepare(
-        `UPDATE programs SET "Notes/Actions" = ? WHERE "Name" = ?`
+        `UPDATE programs SET notes = ? WHERE name = ?`
       )
         .bind(notes, name)
         .run();
@@ -675,12 +676,12 @@ export default {
       const headers = rows[0];
       const mapping = headers.map((h) => colByNorm.get(normalizeHeader(h)) ?? null);
       const unknownColumns = headers.filter((h, i) => !mapping[i] && String(h).trim() !== "");
-      const nameIdx = mapping.indexOf("Name");
+      const nameIdx = mapping.indexOf("name");
       if (nameIdx === -1) {
-        return jsonResponse(JSON.stringify({ error: 'CSV must include a "Name" column.', unknownColumns }), { status: 400 });
+        return jsonResponse(JSON.stringify({ error: 'CSV must include a "name" (or "Name") column.', unknownColumns }), { status: 400 });
       }
 
-      // Deduplicate by Name (last row wins); rows without a Name are skipped.
+      // Deduplicate by name (last row wins); rows without a name are skipped.
       const byName = new Map();
       let skipped = 0;
       for (const row of rows.slice(1)) {
@@ -690,11 +691,11 @@ export default {
         headers.forEach((h, i) => {
           if (mapping[i]) record[mapping[i]] = row[i] ?? "";
         });
-        record.Name = name;
+        record.name = name;
         byName.set(name, record);
       }
       if (byName.size === 0) {
-        return jsonResponse(JSON.stringify({ error: "No rows with a non-empty Name were found." }), { status: 400 });
+        return jsonResponse(JSON.stringify({ error: "No rows with a non-empty name were found." }), { status: 400 });
       }
 
       const names = [...byName.keys()];
@@ -702,24 +703,22 @@ export default {
       if (mode === "replace") {
         await db.prepare("DELETE FROM programs").run();
       } else {
-        // Delete-then-insert keeps merge working even on tables created
-        // without a PRIMARY KEY on Name (where ON CONFLICT would fail).
         for (let i = 0; i < names.length; i += 50) {
           const chunk = names.slice(i, i + 50);
           const placeholders = chunk.map(() => "?").join(",");
           const { results: existing } = await db.prepare(
-            `SELECT "Name" FROM programs WHERE "Name" IN (${placeholders})`
+            `SELECT name FROM programs WHERE name IN (${placeholders})`
           ).bind(...chunk).all();
           updated += existing.length;
           if (existing.length > 0) {
-            await db.prepare(`DELETE FROM programs WHERE "Name" IN (${placeholders})`).bind(...chunk).run();
+            await db.prepare(`DELETE FROM programs WHERE name IN (${placeholders})`).bind(...chunk).run();
           }
         }
       }
 
       const insertCols = [...new Set(mapping.filter(Boolean))];
       const insertStmt = db.prepare(
-        `INSERT INTO programs (${insertCols.map((c) => `"${c}"`).join(",")})
+        `INSERT INTO programs (${insertCols.join(",")})
          VALUES (${insertCols.map(() => "?").join(",")})`
       );
       const statements = [...byName.values()].map((r) =>
@@ -756,36 +755,36 @@ export default {
         const countRow = await env.GRANT_MANAGER_DB.prepare("SELECT COUNT(*) as n FROM programs").first();
         totalCount = countRow?.n ?? 0;
 
-        const cols = `"Name","Sponsor","Type","Stage","Deadline / Next Cohort","Benefits",
-          "Eligibility (key conditions)","Relevance","Fit","Ease","Notes / Actions"`;
-
         const { results: matched } = await env.GRANT_MANAGER_DB.prepare(
-          `SELECT ${cols} FROM programs
-           WHERE "Name" LIKE ? OR "Sponsor" LIKE ? OR "Benefits" LIKE ?
-              OR "Eligibility (key conditions)" LIKE ?
+          `SELECT name, sponsor, type, stage, deadline, benefits,
+                  eligibility_conditions, relevance, fit, ease, notes
+           FROM programs
+           WHERE name LIKE ? OR sponsor LIKE ? OR benefits LIKE ?
+              OR eligibility_conditions LIKE ?
            LIMIT 20`
         ).bind(kw, kw, kw, kw).all();
 
         const { results: top } = await env.GRANT_MANAGER_DB.prepare(
-          `SELECT ${cols} FROM programs
-           ORDER BY CAST(COALESCE("Relevance","0") AS REAL)
-                  + CAST(COALESCE("Fit","0") AS REAL) DESC
+          `SELECT name, sponsor, type, stage, deadline, benefits,
+                  eligibility_conditions, relevance, fit, ease, notes
+           FROM programs
+           ORDER BY COALESCE(relevance, 0) + COALESCE(fit, 0) DESC
            LIMIT 10`
         ).all();
 
         const seen = new Set();
         const combined = [];
         for (const r of [...matched, ...top]) {
-          if (!seen.has(r.Name)) { seen.add(r.Name); combined.push(r); }
+          if (!seen.has(r.name)) { seen.add(r.name); combined.push(r); }
         }
 
         grantContext = combined.map(r =>
-          `• ${r.Name} | ${r.Sponsor} | ${r.Type || ""} | ${r.Stage || ""}\n` +
-          `  Link: ${url.origin}/?grant=${encodeURIComponent(r.Name)}\n` +
-          `  Deadline: ${r["Deadline / Next Cohort"] || "N/A"} | Relevance: ${r.Relevance} | Fit: ${r.Fit} | Ease: ${r.Ease}\n` +
-          `  Benefits: ${r.Benefits || "N/A"}\n` +
-          `  Eligibility: ${r["Eligibility (key conditions)"] || "N/A"}` +
-          (r["Notes / Actions"] ? `\n  Notes: ${r["Notes / Actions"]}` : "")
+          `• ${r.name} | ${r.sponsor} | ${r.type || ""} | ${r.stage || ""}\n` +
+          `  Link: ${url.origin}/?grant=${encodeURIComponent(r.name)}\n` +
+          `  Deadline: ${r.deadline || "N/A"} | Relevance: ${r.relevance} | Fit: ${r.fit} | Ease: ${r.ease}\n` +
+          `  Benefits: ${r.benefits || "N/A"}\n` +
+          `  Eligibility: ${r.eligibility_conditions || "N/A"}` +
+          (r.notes ? `\n  Notes: ${r.notes}` : "")
         ).join("\n\n");
       } catch (e) {
         log("error", "chat_grant_context_failed", { ...reqCtx, error: String(e) });
@@ -923,7 +922,7 @@ export default {
         return new Response("No data available", { status: 404 });
       }
       const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
-        `SELECT ${columns.map((c) => `"${c}"`).join(",")} FROM programs`
+        `SELECT * FROM programs`
       ).all();
 
       function csvCell(val) {

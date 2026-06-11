@@ -85,7 +85,7 @@ Weights are configurable per user. The scoring profile is stored in KV and appli
 - **Storage:** KV (user profiles, session state) · R2 (PDF documents)
 - **AI:** Cloudflare Workers AI — Llama-3-8B via `/api/chat`
 - **Data pipeline:** Python 3.9+ (search, wrangle, score, summarize)
-- **Auth:** SHA-256 hashing · session cookies · login attempt lockout
+- **Auth:** SHA-256 hashing · session cookies · login attempt lockout *(SHA-256 is a fast hash, not a KDF — acceptable for a demo but not production. Production deployments should replace `hashPassword` in `worker.js` with PBKDF2 via the [WebCrypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/). See [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).)*
 
 ---
 
@@ -171,13 +171,9 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 ---
 
-## Known Gaps
+## Roadmap
 
-This is an actively developed MVP. Current technical debt, in order of priority:
-
-- **CSV → D1 import** — Automated via `make import` / `make import-local` (`import_to_d1.py`).
-- **PDF processing pipeline** *(under development)* — A Queue-based worker ([`drafts/pdf_worker.ts`](drafts/pdf_worker.ts)) that reads PDFs from R2, calls the `grant_summarizer` service, and outputs scored CSV has been prototyped but is not yet deployed. Pending: provision R2 bucket, Cloudflare Queue, and a hosted `GRANT_SUMMARIZER_URL` endpoint, then wire up as a separate named Worker deployment. See the file header for full setup instructions.
-- **React scoring table** — `ui/ScoringTable.jsx` exists but is not yet integrated into the worker.
+- **PDF processing pipeline** — A Queue-based worker ([`drafts/pdf_worker.ts`](drafts/pdf_worker.ts)) ingests grant PDFs from R2 via `grant_summarizer` and imports scored rows into D1. Prototyped; pending hosted `GRANT_SUMMARIZER_URL` and Cloudflare Queue provisioning.
 
 ---
 
@@ -186,8 +182,8 @@ This is an actively developed MVP. Current technical debt, in order of priority:
 | Document | Contents |
 |---|---|
 | [DEVELOPERS.md](docs/DEVELOPERS.md) | Full pipeline docs, CLI reference, API guide |
-| [AGENTS.md](AGENTS.md) | Data pipeline runbook |
-| [AGENTS_AUTOMATION.md](AGENTS_AUTOMATION.md) | Automation guide |
+| [docs/AGENTS.md](docs/AGENTS.md) | Data pipeline runbook |
+| [docs/AGENTS_AUTOMATION.md](docs/AGENTS_AUTOMATION.md) | Automation guide |
 | [docs/data_contract.json](docs/data_contract.json) | Database schema and field definitions |
 | [docs/pipeline_vs_direct_write.md](docs/pipeline_vs_direct_write.md) | Architecture decision record |
 

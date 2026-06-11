@@ -4,7 +4,7 @@ This project combines Python tools for grant wrangling with a minimal web UI and
 
 ## Repository overview
 - **Python scripts** – `wrangle_grants.py`, `program_scoring.py`, and helpers under `scripts/` handle data normalization and scoring.
-- **UI components** – `ui/` contains React modules such as `ScoringTable.jsx` for rendering results in the browser.
+- **UI components** – `ui/` contains the React/Vite frontend (`ui/src/`) served by the Cloudflare Worker via the `ASSETS` binding.
 - **Workers** – `worker.js` and files in `workers/` provide a Cloudflare Worker demo for publishing data or prototyping APIs.
 
 ## Backend & fullstack development
@@ -30,7 +30,7 @@ This project combines Python tools for grant wrangling with a minimal web UI and
    - Install Node.js and run `npm install` to fetch dependencies.
    - `npm start` runs the example worker, and `npm test` executes Node tests.
 2. **React components**
-   - Extend `ui/` with new JSX modules. `ScoringTable.jsx` shows how to load CSVs and render them with simple interactivity.
+   - Extend `ui/src/` with new React components. Run `npm run dev` in `ui/` for hot-reload during development.
 3. **Integration**
    - Front‑end modules can request data from the Cloudflare worker or consume files produced by the Python pipeline.
 
