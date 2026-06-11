@@ -202,6 +202,7 @@ function computeProfileMatch(r, profile) {
   const text = [
     r.name || "",
     r.sponsor || "",
+    r.benefits || "",
     r.eligibility_conditions || "",
     r.region_eligibility || "",
     r.type || "",
@@ -276,10 +277,10 @@ function computeScore(r, weights, profile) {
        + wn.StackAlignment * (stack * 3)
        + wn.CadenceRecency * (cadence * 3);
 
-  // Profile match bonus: up to +0.6 added on top of the 0-3 base score.
+  // Profile match bonus: up to +1.5 added on top of the 0-3 base score.
   // Grants matching the user's focus areas, org type, and stage rank higher.
   const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
-  return baseScore + profileMatch * 0.6;
+  return baseScore + profileMatch * 1.5;
 }
 
 const SESSION_TTL = 86400; // 24 hours in seconds
