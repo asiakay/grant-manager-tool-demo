@@ -457,6 +457,23 @@ async function syncGrantsWithD1(env, query) {
 
 export default {
   async fetch(request, env, ctx) {
+    try {
+      return await handleRequest(request, env, ctx);
+    } catch (err) {
+      console.log(JSON.stringify({ level: "error", event: "unhandled_exception", error: String(err), ts: Date.now() }));
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "content-type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(syncGrantsWithD1(env, ""));
+  },
+};
+
+async function handleRequest(request, env, ctx) {
     const requestId = crypto.randomUUID();
     const url = new URL(request.url);
     const reqStart = Date.now();
@@ -516,9 +533,19 @@ export default {
         return jsonResponse(JSON.stringify({ error: "Passwords do not match." }), { status: 400 });
       }
 
-      const existing = await env.GRANT_MANAGER_DB.prepare(
-        "SELECT username FROM users WHERE username = ?"
-      ).bind(newUser).first();
+      if (!env.GRANT_MANAGER_DB) {
+        return jsonResponse(JSON.stringify({ error: "Database not configured." }), { status: 503 });
+      }
+
+      let existing = null;
+      try {
+        existing = await env.GRANT_MANAGER_DB.prepare(
+          "SELECT username FROM users WHERE username = ?"
+        ).bind(newUser).first();
+      } catch (err) {
+        log("error", "signup_db_lookup_failed", { requestId, error: String(err) });
+        return jsonResponse(JSON.stringify({ error: "Database error. Please try again." }), { status: 503 });
+      }
 
       if (existing || users[newUser]) {
         log("info", "signup_username_taken", { requestId, username: newUser });
@@ -526,9 +553,14 @@ export default {
       }
 
       const hash = await hashPassword(newPass);
-      await env.GRANT_MANAGER_DB.prepare(
-        "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
-      ).bind(newUser, hash, Date.now()).run();
+      try {
+        await env.GRANT_MANAGER_DB.prepare(
+          "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
+        ).bind(newUser, hash, Date.now()).run();
+      } catch (err) {
+        log("error", "signup_db_insert_failed", { requestId, error: String(err) });
+        return jsonResponse(JSON.stringify({ error: "Could not create account. Please try again." }), { status: 503 });
+      }
 
       log("info", "signup_success", { requestId, username: newUser });
       return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
@@ -628,6 +660,7 @@ export default {
           log("warn", "csrf_rejected", { ...reqCtx, endpoint: "profile" });
           return new Response("Forbidden", { status: 403 });
         }
+        if (!env.USER_PROFILES) return new Response("KV not configured", { status: 503 });
         const body = await request.json();
         await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
         log("info", "profile_saved", reqCtx);
@@ -1396,10 +1429,5 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       newHeaders.set("Cache-Control", "public, max-age=86400");
     }
     return new Response(assetRes.body, { status: assetRes.status, headers: newHeaders });
-  },
-
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(syncGrantsWithD1(env, ""));
-  },
-};
+}
 
