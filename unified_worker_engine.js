@@ -155,6 +155,20 @@ function normalizeHeader(h) {
   return String(h || "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/\s+/g, "");
 }
 
+const CSV_COLUMN_ALIASES = {
+  "grantname":   "name",
+  "eqorefit":    "fit",
+  "easeofuse":   "ease",
+  "link":        "source_url",
+  "matchreq%":   "weighted_score",
+  "match%":      "weighted_score",
+};
+
+function resolveHeader(h) {
+  const norm = normalizeHeader(h);
+  return CSV_COLUMN_ALIASES[norm] ?? norm;
+}
+
 const DEFAULT_WEIGHTS = { Relevance: 0.3, Fit: 0.3, Ease: 0.2, StackAlignment: 0.1, CadenceRecency: 0.1 };
 
 // Maps user-facing focus area labels to keywords searched in grant text fields.
@@ -427,8 +441,11 @@ async function syncGrantsWithD1(env, query) {
         : "";
     const stage = capitalize(opp.opportunity_status || "");
 
+    const grantText = [name, sponsor, benefits, eligibility].join(" ").toLowerCase();
+    const domainCount = Object.values(FOCUS_AREA_KEYWORDS).filter(kws => kws.some(kw => grantText.includes(kw))).length;
+    const derivedRelevance = Math.min(3, Math.round((domainCount / Object.keys(FOCUS_AREA_KEYWORDS).length) * 3 * 10) / 10);
     return insertStmt.bind(
-      type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0, 0, 0, 0, 0, ""
+      type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0, derivedRelevance, 0, 0, 0, ""
     );
   });
 
@@ -841,7 +858,7 @@ export default {
       const colByNorm = new Map(columns.map((c) => [normalizeHeader(c), c]));
 
       const headers = rows[0];
-      const mapping = headers.map((h) => colByNorm.get(normalizeHeader(h)) ?? null);
+      const mapping = headers.map((h) => colByNorm.get(resolveHeader(h)) ?? null);
       const unknownColumns = headers.filter((h, i) => !mapping[i] && String(h).trim() !== "");
       const nameIdx = mapping.indexOf("name");
       if (nameIdx === -1) {
