@@ -22,9 +22,16 @@ jobs:
         working-directory: ui
         run: npm ci && npm run build
 
+      - name: Apply D1 migrations
+        working-directory: .
+        run: npm ci && npx wrangler d1 migrations apply grant-manager-db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy main worker
         working-directory: .
-        run: npm ci && npx wrangler deploy
+        run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
