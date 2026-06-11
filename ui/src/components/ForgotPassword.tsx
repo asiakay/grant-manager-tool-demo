@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function ForgotPassword({ onBack, onSuccess }: Props) {
-  const [step, setStep] = useState<"request" | "reset">("request");
+  const [step, setStep] = useState<"request" | "reset" | "done">("request");
   const [username, setUsername] = useState("");
   const [resetToken, setResetToken] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +58,7 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
     setLoading(true);
     try {
       await resetPassword(resetToken, password, confirmPassword);
-      onSuccess();
+      setStep("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reset failed");
     } finally {
@@ -73,11 +73,20 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
           <div className="text-4xl mb-3">🔑</div>
           <h1 className="text-2xl font-bold text-white">Reset Password</h1>
           <p className="text-gray-400 text-sm mt-1">
-            {step === "request" ? "Enter your username to get a reset token" : "Enter your reset token and new password"}
+            {step === "request" ? "Enter your username to get a reset token" : step === "reset" ? "Enter your new password below" : ""}
           </p>
         </div>
 
-        {step === "request" ? (
+        {step === "done" ? (
+          <div className="card space-y-4 text-center">
+            <div className="text-3xl">✓</div>
+            <p className="text-green-400 font-medium">Password reset successfully!</p>
+            <p className="text-gray-400 text-sm">You can now sign in with your new password.</p>
+            <button onClick={onSuccess} className="btn-primary w-full justify-center py-2.5">
+              Go to sign in
+            </button>
+          </div>
+        ) : step === "request" ? (
           <form onSubmit={handleRequest} className="card space-y-4">
             {error && (
               <div className="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-sm">
@@ -126,8 +135,11 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
                 value={resetToken}
                 onChange={(e) => setResetToken(e.target.value)}
                 required
-                placeholder="Paste the token from your email"
+                placeholder="Enter your reset token"
               />
+              {resetToken && (
+                <p className="text-green-500 text-xs mt-1">Token auto-filled — enter your new password below.</p>
+              )}
             </div>
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -192,11 +204,13 @@ export default function ForgotPassword({ onBack, onSuccess }: Props) {
           </form>
         )}
 
-        <p className="text-center text-gray-500 text-sm mt-4">
-          <button onClick={onBack} className="text-brand-400 hover:text-brand-300 underline">
-            Back to sign in
-          </button>
-        </p>
+        {step !== "done" && (
+          <p className="text-center text-gray-500 text-sm mt-4">
+            <button onClick={onBack} className="text-brand-400 hover:text-brand-300 underline">
+              Back to sign in
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

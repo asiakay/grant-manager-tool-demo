@@ -1448,7 +1448,7 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       return jsonResponse(JSON.stringify({
         ok: true,
         token: resetToken,
-        message: "Reset token generated. In production this would be delivered via email.",
+        message: "Reset token generated and auto-filled below. Enter your new password to complete the reset.",
       }));
     }
 
