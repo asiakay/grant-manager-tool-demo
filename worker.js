@@ -931,10 +931,17 @@ export default {
       async function fetchPageText(pageUrl) {
         if (!pageUrl) return "";
         try {
-          const res = await fetch(pageUrl, {
-            headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
-            signal: AbortSignal.timeout(5000),
-          });
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          let res;
+          try {
+            res = await fetch(pageUrl, {
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timer);
+          }
           if (!res.ok) return "";
           const html = await res.text();
           // Strip tags and collapse whitespace; cap at 2000 chars so it fits in the prompt.

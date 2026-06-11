@@ -272,8 +272,13 @@ export async function scoreGrants(rescore = false, batch = 10): Promise<ScoreGra
   });
   if (res.status === 401) throw new Error("Unauthenticated");
   if (!res.ok) {
-    const text = await res.text().catch(() => `Error ${res.status}`);
-    throw new Error(text);
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error || `Error ${res.status}`);
+    }
+    // Non-JSON (e.g. Cloudflare error pages) — don't dump raw HTML
+    throw new Error(`Server error (${res.status}). Check Worker logs for details.`);
   }
   return res.json();
 }
