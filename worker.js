@@ -919,11 +919,31 @@ export default {
       const batch = Math.min(20, Math.max(1, parseInt(body.batch ?? "5", 10)));
       const rescore = body.rescore === true;
 
-      const filter = rescore
-        ? "ORDER BY rowid LIMIT ?"
-        : "WHERE (relevance IS NULL OR relevance = 0) AND (fit IS NULL OR fit = 0) ORDER BY rowid LIMIT ?";
+      // Detect whether the table uses the new snake_case schema (post-migration 0002)
+      // or the original quoted-header schema, and map to a common shape.
+      const tableColumns = await getColumns(env.GRANT_MANAGER_DB);
+      const hasNewSchema = tableColumns.includes("source_url");
+
+      const nameCol        = hasNewSchema ? "name"                      : '"Name"';
+      const sponsorCol     = hasNewSchema ? "sponsor"                   : '"Sponsor"';
+      const sourceUrlCol   = hasNewSchema ? "source_url"                : '"Source URL"';
+      const benefitsCol    = hasNewSchema ? "benefits"                  : '"Benefits"';
+      const eligCol        = hasNewSchema ? "eligibility_conditions"    : '"Eligibility (key conditions)"';
+      const typeCol        = hasNewSchema ? "type"                      : '"Type"';
+      const stageCol       = hasNewSchema ? "stage"                     : '"Stage"';
+      const relevanceCol   = hasNewSchema ? "relevance"                 : '"Relevance"';
+      const fitCol         = hasNewSchema ? "fit"                       : '"Fit"';
+
+      const unscoredWhere = `WHERE (${relevanceCol} IS NULL OR CAST(${relevanceCol} AS REAL) = 0)`
+                          + ` AND (${fitCol} IS NULL OR CAST(${fitCol} AS REAL) = 0)`;
+      const filter = rescore ? "ORDER BY rowid LIMIT ?" : `${unscoredWhere} ORDER BY rowid LIMIT ?`;
+
       const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
-        `SELECT rowid as _rowid, name, sponsor, source_url, benefits, eligibility_conditions, type, stage FROM programs ${filter}`
+        `SELECT rowid as _rowid,
+                ${nameCol} as name, ${sponsorCol} as sponsor, ${sourceUrlCol} as source_url,
+                ${benefitsCol} as benefits, ${eligCol} as eligibility_conditions,
+                ${typeCol} as type, ${stageCol} as stage
+         FROM programs ${filter}`
       ).bind(batch).all();
 
       if (grants.length === 0) {
@@ -1006,8 +1026,10 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
           const scores = await scoreWithAI(grant, pageText);
           if (scores) {
             const weighted = Math.round((scores.relevance * 0.3 + scores.fit * 0.3 + scores.ease * 0.2) * 100) / 100;
+            const easeCol   = hasNewSchema ? "ease"           : '"Ease"';
+            const wscoreCol = hasNewSchema ? "weighted_score" : '"Weighted Score"';
             await env.GRANT_MANAGER_DB.prepare(
-              `UPDATE programs SET relevance = ?, fit = ?, ease = ?, weighted_score = ? WHERE name = ?`
+              `UPDATE programs SET ${relevanceCol} = ?, ${fitCol} = ?, ${easeCol} = ?, ${wscoreCol} = ? WHERE ${nameCol} = ?`
             ).bind(scores.relevance, scores.fit, scores.ease, weighted, grant.name).run();
             scored++;
           }
