@@ -8,7 +8,6 @@ interface Props {
 
 export default function AdminPage({ isAdmin, onBack }: Props) {
   const [uploaded, setUploaded] = useState(false);
-
   return (
     <div className="min-h-screen bg-gray-950 p-4 sm:p-8">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -50,6 +49,7 @@ export default function AdminPage({ isAdmin, onBack }: Props) {
               onClose={onBack}
               onUploaded={() => setUploaded(true)}
             />
+
           </>
         )}
       </div>

@@ -156,6 +156,20 @@ function normalizeHeader(h) {
   return String(h || "").replace(/^\uFEFF/, "").trim().toLowerCase().replace(/\s+/g, "");
 }
 
+// Aliases for column headers used in existing CSV exports that differ from DB column names.
+const CSV_COLUMN_ALIASES = {
+  "grantname":   "name",
+  "easeofuse":   "ease",
+  "link":        "source_url",
+  "matchreq%":   "weighted_score",
+  "match%":      "weighted_score",
+};
+
+function resolveHeader(h) {
+  const norm = normalizeHeader(h);
+  return CSV_COLUMN_ALIASES[norm] ?? norm;
+}
+
 const DEFAULT_WEIGHTS = { Relevance: 0.3, Fit: 0.3, Ease: 0.2, StackAlignment: 0.1, CadenceRecency: 0.1 };
 
 // Maps user-facing focus area labels to keywords searched in grant text fields.
@@ -199,25 +213,30 @@ function computeProfileMatch(r, profile) {
   if (!focusAreas.length && !orgType && !stage) return 0;
 
   // Concatenate all searchable text from the grant record (lower-cased).
+  // Also handle old schema column names (quoted headers) transparently.
   const text = [
-    r.name || "",
-    r.sponsor || "",
-    r.eligibility_conditions || "",
-    r.region_eligibility || "",
-    r.type || "",
-    r.notes || "",
+    r.name        || r.Name        || "",
+    r.sponsor     || r.Sponsor     || "",
+    r.benefits    || r.Benefits    || "",
+    r.eligibility_conditions || r["Eligibility (key conditions)"] || "",
+    r.region_eligibility || r["Region / Eligibility"] || "",
+    r.type        || r.Type        || "",
+    r.notes       || r["Notes / Actions"] || "",
   ].join(" ").toLowerCase();
 
   let hits = 0;
   let checks = 0;
 
-  // Focus area match — any keyword hit from any selected area counts
+  // Focus area: count how many of the selected areas have at least one keyword hit.
+  // Using hit-count (not just any-hit) gives a stronger signal for multi-area profiles.
   if (focusAreas.length) {
-    const focusKeywords = focusAreas.flatMap(fa => FOCUS_AREA_KEYWORDS[fa] || []);
-    if (focusKeywords.length) {
-      checks++;
-      if (focusKeywords.some(kw => text.includes(kw))) hits++;
+    let areaHits = 0;
+    for (const fa of focusAreas) {
+      const kws = FOCUS_AREA_KEYWORDS[fa] || [];
+      if (kws.some(kw => text.includes(kw))) areaHits++;
     }
+    checks += focusAreas.length;
+    hits += areaHits;
   }
 
   // Org type match
@@ -242,9 +261,9 @@ function computeStackAlignment(r) {
 }
 
 function computeCadenceRecency(r) {
-  const cadence = String(r.cadence || "").toLowerCase();
+  const cadence = String(r.cadence || r.Cadence || "").toLowerCase();
   if (cadence.includes("rolling")) return 1.0;
-  const raw = r.deadline;
+  const raw = r.deadline || r["Deadline / Next Cohort"];
   if (!raw) return 0;
   const deadline = new Date(raw);
   if (isNaN(deadline.getTime())) return 0;
@@ -254,32 +273,44 @@ function computeCadenceRecency(r) {
 }
 
 function computeScore(r, weights, profile) {
+  const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
+  const hasProfile = profile && (
+    (Array.isArray(profile.focusAreas) && profile.focusAreas.length) ||
+    profile.orgType || profile.stage
+  );
+
+  // When a profile is set, profile match is the primary ranking signal (0–10).
+  // DB scores (relevance/fit/ease) act as a tiebreaker within the same match tier.
+  // When no profile is set, fall back to DB scores only.
+  const relevance = parseFloat(r.relevance || r.Relevance) || 0;
+  const fit       = parseFloat(r.fit       || r.Fit)       || 0;
+  const ease      = parseFloat(r.ease      || r.Ease)      || 0;
+  const stack     = computeStackAlignment(r);
+  const cadence   = computeCadenceRecency(r);
+
+  if (hasProfile) {
+    // Primary: profile match 0–1 scaled to 0–10
+    // Tiebreaker: normalised DB quality score 0–3 scaled to 0–1
+    const w = weights || DEFAULT_WEIGHTS;
+    const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+    const dbScore = ((w.Relevance ?? 0) / total) * relevance
+                  + ((w.Fit       ?? 0) / total) * fit
+                  + ((w.Ease      ?? 0) / total) * ease
+                  + ((w.StackAlignment ?? 0) / total) * (stack * 3)
+                  + ((w.CadenceRecency ?? 0) / total) * (cadence * 3);
+    return Math.round((profileMatch * 10 + dbScore / 3) * 100) / 100;
+  }
+
+  // No profile — rank purely by DB quality scores
   const w = weights || DEFAULT_WEIGHTS;
   const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
-  const wn = {
-    Relevance:      (w.Relevance ?? 0) / total,
-    Fit:            (w.Fit ?? 0) / total,
-    Ease:           (w.Ease ?? 0) / total,
-    StackAlignment: (w.StackAlignment ?? 0) / total,
-    CadenceRecency: (w.CadenceRecency ?? 0) / total,
-  };
-  const relevance  = parseFloat(r.relevance) || 0;
-  const fit        = parseFloat(r.fit) || 0;
-  const ease       = parseFloat(r.ease) || 0;
-  const stack      = computeStackAlignment(r);
-  const cadence    = computeCadenceRecency(r);
-  // Relevance/Fit/Ease are 0-3; stack and cadence are 0-1.
-  // Multiply stack/cadence by 3 so all components share the same scale.
-  const baseScore = wn.Relevance * relevance
-       + wn.Fit * fit
-       + wn.Ease * ease
-       + wn.StackAlignment * (stack * 3)
-       + wn.CadenceRecency * (cadence * 3);
-
-  // Profile match bonus: up to +0.6 added on top of the 0-3 base score.
-  // Grants matching the user's focus areas, org type, and stage rank higher.
-  const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
-  return baseScore + profileMatch * 0.6;
+  return Math.round((
+    ((w.Relevance      ?? 0) / total) * relevance
+  + ((w.Fit            ?? 0) / total) * fit
+  + ((w.Ease           ?? 0) / total) * ease
+  + ((w.StackAlignment ?? 0) / total) * (stack * 3)
+  + ((w.CadenceRecency ?? 0) / total) * (cadence * 3)
+  ) * 100) / 100;
 }
 
 const SESSION_TTL = 86400; // 24 hours in seconds
@@ -412,7 +443,12 @@ async function syncGrantsWithD1(env, query) {
         ? summary.applicant_types.map(capitalize).join(", ")
         : "";
     const stage = capitalize(opp.opportunity_status || "");
-    return insertStmt.bind(type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0, 0, 0, 0, 0, "");
+    // Derive a simple relevance score (0-3) from how many known grant domains the
+    // title/eligibility text mentions, so grants aren't all scored equally at 0.
+    const grantText = [name, sponsor, benefits, eligibility].join(" ").toLowerCase();
+    const domainCount = Object.values(FOCUS_AREA_KEYWORDS).filter(kws => kws.some(kw => grantText.includes(kw))).length;
+    const derivedRelevance = Math.min(3, Math.round((domainCount / Object.keys(FOCUS_AREA_KEYWORDS).length) * 3 * 10) / 10);
+    return insertStmt.bind(type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0, derivedRelevance, 0, 0, 0, "");
   });
 
   await env.GRANT_MANAGER_DB.batch(statements);
@@ -420,7 +456,7 @@ async function syncGrantsWithD1(env, query) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const requestId = crypto.randomUUID();
     const url = new URL(request.url);
     const reqStart = Date.now();
@@ -630,14 +666,9 @@ export default {
       const columns = await getColumns(env.GRANT_MANAGER_DB);
       let scored = [];
       if (columns.length > 0) {
-        const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
-            `SELECT * FROM programs`
-        ).all();
+        const { results: rows } = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM programs`).all();
         scored = rows
-          .map((r) => ({
-            ...r,
-            score: Math.round(computeScore(r, userWeights, profile) * 100) / 100,
-          }))
+          .map((r) => ({ ...r, score: computeScore(r, userWeights, profile) }))
           .sort((a, b) => b.score - a.score);
       }
       const total = scored.length;
@@ -825,7 +856,7 @@ export default {
       const colByNorm = new Map(columns.map((c) => [normalizeHeader(c), c]));
 
       const headers = rows[0];
-      const mapping = headers.map((h) => colByNorm.get(normalizeHeader(h)) ?? null);
+      const mapping = headers.map((h) => colByNorm.get(resolveHeader(h)) ?? null);
       const unknownColumns = headers.filter((h, i) => !mapping[i] && String(h).trim() !== "");
       const nameIdx = mapping.indexOf("name");
       if (nameIdx === -1) {
@@ -882,6 +913,148 @@ export default {
       const inserted = byName.size - (mode === "replace" ? 0 : updated);
       log("info", "admin_csv_uploaded", { ...reqCtx, mode, inserted, updated, skipped, unknownColumns });
       return jsonResponse(JSON.stringify({ ok: true, mode, inserted, updated, skipped, total: byName.size, unknownColumns }));
+    }
+
+    if (url.pathname === "/api/admin/score-grants" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!getAdminUsers(env).has(username)) return new Response("Forbidden", { status: 403 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+
+      const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
+      if (!hasAI) return new Response("AI not configured", { status: 503 });
+
+      try {
+
+      const body = await request.json().catch(() => ({}));
+      const batch = Math.min(20, Math.max(1, parseInt(body.batch ?? "5", 10)));
+      const rescore = body.rescore === true;
+
+      // Detect whether the table uses the new snake_case schema (post-migration 0002)
+      // or the original quoted-header schema, and map to a common shape.
+      const tableColumns = await getColumns(env.GRANT_MANAGER_DB);
+      const hasNewSchema = tableColumns.includes("source_url");
+
+      const nameCol        = hasNewSchema ? "name"                      : '"Name"';
+      const sponsorCol     = hasNewSchema ? "sponsor"                   : '"Sponsor"';
+      const sourceUrlCol   = hasNewSchema ? "source_url"                : '"Source URL"';
+      const benefitsCol    = hasNewSchema ? "benefits"                  : '"Benefits"';
+      const eligCol        = hasNewSchema ? "eligibility_conditions"    : '"Eligibility (key conditions)"';
+      const typeCol        = hasNewSchema ? "type"                      : '"Type"';
+      const stageCol       = hasNewSchema ? "stage"                     : '"Stage"';
+      const relevanceCol   = hasNewSchema ? "relevance"                 : '"Relevance"';
+      const fitCol         = hasNewSchema ? "fit"                       : '"Fit"';
+
+      const unscoredWhere = `WHERE (${relevanceCol} IS NULL OR CAST(${relevanceCol} AS REAL) = 0)`
+                          + ` AND (${fitCol} IS NULL OR CAST(${fitCol} AS REAL) = 0)`;
+      const filter = rescore ? "ORDER BY rowid LIMIT ?" : `${unscoredWhere} ORDER BY rowid LIMIT ?`;
+
+      const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT rowid as _rowid,
+                ${nameCol} as name, ${sponsorCol} as sponsor, ${sourceUrlCol} as source_url,
+                ${benefitsCol} as benefits, ${eligCol} as eligibility_conditions,
+                ${typeCol} as type, ${stageCol} as stage
+         FROM programs ${filter}`
+      ).bind(batch).all();
+
+      if (grants.length === 0) {
+        return jsonResponse(JSON.stringify({ ok: true, scored: 0, message: "No unscored grants found." }));
+      }
+
+      async function fetchPageText(pageUrl) {
+        if (!pageUrl) return "";
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          let res;
+          try {
+            res = await fetch(pageUrl, {
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timer);
+          }
+          if (!res.ok) return "";
+          const html = await res.text();
+          // Strip tags and collapse whitespace; cap at 2000 chars so it fits in the prompt.
+          return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
+        } catch {
+          return "";
+        }
+      }
+
+      async function scoreWithAI(grant, pageText) {
+        const context = [
+          `Name: ${grant.name}`,
+          `Sponsor: ${grant.sponsor || "Unknown"}`,
+          `Type: ${grant.type || ""}`,
+          `Stage: ${grant.stage || ""}`,
+          `Benefits: ${grant.benefits || ""}`,
+          `Eligibility: ${grant.eligibility_conditions || ""}`,
+          pageText ? `Page content excerpt:\n${pageText}` : "",
+        ].filter(Boolean).join("\n");
+
+        const prompt = `Score this grant opportunity on three dimensions, each from 0 to 3 (integers only).
+
+Definitions:
+- relevance (0-3): How clearly does this grant describe a real, specific funding opportunity with defined purpose and scope? 0=vague/unclear, 3=very clear and specific.
+- fit (0-3): How broadly applicable is this grant across different org types (nonprofits, startups, researchers, govt)? 0=very narrow, 3=widely accessible.
+- ease (0-3): How easy is it to apply? Consider rolling deadlines, simple requirements, no match required. 0=complex/burdensome, 3=straightforward.
+
+Grant:
+${context}
+
+Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1,"ease":3}`;
+
+        const messages = [{ role: "user", content: prompt }];
+        let text = "";
+        if (env.AI) {
+          const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
+          text = result.response || "";
+        } else {
+          const res = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+            { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
+          );
+          const data = await res.json();
+          text = data.result?.response ?? "";
+        }
+        const match = text.match(/\{[^}]+\}/);
+        if (!match) return null;
+        try {
+          const parsed = JSON.parse(match[0]);
+          const clamp = (v) => Math.min(3, Math.max(0, parseInt(v, 10) || 0));
+          return { relevance: clamp(parsed.relevance), fit: clamp(parsed.fit), ease: clamp(parsed.ease) };
+        } catch { return null; }
+      }
+
+      let scored = 0;
+      const errors = [];
+      for (const grant of grants) {
+        try {
+          const pageText = await fetchPageText(grant.source_url);
+          const scores = await scoreWithAI(grant, pageText);
+          if (scores) {
+            const weighted = Math.round((scores.relevance * 0.3 + scores.fit * 0.3 + scores.ease * 0.2) * 100) / 100;
+            const easeCol   = hasNewSchema ? "ease"           : '"Ease"';
+            const wscoreCol = hasNewSchema ? "weighted_score" : '"Weighted Score"';
+            await env.GRANT_MANAGER_DB.prepare(
+              `UPDATE programs SET ${relevanceCol} = ?, ${fitCol} = ?, ${easeCol} = ?, ${wscoreCol} = ? WHERE ${nameCol} = ?`
+            ).bind(scores.relevance, scores.fit, scores.ease, weighted, grant.name).run();
+            scored++;
+          }
+        } catch (e) {
+          errors.push({ name: grant.name, error: String(e).slice(0, 100) });
+        }
+      }
+
+      log("info", "grants_scored", { ...reqCtx, scored, errors: errors.length });
+      return jsonResponse(JSON.stringify({ ok: true, scored, total: grants.length, errors }));
+      } catch (e) {
+        log("error", "score_grants_failed", { ...reqCtx, error: String(e) });
+        return jsonResponse(JSON.stringify({ error: String(e) }), { status: 500 });
+      }
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {

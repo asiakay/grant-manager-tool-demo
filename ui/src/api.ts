@@ -255,6 +255,34 @@ export async function uploadGrantsCsv(file: File, mode: "merge" | "replace"): Pr
   return res.json();
 }
 
+export interface ScoreGrantsResult {
+  ok: boolean;
+  scored: number;
+  total: number;
+  errors: { name: string; error: string }[];
+  message?: string;
+}
+
+export async function scoreGrants(rescore = false, batch = 10): Promise<ScoreGrantsResult> {
+  const res = await fetch(`${BASE}/api/admin/score-grants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ batch, rescore }),
+  });
+  if (res.status === 401) throw new Error("Unauthenticated");
+  if (!res.ok) {
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error || `Error ${res.status}`);
+    }
+    // Non-JSON (e.g. Cloudflare HTML error pages) — don't dump raw HTML
+    throw new Error(`Server error (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function requestPasswordReset(username: string): Promise<{ token?: string; message: string }> {
   const res = await fetch(`${BASE}/api/request-password-reset`, {
     method: "POST",

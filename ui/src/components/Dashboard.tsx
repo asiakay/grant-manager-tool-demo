@@ -86,13 +86,13 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
 
 
 
+
   async function handleProfileSave(p: UserProfile) {
     setProfileSaving(true);
     try {
       await saveProfile(p);
       setProfile(p);
       setProfileOpen(false);
-      // Reload grants with new profile scoring
       setLoading(true);
       const { data: updated, total } = await fetchGrants();
       setGrants(updated);
@@ -272,7 +272,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                 </svg>
-                <span>Grants are sorted by <strong>personalized match score</strong> based on your profile — check the Match column.</span>
+                <span>Grants are sorted by <strong>personalized match score</strong> based on your profile.</span>
               </div>
             )}
             <SummaryCards grants={grants} />
