@@ -389,6 +389,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
                 onToggleWatchlist={toggleWatchlist}
                 onToggleCandidate={toggleCandidate}
                 onRowClick={setSelectedGrant}
+                profile={profile}
               />
             )}
 
