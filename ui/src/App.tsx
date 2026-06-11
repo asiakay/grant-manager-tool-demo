@@ -5,16 +5,18 @@ import Dashboard from "./components/Dashboard";
 import ProfileSetup from "./components/ProfileSetup";
 import WelcomePage from "./components/WelcomePage";
 import ForgotPassword from "./components/ForgotPassword";
+import AdminPage from "./components/AdminPage";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
 
-type AuthState = "loading" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated";
+type AuthState = "loading" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [username, setUsername] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     checkAuth().then(async (ok) => {
@@ -27,6 +29,7 @@ export default function App() {
       const hasWeights = p && p.weights && typeof p.weights === "object";
       setProfile(p);
       setUsername(me?.username ?? "");
+      setIsAdmin(me?.isAdmin ?? false);
       setAuth(hasWeights ? "welcome" : "profile-setup");
     });
   }, []);
@@ -50,6 +53,7 @@ export default function App() {
     const hasWeights = p && p.weights && typeof p.weights === "object";
     setProfile(p);
     setUsername(me?.username ?? "");
+    setIsAdmin(me?.isAdmin ?? false);
     setAuth(hasWeights ? "welcome" : "profile-setup");
   }
 
@@ -141,10 +145,20 @@ export default function App() {
     );
   }
 
+  if (auth === "admin") {
+    return (
+      <AdminPage
+        isAdmin={isAdmin}
+        onBack={() => setAuth("authenticated")}
+      />
+    );
+  }
+
   return (
     <Dashboard
       onLogout={() => setAuth("unauthenticated")}
       onBackToProfile={profile ? () => setAuth("welcome") : undefined}
+      onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
     />
   );
 }

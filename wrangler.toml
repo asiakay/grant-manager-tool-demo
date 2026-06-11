@@ -11,7 +11,7 @@ command = "cd ui && npm install && npm run build"
 [vars]
 # Comma-separated usernames allowed to use admin features (CSV grant upload).
 # Defaults to "demo" when unset.
-ADMIN_USERS = "demo"
+ADMIN_USERS = "demo,asialakay"
 
 [[kv_namespaces]]
 binding = "USER_PROFILES"
