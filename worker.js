@@ -159,7 +159,6 @@ function normalizeHeader(h) {
 // Aliases for column headers used in existing CSV exports that differ from DB column names.
 const CSV_COLUMN_ALIASES = {
   "grantname":   "name",
-  "eqorefit":    "fit",
   "easeofuse":   "ease",
   "link":        "source_url",
   "matchreq%":   "weighted_score",

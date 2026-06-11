@@ -157,7 +157,6 @@ function normalizeHeader(h) {
 
 const CSV_COLUMN_ALIASES = {
   "grantname":   "name",
-  "eqorefit":    "fit",
   "easeofuse":   "ease",
   "link":        "source_url",
   "matchreq%":   "weighted_score",
