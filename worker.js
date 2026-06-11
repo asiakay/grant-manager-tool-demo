@@ -1271,6 +1271,78 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       });
     }
 
+    // POST /api/feedback — no auth required
+    // To configure secrets, run:
+    //   npx wrangler secret put RESEND_API_KEY
+    //   npx wrangler secret put NOTIFICATION_EMAIL
+    if (url.pathname === "/api/feedback" && request.method === "POST") {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+
+      const rating = Number(body.rating);
+      if (!rating || rating < 1 || rating > 5) {
+        return new Response(JSON.stringify({ error: "rating must be 1–5" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+
+      const comment = body.comment ? String(body.comment).slice(0, 2000) : null;
+      const email = body.email ? String(body.email).slice(0, 255) : null;
+      const optedIn = email && body.opted_in ? 1 : 0;
+      const submittedAt = new Date().toISOString();
+      const userAgent = request.headers.get("User-Agent") || null;
+
+      await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO feedback (rating, comment, email, opted_in, submitted_at, user_agent) VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(rating, comment, email, optedIn, submittedAt, userAgent).run();
+
+      if (email && optedIn) {
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT OR IGNORE INTO subscribers (email, subscribed_at) VALUES (?, ?)`
+        ).bind(email, submittedAt).run();
+      }
+
+      // Send notification email via Resend — failure is non-blocking
+      if (env.RESEND_API_KEY && env.NOTIFICATION_EMAIL) {
+        const emailBody = [
+          `Star Rating: ⭐ ${rating} / 5`,
+          `Comment: ${comment || "No comment left"}`,
+          `Email: ${email || "Not provided"}`,
+          `Opted in to updates: ${optedIn ? "Yes" : "No"}`,
+          `Submitted at: ${submittedAt}`,
+          `User agent: ${userAgent || "Unknown"}`,
+        ].join("\n");
+
+        try {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "onboarding@resend.dev",
+              to: env.NOTIFICATION_EMAIL,
+              subject: "New Feedback — Grant Manager Tool",
+              text: emailBody,
+            }),
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            console.error("Resend error:", res.status, errText);
+          }
+        } catch (err) {
+          console.error("Resend fetch failed:", err);
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (url.pathname === "/logout") {
       const match = cookie.match(/session=([^;]+)/);
       if (match && env.USER_PROFILES) {

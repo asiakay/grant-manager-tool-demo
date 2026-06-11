@@ -6,6 +6,7 @@ import ProfileSetup from "./components/ProfileSetup";
 import WelcomePage from "./components/WelcomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import AdminPage from "./components/AdminPage";
+import FeedbackBar from "./components/FeedbackBar";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
 
@@ -124,41 +125,53 @@ export default function App() {
 
   if (auth === "profile-setup") {
     return (
-      <ProfileSetup
-        initial={profile}
-        onSave={handleProfileSave}
-        onSkip={() => setAuth("authenticated")}
-        saving={profileSaving}
-      />
+      <>
+        <ProfileSetup
+          initial={profile}
+          onSave={handleProfileSave}
+          onSkip={() => setAuth("authenticated")}
+          saving={profileSaving}
+        />
+        <FeedbackBar />
+      </>
     );
   }
 
   if (auth === "welcome" && profile) {
     return (
-      <WelcomePage
-        username={username || "there"}
-        profile={profile}
-        onViewMatches={() => setAuth("authenticated")}
-        onSaveProfile={handleWelcomeProfileSave}
-        saving={profileSaving}
-      />
+      <>
+        <WelcomePage
+          username={username || "there"}
+          profile={profile}
+          onViewMatches={() => setAuth("authenticated")}
+          onSaveProfile={handleWelcomeProfileSave}
+          saving={profileSaving}
+        />
+        <FeedbackBar />
+      </>
     );
   }
 
   if (auth === "admin") {
     return (
-      <AdminPage
-        isAdmin={isAdmin}
-        onBack={() => setAuth("authenticated")}
-      />
+      <>
+        <AdminPage
+          isAdmin={isAdmin}
+          onBack={() => setAuth("authenticated")}
+        />
+        <FeedbackBar />
+      </>
     );
   }
 
   return (
-    <Dashboard
-      onLogout={() => setAuth("unauthenticated")}
-      onBackToProfile={profile ? () => setAuth("welcome") : undefined}
-      onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
-    />
+    <>
+      <Dashboard
+        onLogout={() => setAuth("unauthenticated")}
+        onBackToProfile={profile ? () => setAuth("welcome") : undefined}
+        onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
+      />
+      <FeedbackBar />
+    </>
   );
 }
