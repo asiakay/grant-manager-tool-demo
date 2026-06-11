@@ -53,8 +53,6 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
-  const [scoringInProgress, setScoringInProgress] = useState(false);
-  const [scoringProgress, setScoringProgress] = useState<{scored: number; total: number} | null>(null);
 
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
@@ -63,11 +61,9 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
 
   useEffect(() => {
     fetchGrants()
-      .then(({ data, total, scoringReady, scoredCount, totalGrants }: PagedGrants) => {
+      .then(({ data, total }: PagedGrants) => {
         setGrants(data);
         setGrantsTotal(total);
-        setScoringInProgress(scoringReady === false);
-        if (scoredCount !== undefined && totalGrants !== undefined) setScoringProgress({ scored: scoredCount, total: totalGrants });
         // Deep link: /?grant=<name> opens that grant's detail drawer
         const linked = new URLSearchParams(window.location.search).get("grant");
         if (linked) {
@@ -88,21 +84,6 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
     fetchMe().then((me) => setIsAdmin(me?.isAdmin ?? false)).catch(() => {});
   }, [onLogout]);
 
-  // Poll every 20s while scoring is in progress so the list updates as batches complete.
-  useEffect(() => {
-    if (!scoringInProgress) return;
-    const id = setInterval(() => {
-      fetchGrants()
-        .then(({ data, total, scoringReady, scoredCount, totalGrants }) => {
-          setGrants(data);
-          setGrantsTotal(total);
-          setScoringInProgress(scoringReady === false);
-          if (scoredCount !== undefined && totalGrants !== undefined) setScoringProgress({ scored: scoredCount, total: totalGrants });
-        })
-        .catch(() => {});
-    }, 20000);
-    return () => clearInterval(id);
-  }, [scoringInProgress]);
 
 
 
@@ -112,14 +93,10 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
       await saveProfile(p);
       setProfile(p);
       setProfileOpen(false);
-      setScoringInProgress(true);
-      // Reload grants — scores are recomputing in the background on the server
       setLoading(true);
-      const { data: updated, total, scoringReady, scoredCount, totalGrants } = await fetchGrants();
+      const { data: updated, total } = await fetchGrants();
       setGrants(updated);
       setGrantsTotal(total);
-      setScoringInProgress(scoringReady === false);
-      if (scoredCount !== undefined && totalGrants !== undefined) setScoringProgress({ scored: scoredCount, total: totalGrants });
     } catch {
       // ignore
     } finally {
@@ -290,21 +267,12 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
 
         {!loading && !error && (
           <>
-            {profile && scoringInProgress && (
-              <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/40 text-sm text-amber-300">
-                <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                <span>
-                  Scoring grants against your profile…
-                  {scoringProgress && ` (${scoringProgress.scored} of ${scoringProgress.total} done)`}
-                </span>
-              </div>
-            )}
-            {profile && !scoringInProgress && (
+            {profile && (
               <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-brand-900/20 border border-brand-800/40 text-sm text-brand-300">
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                 </svg>
-                <span>Grants are sorted by <strong>personalized match score</strong> based on your profile — check the Match column.</span>
+                <span>Grants are sorted by <strong>personalized match score</strong> based on your profile.</span>
               </div>
             )}
             <SummaryCards grants={grants} />

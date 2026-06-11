@@ -213,26 +213,30 @@ function computeProfileMatch(r, profile) {
   if (!focusAreas.length && !orgType && !stage) return 0;
 
   // Concatenate all searchable text from the grant record (lower-cased).
+  // Also handle old schema column names (quoted headers) transparently.
   const text = [
-    r.name || "",
-    r.sponsor || "",
-    r.benefits || "",
-    r.eligibility_conditions || "",
-    r.region_eligibility || "",
-    r.type || "",
-    r.notes || "",
+    r.name        || r.Name        || "",
+    r.sponsor     || r.Sponsor     || "",
+    r.benefits    || r.Benefits    || "",
+    r.eligibility_conditions || r["Eligibility (key conditions)"] || "",
+    r.region_eligibility || r["Region / Eligibility"] || "",
+    r.type        || r.Type        || "",
+    r.notes       || r["Notes / Actions"] || "",
   ].join(" ").toLowerCase();
 
   let hits = 0;
   let checks = 0;
 
-  // Focus area match — any keyword hit from any selected area counts
+  // Focus area: count how many of the selected areas have at least one keyword hit.
+  // Using hit-count (not just any-hit) gives a stronger signal for multi-area profiles.
   if (focusAreas.length) {
-    const focusKeywords = focusAreas.flatMap(fa => FOCUS_AREA_KEYWORDS[fa] || []);
-    if (focusKeywords.length) {
-      checks++;
-      if (focusKeywords.some(kw => text.includes(kw))) hits++;
+    let areaHits = 0;
+    for (const fa of focusAreas) {
+      const kws = FOCUS_AREA_KEYWORDS[fa] || [];
+      if (kws.some(kw => text.includes(kw))) areaHits++;
     }
+    checks += focusAreas.length;
+    hits += areaHits;
   }
 
   // Org type match
@@ -257,9 +261,9 @@ function computeStackAlignment(r) {
 }
 
 function computeCadenceRecency(r) {
-  const cadence = String(r.cadence || "").toLowerCase();
+  const cadence = String(r.cadence || r.Cadence || "").toLowerCase();
   if (cadence.includes("rolling")) return 1.0;
-  const raw = r.deadline;
+  const raw = r.deadline || r["Deadline / Next Cohort"];
   if (!raw) return 0;
   const deadline = new Date(raw);
   if (isNaN(deadline.getTime())) return 0;
@@ -269,32 +273,44 @@ function computeCadenceRecency(r) {
 }
 
 function computeScore(r, weights, profile) {
+  const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
+  const hasProfile = profile && (
+    (Array.isArray(profile.focusAreas) && profile.focusAreas.length) ||
+    profile.orgType || profile.stage
+  );
+
+  // When a profile is set, profile match is the primary ranking signal (0–10).
+  // DB scores (relevance/fit/ease) act as a tiebreaker within the same match tier.
+  // When no profile is set, fall back to DB scores only.
+  const relevance = parseFloat(r.relevance || r.Relevance) || 0;
+  const fit       = parseFloat(r.fit       || r.Fit)       || 0;
+  const ease      = parseFloat(r.ease      || r.Ease)      || 0;
+  const stack     = computeStackAlignment(r);
+  const cadence   = computeCadenceRecency(r);
+
+  if (hasProfile) {
+    // Primary: profile match 0–1 scaled to 0–10
+    // Tiebreaker: normalised DB quality score 0–3 scaled to 0–1
+    const w = weights || DEFAULT_WEIGHTS;
+    const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+    const dbScore = ((w.Relevance ?? 0) / total) * relevance
+                  + ((w.Fit       ?? 0) / total) * fit
+                  + ((w.Ease      ?? 0) / total) * ease
+                  + ((w.StackAlignment ?? 0) / total) * (stack * 3)
+                  + ((w.CadenceRecency ?? 0) / total) * (cadence * 3);
+    return Math.round((profileMatch * 10 + dbScore / 3) * 100) / 100;
+  }
+
+  // No profile — rank purely by DB quality scores
   const w = weights || DEFAULT_WEIGHTS;
   const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
-  const wn = {
-    Relevance:      (w.Relevance ?? 0) / total,
-    Fit:            (w.Fit ?? 0) / total,
-    Ease:           (w.Ease ?? 0) / total,
-    StackAlignment: (w.StackAlignment ?? 0) / total,
-    CadenceRecency: (w.CadenceRecency ?? 0) / total,
-  };
-  const relevance  = parseFloat(r.relevance) || 0;
-  const fit        = parseFloat(r.fit) || 0;
-  const ease       = parseFloat(r.ease) || 0;
-  const stack      = computeStackAlignment(r);
-  const cadence    = computeCadenceRecency(r);
-  // Relevance/Fit/Ease are 0-3; stack and cadence are 0-1.
-  // Multiply stack/cadence by 3 so all components share the same scale.
-  const baseScore = wn.Relevance * relevance
-       + wn.Fit * fit
-       + wn.Ease * ease
-       + wn.StackAlignment * (stack * 3)
-       + wn.CadenceRecency * (cadence * 3);
-
-  // Profile match bonus: up to +1.5 added on top of the 0-3 base score.
-  // Grants matching the user's focus areas, org type, and stage rank higher.
-  const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
-  return baseScore + profileMatch * 1.5;
+  return Math.round((
+    ((w.Relevance      ?? 0) / total) * relevance
+  + ((w.Fit            ?? 0) / total) * fit
+  + ((w.Ease           ?? 0) / total) * ease
+  + ((w.StackAlignment ?? 0) / total) * (stack * 3)
+  + ((w.CadenceRecency ?? 0) / total) * (cadence * 3)
+  ) * 100) / 100;
 }
 
 const SESSION_TTL = 86400; // 24 hours in seconds
@@ -437,107 +453,6 @@ async function syncGrantsWithD1(env, query) {
 
   await env.GRANT_MANAGER_DB.batch(statements);
   return { success: true, inserted: opportunities.length, message: `Successfully loaded ${opportunities.length} active opportunities to local storage.` };
-}
-
-const SCORE_BATCH_SIZE = 15; // AI calls per waitUntil invocation
-
-// Scores one batch of unscored grants for a user and saves to KV.
-// Called via ctx.waitUntil so it runs after the response is sent.
-// Each invocation scores up to SCORE_BATCH_SIZE grants; subsequent
-// fetches of /api/grants trigger the next batch until all are done.
-async function scoreNextBatchForUser(username, profile, env) {
-  const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
-  if (!hasAI || !env.GRANT_MANAGER_DB || !env.USER_PROFILES) return;
-
-  const focusAreas = Array.isArray(profile.focusAreas) ? profile.focusAreas.join(", ") : "";
-  const orgType = profile.orgType || "";
-  const stage = profile.stage || "";
-  if (!focusAreas && !orgType && !stage) return;
-
-  const tableColumns = await getColumns(env.GRANT_MANAGER_DB);
-  const hasNewSchema = tableColumns.includes("source_url");
-  const nameCol     = hasNewSchema ? "name"                   : '"Name"';
-  const sponsorCol  = hasNewSchema ? "sponsor"                : '"Sponsor"';
-  const benefitsCol = hasNewSchema ? "benefits"               : '"Benefits"';
-  const eligCol     = hasNewSchema ? "eligibility_conditions" : '"Eligibility (key conditions)"';
-  const typeCol     = hasNewSchema ? "type"                   : '"Type"';
-  const stageCol    = hasNewSchema ? "stage"                  : '"Stage"';
-
-  // Load existing scores
-  let scores = {};
-  try {
-    const raw = await env.USER_PROFILES.get(`user_scores:${username}`);
-    if (raw) scores = JSON.parse(raw);
-  } catch { /* start fresh */ }
-
-  // Fetch only grants not yet scored for this user
-  const { results: allGrants } = await env.GRANT_MANAGER_DB.prepare(
-    `SELECT ${nameCol} as name, ${sponsorCol} as sponsor, ${benefitsCol} as benefits,
-            ${eligCol} as eligibility_conditions, ${typeCol} as type, ${stageCol} as stage
-     FROM programs ORDER BY rowid`
-  ).all();
-
-  const unscored = allGrants.filter(g => !scores[g.name]);
-  if (!unscored.length) return;
-
-  const batch = unscored.slice(0, SCORE_BATCH_SIZE);
-
-  const profileSummary = [
-    focusAreas && `Focus areas: ${focusAreas}`,
-    orgType && `Organization type: ${orgType}`,
-    stage && `Stage: ${stage}`,
-  ].filter(Boolean).join("\n");
-
-  async function runAI(messages) {
-    if (env.AI) {
-      const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
-      return r.response || "";
-    }
-    const r = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
-      { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
-    );
-    const d = await r.json();
-    return d.result?.response ?? "";
-  }
-
-  for (const grant of batch) {
-    try {
-      const context = [
-        `Grant: ${grant.name}`,
-        grant.sponsor && `Sponsor: ${grant.sponsor}`,
-        grant.type && `Type: ${grant.type}`,
-        grant.stage && `Stage: ${grant.stage}`,
-        grant.benefits && `Benefits: ${grant.benefits}`,
-        grant.eligibility_conditions && `Eligibility: ${grant.eligibility_conditions}`,
-      ].filter(Boolean).join("\n");
-
-      const prompt = `Evaluate this grant for a user with the following profile.
-
-User profile:
-${profileSummary}
-
-Grant:
-${context}
-
-Score on three dimensions (integers 0-3 only):
-- relevance: Does this grant's purpose match the user's focus areas? 0=unrelated, 3=direct match.
-- fit: Does the eligibility match the user's org type and stage? 0=ineligible, 3=ideal.
-- ease: How easy is it for this user to apply? 0=very difficult, 3=straightforward.
-
-Reply with ONLY valid JSON, nothing else. Example: {"relevance":2,"fit":1,"ease":3}`;
-
-      const text = await runAI([{ role: "user", content: prompt }]);
-      const m = text.match(/\{[^}]+\}/);
-      if (m) {
-        const parsed = JSON.parse(m[0]);
-        const clamp = (v) => Math.min(3, Math.max(0, parseInt(v, 10) || 0));
-        scores[grant.name] = { relevance: clamp(parsed.relevance), fit: clamp(parsed.fit), ease: clamp(parsed.ease) };
-      }
-    } catch { /* skip */ }
-  }
-
-  await env.USER_PROFILES.put(`user_scores:${username}`, JSON.stringify(scores));
 }
 
 export default {
@@ -716,11 +631,7 @@ export default {
         const body = await request.json();
         await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(body));
         log("info", "profile_saved", reqCtx);
-        // Clear stale scores so the UI reflects "scoring in progress" immediately,
-        // then recompute in the background after this response is sent.
-        if (env.USER_PROFILES) await env.USER_PROFILES.delete(`user_scores:${username}`);
-        ctx.waitUntil(scoreNextBatchForUser(username, body, env));
-        return jsonResponse(JSON.stringify({ ok: true, scoring: true }));
+        return jsonResponse(JSON.stringify({ ok: true }));
       }
     }
 
@@ -748,16 +659,6 @@ export default {
         ? profile.weights
         : null;
 
-      // Load per-user AI scores computed against this user's profile.
-      let userScores = {};
-      if (env.USER_PROFILES) {
-        try {
-          const raw = await env.USER_PROFILES.get(`user_scores:${username}`);
-          if (raw) userScores = JSON.parse(raw);
-        } catch { /* fall back to keyword scoring */ }
-      }
-      const scoredCount = Object.keys(userScores).length;
-
       const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
       const pageSize = Math.min(500, Math.max(1, parseInt(url.searchParams.get("pageSize") || "100", 10)));
 
@@ -765,38 +666,16 @@ export default {
       const columns = await getColumns(env.GRANT_MANAGER_DB);
       let scored = [];
       if (columns.length > 0) {
-        const { results: rows } = await env.GRANT_MANAGER_DB.prepare(
-            `SELECT * FROM programs`
-        ).all();
+        const { results: rows } = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM programs`).all();
         scored = rows
-          .map((r) => {
-            // Prefer per-user AI scores; fall back to DB scores + keyword match.
-            const us = userScores[r.name] || userScores[r.Name];
-            const rowWithScores = us ? { ...r, relevance: us.relevance, fit: us.fit, ease: us.ease } : r;
-            return {
-              ...r,
-              relevance: rowWithScores.relevance,
-              fit: rowWithScores.fit,
-              ease: rowWithScores.ease,
-              score: Math.round(computeScore(rowWithScores, userWeights, profile) * 100) / 100,
-            };
-          })
+          .map((r) => ({ ...r, score: computeScore(r, userWeights, profile) }))
           .sort((a, b) => b.score - a.score);
       }
       const total = scored.length;
       const start = (page - 1) * pageSize;
       const data = scored.slice(start, start + pageSize);
-
-      // If the user has a profile and there are still unscored grants, kick off
-      // the next batch in the background so scoring converges over a few fetches.
-      const hasProfile = profile && ((profile.focusAreas?.length) || profile.orgType || profile.stage);
-      const scoringReady = scoredCount >= total;
-      if (hasProfile && !scoringReady) {
-        ctx.waitUntil(scoreNextBatchForUser(username, profile, env));
-      }
-
-      log("info", "grants_fetched", { ...reqCtx, total, page, pageSize, scoredCount, durationMs: Date.now() - grantsStart });
-      return jsonResponse(JSON.stringify({ data, total, page, pageSize, scoringReady, scoredCount, totalGrants: total }));
+      log("info", "grants_fetched", { ...reqCtx, total, page, pageSize, durationMs: Date.now() - grantsStart });
+      return jsonResponse(JSON.stringify({ data, total, page, pageSize }));
     }
 
     if (url.pathname === "/api/me") {
