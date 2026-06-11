@@ -333,10 +333,13 @@ function jsonResponse(body, init = {}) {
 async function resolveSession(env, cookie) {
   const match = cookie.match(/session=([^;]+)/);
   if (!match) return null;
-  const token = decodeURIComponent(match[1]);
+  let token;
+  try { token = decodeURIComponent(match[1]); } catch { return null; }
   if (!token || !env.USER_PROFILES) return null;
-  const username = await env.USER_PROFILES.get(`session:${token}`);
-  return username || null;
+  try {
+    const username = await env.USER_PROFILES.get(`session:${token}`);
+    return username || null;
+  } catch { return null; }
 }
 
 async function validateCsrf(request, env, username) {
@@ -596,14 +599,18 @@ async function handleRequest(request, env, ctx) {
       // Check D1 user first, then env users.
       let matchOk = false;
       let needsRehash = false;
-      if (dbUser) {
-        const { ok, legacy } = await verifyPassword(dbUser.password_hash, pass || "");
-        matchOk = ok;
-        needsRehash = ok && legacy;
-      } else if (users[user]) {
-        const { ok } = await verifyPassword(users[user], pass || "");
-        matchOk = ok;
-        // Env users can't be auto-upgraded (secret is outside our write scope).
+      try {
+        if (dbUser) {
+          const { ok, legacy } = await verifyPassword(dbUser.password_hash, pass || "");
+          matchOk = ok;
+          needsRehash = ok && legacy;
+        } else if (users[user]) {
+          const { ok } = await verifyPassword(users[user], pass || "");
+          matchOk = ok;
+        }
+      } catch (err) {
+        log("error", "login_verify_failed", { requestId, error: String(err) });
+        return new Response("Login failed", { status: 500 });
       }
 
       if (matchOk) {
@@ -619,7 +626,7 @@ async function handleRequest(request, env, ctx) {
             log("warn", "password_hash_upgrade_failed", { requestId, error: String(err) });
           }
         }
-        if (env.LOGIN_ATTEMPTS) await env.LOGIN_ATTEMPTS.delete(ip);
+        if (env.LOGIN_ATTEMPTS) { try { await env.LOGIN_ATTEMPTS.delete(ip); } catch { /* non-fatal */ } }
         const token = crypto.randomUUID();
         if (env.USER_PROFILES) {
           await env.USER_PROFILES.put(`session:${token}`, user, { expirationTtl: SESSION_TTL });
@@ -638,12 +645,14 @@ async function handleRequest(request, env, ctx) {
       log("warn", "login_failed", { requestId, user, ip });
       // Failed login — increment attempt counter
       if (env.LOGIN_ATTEMPTS) {
-        const now = Date.now();
-        const prev = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" }) || { count: 0, time: now };
-        if (now - prev.time > LOCKOUT_MS) { prev.count = 0; prev.time = now; }
-        prev.count++;
-        prev.time = now;
-        await env.LOGIN_ATTEMPTS.put(ip, JSON.stringify(prev));
+        try {
+          const now = Date.now();
+          const prev = await env.LOGIN_ATTEMPTS.get(ip, { type: "json" }) || { count: 0, time: now };
+          if (now - prev.time > LOCKOUT_MS) { prev.count = 0; prev.time = now; }
+          prev.count++;
+          prev.time = now;
+          await env.LOGIN_ATTEMPTS.put(ip, JSON.stringify(prev));
+        } catch { /* non-fatal — rate-limit counter update failure is acceptable */ }
       }
       return new Response("Unauthorized", { status: 401 });
     }
