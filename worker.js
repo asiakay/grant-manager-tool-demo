@@ -648,8 +648,8 @@ export default {
           "Type": capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
           "Name": opp.opportunity_title || summary.opportunity_title || "",
           "Sponsor": opp.agency_name || summary.agency_name || opp.agency_code || "",
-          "Source URL": opp.opportunity_id
-            ? `https://grants.gov/search-results-detail/${opp.opportunity_id}`
+          "Source URL": (opp.opportunity_number || opp.opportunity_id)
+            ? `https://simpler.grants.gov/opportunities/${opp.opportunity_number || opp.opportunity_id}`
             : "",
           "Region/Eligibility": "",
           "Deadline/Next Cohort": opp.close_date || summary.close_date || "",
