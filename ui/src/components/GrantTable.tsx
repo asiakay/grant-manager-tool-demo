@@ -138,7 +138,7 @@ export default function GrantTable({
   onToggleCandidate,
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "score", desc: true },
+    { id: "Deadline/Next Cohort", desc: false },
   ]);
   const [page, setPage] = useState(1);
 
