@@ -1192,38 +1192,44 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       const aiMessages = [{ role: "system", content: systemPrompt }, ...chatMessages];
 
       // Try native AI binding first, then fall back to REST API
-      if (env.AI) {
-        const aiStart = Date.now();
-        const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-          messages: aiMessages,
-          stream: false,
-        });
-        log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.1-8b-instruct", contextGrants: totalCount, durationMs: Date.now() - aiStart });
-        return jsonResponse(JSON.stringify({ response: result.response }));
-      }
-
-      if (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN) {
-        const aiRes = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${env.CF_AI_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ messages: aiMessages }),
-          }
-        );
-        if (!aiRes.ok) {
-          const errText = await aiRes.text().catch(() => "");
-          return new Response(`AI request failed: ${errText}`, { status: 502 });
+      try {
+        if (env.AI) {
+          const aiStart = Date.now();
+          const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+            messages: aiMessages,
+            stream: false,
+          });
+          log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.1-8b-instruct", contextGrants: totalCount, durationMs: Date.now() - aiStart });
+          return jsonResponse(JSON.stringify({ response: result.response ?? "" }));
         }
-        const data = await aiRes.json();
-        const text = data.result?.response ?? "";
-        return jsonResponse(JSON.stringify({ response: text }));
-      }
 
-      return new Response("AI not configured", { status: 503 });
+        if (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN) {
+          const aiRes = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${env.CF_AI_TOKEN}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ messages: aiMessages }),
+            }
+          );
+          if (!aiRes.ok) {
+            const errText = await aiRes.text().catch(() => "");
+            log("error", "ai_rest_failed", { ...reqCtx, status: aiRes.status, error: errText });
+            return jsonResponse(JSON.stringify({ error: `AI request failed (${aiRes.status})` }), { status: 502 });
+          }
+          const data = await aiRes.json();
+          const text = data.result?.response ?? "";
+          return jsonResponse(JSON.stringify({ response: text }));
+        }
+
+        return jsonResponse(JSON.stringify({ error: "AI not configured. Ensure the [ai] binding is set in wrangler.toml and redeploy." }), { status: 503 });
+      } catch (aiErr) {
+        log("error", "ai_chat_failed", { ...reqCtx, error: String(aiErr) });
+        return jsonResponse(JSON.stringify({ error: `The assistant encountered an error: ${String(aiErr)}` }), { status: 502 });
+      }
     }
 
     if (url.pathname === "/api/request-password-reset" && request.method === "POST") {
