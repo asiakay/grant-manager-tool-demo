@@ -59,6 +59,72 @@ function DeadlineCell({ value }: { value: string | number }) {
   return <DeadlineBadge value={value} />;
 }
 
+interface CardProps {
+  grant: Grant;
+  isCandidate: boolean;
+  isWatchlisted: boolean;
+  onRowClick: (g: Grant) => void;
+  onToggleCandidate: (name: string) => void;
+  onToggleWatchlist: (name: string) => void;
+}
+
+function GrantCard({ grant, isCandidate, isWatchlisted, onRowClick, onToggleCandidate, onToggleWatchlist }: CardProps) {
+  const name = String(grant.Name);
+  return (
+    <div
+      onClick={() => onRowClick(grant)}
+      className={`px-4 py-3.5 border-b border-gray-800/50 cursor-pointer transition-colors active:bg-gray-800/70 ${
+        isCandidate
+          ? "bg-brand-900/10 hover:bg-brand-900/20"
+          : isWatchlisted
+            ? "bg-blue-900/10 hover:bg-blue-900/20"
+            : "hover:bg-gray-800/40"
+      }`}
+    >
+      {/* Name + action buttons */}
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-white text-sm leading-snug line-clamp-2 flex-1 min-w-0">
+          {grant.Name}
+        </p>
+        <div className="flex items-center shrink-0 -mt-0.5 -mr-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            aria-label={isCandidate ? `Remove ${name} from candidates` : `Mark ${name} as candidate`}
+            aria-pressed={isCandidate}
+            onClick={() => onToggleCandidate(name)}
+            className={`p-2.5 rounded-xl transition-colors text-lg leading-none touch-manipulation ${isCandidate ? "text-brand-400" : "text-gray-600 hover:text-gray-300"}`}
+          >
+            <span aria-hidden="true">★</span>
+          </button>
+          <button
+            aria-label={isWatchlisted ? `Remove ${name} from watchlist` : `Add ${name} to watchlist`}
+            aria-pressed={isWatchlisted}
+            onClick={() => onToggleWatchlist(name)}
+            className={`p-2.5 rounded-xl transition-colors text-base leading-none touch-manipulation ${isWatchlisted ? "text-blue-400" : "text-gray-600 hover:text-gray-300"}`}
+          >
+            <span aria-hidden="true">👁</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Sponsor */}
+      {grant.Sponsor && (
+        <p className="text-gray-400 text-xs mt-1 truncate">{grant.Sponsor}</p>
+      )}
+
+      {/* Type + Deadline + Match score */}
+      <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+        {grant.Type && (
+          <span className="badge bg-gray-800 text-gray-300 text-xs whitespace-nowrap">{grant.Type}</span>
+        )}
+        <DeadlineBadge value={grant["Deadline/Next Cohort"]} />
+        <span className="ml-auto flex items-center gap-1 text-xs text-gray-400 shrink-0">
+          Match:&nbsp;<ScoreCell value={grant.score ?? grant["Weighted Score"] ?? 0} max={3} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function GrantTable({
   grants,
   filters,
@@ -246,85 +312,112 @@ export default function GrantTable({
     );
   }
 
+  const pagination = (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800 text-xs text-gray-500">
+      <span aria-live="polite" aria-atomic="true">
+        {filtered.length === grants.length
+          ? `${grants.length} grants`
+          : `${filtered.length} of ${grants.length} grants`}
+      </span>
+      {pageCount > 1 && (
+        <div className="flex items-center gap-2" role="navigation" aria-label="Pagination">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            aria-label="Previous page"
+            className="px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors touch-manipulation"
+          >
+            ‹ Prev
+          </button>
+          <span className="tabular-nums" aria-live="polite" aria-atomic="true">
+            {safePage} / {pageCount}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={safePage === pageCount}
+            aria-label="Next page"
+            className="px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors touch-manipulation"
+          >
+            Next ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-separate border-spacing-0" aria-label="Grant opportunities">
-        <thead>
-          {table.getHeaderGroups().map((hg) => (
-            <tr key={hg.id}>
-              {hg.headers.map((header) => {
-                const sorted = header.column.getIsSorted();
-                const ariaSort = sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : header.column.getCanSort() ? "none" : undefined;
-                return (
-                  <th
-                    key={header.id}
-                    style={{ width: header.getSize() }}
-                    aria-sort={ariaSort}
-                    className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {sorted === "asc" && <span aria-hidden="true"> ↑</span>}
-                      {sorted === "desc" && <span aria-hidden="true"> ↓</span>}
-                    </span>
-                  </th>
-                );
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {pageRows.map((row) => {
-            const name = String(row.original.Name);
-            const isCandidate = candidates.has(name);
-            const isWatchlisted = watchlist.has(name);
-            return (
-              <tr
-                key={row.id}
-                onClick={() => onRowClick(row.original)}
-                className={`cursor-pointer transition-colors border-b border-gray-800/50 hover:bg-gray-800/60 ${isCandidate ? "bg-brand-900/10" : isWatchlisted ? "bg-blue-900/10" : ""}`}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className={`px-3 py-2.5 align-middle max-w-xs ${(cell.column.columnDef.meta as { className?: string })?.className ?? ""}`}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="flex items-center justify-between px-3 py-2.5 border-t border-gray-800 text-xs text-gray-500">
-        <span aria-live="polite" aria-atomic="true">
-          {filtered.length === grants.length
-            ? `${grants.length} grants`
-            : `${filtered.length} of ${grants.length} grants`}
-        </span>
-        {pageCount > 1 && (
-          <div className="flex items-center gap-2" role="navigation" aria-label="Pagination">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage === 1}
-              aria-label="Previous page"
-              className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              ‹ Prev
-            </button>
-            <span className="tabular-nums" aria-live="polite" aria-atomic="true">
-              Page {safePage} of {pageCount}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={safePage === pageCount}
-              aria-label="Next page"
-              className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              Next ›
-            </button>
-          </div>
-        )}
+    <div>
+      {/* Mobile: card list */}
+      <div className="sm:hidden" role="list" aria-label="Grant opportunities">
+        {pageRows.map((row) => {
+          const name = String(row.original.Name);
+          return (
+            <div key={row.id} role="listitem">
+              <GrantCard
+                grant={row.original}
+                isCandidate={candidates.has(name)}
+                isWatchlisted={watchlist.has(name)}
+                onRowClick={onRowClick}
+                onToggleCandidate={onToggleCandidate}
+                onToggleWatchlist={onToggleWatchlist}
+              />
+            </div>
+          );
+        })}
       </div>
+
+      {/* Desktop: table */}
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-sm border-separate border-spacing-0" aria-label="Grant opportunities">
+          <thead>
+            {table.getHeaderGroups().map((hg) => (
+              <tr key={hg.id}>
+                {hg.headers.map((header) => {
+                  const sorted = header.column.getIsSorted();
+                  const ariaSort = sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : header.column.getCanSort() ? "none" : undefined;
+                  return (
+                    <th
+                      key={header.id}
+                      style={{ width: header.getSize() }}
+                      aria-sort={ariaSort}
+                      className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {sorted === "asc" && <span aria-hidden="true"> ↑</span>}
+                        {sorted === "desc" && <span aria-hidden="true"> ↓</span>}
+                      </span>
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {pageRows.map((row) => {
+              const name = String(row.original.Name);
+              const isCandidate = candidates.has(name);
+              const isWatchlisted = watchlist.has(name);
+              return (
+                <tr
+                  key={row.id}
+                  onClick={() => onRowClick(row.original)}
+                  className={`cursor-pointer transition-colors border-b border-gray-800/50 hover:bg-gray-800/60 ${isCandidate ? "bg-brand-900/10" : isWatchlisted ? "bg-blue-900/10" : ""}`}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className={`px-3 py-2.5 align-middle max-w-xs ${(cell.column.columnDef.meta as { className?: string })?.className ?? ""}`}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {pagination}
     </div>
   );
 }
