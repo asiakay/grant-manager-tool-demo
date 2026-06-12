@@ -47,16 +47,20 @@ export default function App() {
   }
 
   async function handleLoginSuccess() {
-    const [p, me] = await Promise.all([
-      fetchProfile().catch(() => null),
-      fetchMe(),
-      fetchCsrfToken(),
-    ]);
-    const hasWeights = p && p.weights && typeof p.weights === "object";
-    setProfile(p);
-    setUsername(me?.username ?? "");
-    setIsAdmin(me?.isAdmin ?? false);
-    setAuth(hasWeights ? "welcome" : "profile-setup");
+    try {
+      const [p, me] = await Promise.all([
+        fetchProfile().catch(() => null),
+        fetchMe(),
+        fetchCsrfToken(),
+      ]);
+      const hasWeights = p && p.weights && typeof p.weights === "object";
+      setProfile(p);
+      setUsername(me?.username ?? "");
+      setIsAdmin(me?.isAdmin ?? false);
+      setAuth(hasWeights ? "welcome" : "profile-setup");
+    } catch {
+      setAuth("unauthenticated");
+    }
   }
 
   async function handleProfileSave(p: UserProfile) {

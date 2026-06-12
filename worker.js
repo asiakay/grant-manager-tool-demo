@@ -345,10 +345,12 @@ async function resolveSession(env, cookie) {
 async function validateCsrf(request, env, username) {
   const token = request.headers.get("X-CSRF-Token");
   if (!token) return false;
-  const stored = env.USER_PROFILES
-    ? await env.USER_PROFILES.get(`csrf:${username}`)
-    : null;
-  return stored === token;
+  try {
+    const stored = env.USER_PROFILES
+      ? await env.USER_PROFILES.get(`csrf:${username}`)
+      : null;
+    return stored === token;
+  } catch { return false; }
 }
 
 async function checkRateLimit(kv, key) {
