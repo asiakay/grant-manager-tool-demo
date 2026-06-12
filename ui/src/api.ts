@@ -326,6 +326,34 @@ export async function liveSearch(q: string, page = 1, pageSize = 25): Promise<Pa
   return handleResponse<PagedGrants & { configured: boolean }>(res);
 }
 
+const FOCUS_AREA_QUERIES: Record<string, string> = {
+  "Health & Medicine":         "health medicine clinical",
+  "Education & Workforce":     "education workforce training",
+  "Technology & Innovation":   "technology innovation research",
+  "Housing & Community":       "affordable housing community development",
+  "Environment & Climate":     "climate environment clean energy",
+  "Agriculture & Food":        "agriculture food rural",
+  "Social Services":           "social services community welfare",
+  "Arts & Humanities":         "arts humanities culture",
+  "International Development": "international development global",
+  "Veterans & Military":       "veterans military service members",
+  "Research & Science":        "research science scientific",
+  "Justice & Safety":          "justice safety equity law",
+};
+
+export async function fetchLiveGrantsForDashboard(focusAreas: string[]): Promise<Grant[]> {
+  const query = focusAreas.length > 0
+    ? (FOCUS_AREA_QUERIES[focusAreas[0]] ?? focusAreas[0])
+    : "federal grants nonprofit";
+  try {
+    const res = await liveSearch(query, 1, 15);
+    if (!res.configured) return [];
+    return res.data.map((g) => ({ ...g, source: "live" as const }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchLiveSearchStatus(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/api/live-search-status`, { credentials: "include" });

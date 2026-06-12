@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Grant, FilterState } from "../types";
-import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile, fetchMe } from "../api";
+import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile, fetchMe, fetchLiveGrantsForDashboard } from "../api";
 import type { PagedGrants } from "../api";
 import LiveSearch from "./LiveSearch";
 import type { UserProfile } from "../api";
@@ -57,20 +57,31 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
   const [liveSearchOpen, setLiveSearchOpen] = useState(false);
+  const [liveGrantCount, setLiveGrantCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
+    const profilePromise = fetchProfile().then((p) => { setProfile(p); return p; }).catch(() => null);
+
     fetchGrants()
-      .then(({ data, total }: PagedGrants) => {
-        setGrants(data);
-        setGrantsTotal(total);
+      .then(async ({ data, total }: PagedGrants) => {
+        const dbNames = new Set(data.map((g) => String(g.Name).trim().toLowerCase()));
+        const p = await profilePromise;
+        const liveGrants = await fetchLiveGrantsForDashboard(p?.focusAreas ?? []);
+        const newLive = liveGrants.filter(
+          (g) => !dbNames.has(String(g.Name).trim().toLowerCase())
+        );
+        setLiveGrantCount(newLive.length);
+        const merged = [...data, ...newLive];
+        setGrants(merged);
+        setGrantsTotal(total + newLive.length);
         // Deep link: /?grant=<name> opens that grant's detail drawer
         const linked = new URLSearchParams(window.location.search).get("grant");
         if (linked) {
           const target = linked.trim().toLowerCase();
-          const g = data.find((x) => String(x.Name).trim().toLowerCase() === target);
+          const g = merged.find((x) => String(x.Name).trim().toLowerCase() === target);
           if (g) setSelectedGrant(g);
         }
       })
@@ -82,7 +93,6 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
         }
       })
       .finally(() => setLoading(false));
-    fetchProfile().then(setProfile).catch(() => {});
     fetchMe().then((me) => setIsAdmin(me?.isAdmin ?? false)).catch(() => {});
   }, [onLogout]);
 
@@ -171,7 +181,14 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
           <div className="min-w-0">
             <h1 className="text-base font-semibold text-white leading-tight">Grant Manager</h1>
             {!loading && (
-              <p className="text-gray-500 text-xs">{grantsTotal} programs loaded</p>
+              <p className="text-gray-500 text-xs flex items-center gap-1.5">
+                {grantsTotal} programs loaded
+                {liveGrantCount > 0 && (
+                  <span className="badge bg-green-900/40 text-green-400 border border-green-800/50 text-[10px] px-1.5 py-0.5">
+                    +{liveGrantCount} live
+                  </span>
+                )}
+              </p>
             )}
           </div>
         </div>
