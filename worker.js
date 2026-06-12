@@ -521,7 +521,7 @@ async function handleRequest(request, env, ctx) {
       }
 
       const form = await request.formData();
-      const newUser = (form.get("username") || "").trim();
+      const newUser = (form.get("username") || "").trim().toLowerCase();
       const newPass = form.get("password") || "";
       const confirmPass = form.get("confirm_password") || "";
 
@@ -573,7 +573,7 @@ async function handleRequest(request, env, ctx) {
 
     if (url.pathname === "/login" && request.method === "POST") {
       const form = await request.formData();
-      const user = form.get("username");
+      const user = (form.get("username") || "").trim().toLowerCase();
       const pass = form.get("password");
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
 
