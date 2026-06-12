@@ -229,7 +229,7 @@ export default function ChatPanel({ open, onClose, onGrantLink }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="AI Chat Assistant"
-        className={`fixed right-0 top-0 h-full w-full max-w-sm bg-gray-900 border-l border-gray-800 z-40 flex flex-col transition-transform duration-300 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed right-0 top-0 h-full w-full sm:max-w-sm bg-gray-900 sm:border-l border-gray-800 z-40 flex flex-col transition-transform duration-300 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-800">
