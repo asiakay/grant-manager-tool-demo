@@ -157,12 +157,23 @@ function normalizeHeader(h) {
 }
 
 // Aliases for column headers used in existing CSV exports that differ from DB column names.
+// normalizeHeader() strips whitespace but preserves slashes, dashes, parens, and ? so we
+// need explicit entries for headers like "Region / Eligibility" → "region/eligibility".
 const CSV_COLUMN_ALIASES = {
-  "grantname":   "name",
-  "easeofuse":   "ease",
-  "link":        "source_url",
-  "matchreq%":   "weighted_score",
-  "match%":      "weighted_score",
+  // Legacy export names
+  "grantname":                    "name",
+  "easeofuse":                    "ease",
+  "link":                         "source_url",
+  "matchreq%":                    "weighted_score",
+  "match%":                       "weighted_score",
+  // Standard CSV format with spaces/slashes/punctuation
+  "region/eligibility":           "region_eligibility",
+  "deadline/nextcohort":          "deadline",
+  "notes/actions":                "notes",
+  "eligibility(keyconditions)":   "eligibility_conditions",
+  "non-dilutive?":                "non_dilutive",
+  "stackrequired?":               "stack_required",
+  "weightedscore":                "weighted_score",
 };
 
 function resolveHeader(h) {
@@ -964,13 +975,22 @@ async function handleRequest(request, env, ctx) {
         }
       }
 
+      const BOOL_COLS = new Set(["non_dilutive", "stack_required"]);
+      function coerceBool(col, val) {
+        if (!BOOL_COLS.has(col)) return val;
+        const s = String(val ?? "").trim().toLowerCase();
+        if (s === "yes" || s === "true" || s === "1") return 1;
+        if (s === "no"  || s === "false" || s === "0") return 0;
+        return null;
+      }
+
       const insertCols = [...new Set(mapping.filter(Boolean))];
       const insertStmt = db.prepare(
         `INSERT INTO programs (${insertCols.join(",")})
          VALUES (${insertCols.map(() => "?").join(",")})`
       );
       const statements = [...byName.values()].map((r) =>
-        insertStmt.bind(...insertCols.map((c) => r[c] ?? ""))
+        insertStmt.bind(...insertCols.map((c) => coerceBool(c, r[c] ?? "")))
       );
       for (let i = 0; i < statements.length; i += 50) {
         await db.batch(statements.slice(i, i + 50));
