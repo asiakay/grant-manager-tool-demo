@@ -58,6 +58,8 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
   const [liveSearchOpen, setLiveSearchOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     fetchGrants()
@@ -163,10 +165,10 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       {/* Topbar */}
-      <header className="bg-gray-900 border-b border-gray-800 px-4 lg:px-6 py-3 flex items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-xl">💰</span>
-          <div>
+      <header className="bg-gray-900 border-b border-gray-800 px-4 lg:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xl shrink-0">💰</span>
+          <div className="min-w-0">
             <h1 className="text-base font-semibold text-white leading-tight">Grant Manager</h1>
             {!loading && (
               <p className="text-gray-500 text-xs">{grantsTotal} programs loaded</p>
@@ -174,7 +176,8 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Desktop-only action buttons */}
           {onBackToProfile && (
             <button
               onClick={onBackToProfile}
@@ -192,7 +195,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
           {isAdmin && onGoToAdmin && (
             <button
               onClick={onGoToAdmin}
-              className="btn-outline gap-1.5 border-amber-700 text-amber-300 hover:bg-amber-900/30"
+              className="btn-outline gap-1.5 hidden sm:flex border-amber-700 text-amber-300 hover:bg-amber-900/30"
               aria-label="Admin panel"
             >
               <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -226,9 +229,78 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
             Live Search
           </button>
 
+          {/* Mobile overflow menu */}
+          <div className="relative sm:hidden">
+            <button
+              onClick={() => setMobileMenuOpen((o) => !o)}
+              className="btn-ghost px-2.5"
+              aria-label="More options"
+              aria-expanded={mobileMenuOpen}
+              aria-haspopup="menu"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </button>
+
+            {mobileMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setMobileMenuOpen(false)} />
+                <div role="menu" className="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                  {onBackToProfile && (
+                    <button
+                      role="menuitem"
+                      onClick={() => { onBackToProfile(); setMobileMenuOpen(false); }}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                    >
+                      <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      {profile ? "My Profile" : "Set profile"}
+                      {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400 ml-auto shrink-0" />}
+                    </button>
+                  )}
+                  {isAdmin && onGoToAdmin && (
+                    <button
+                      role="menuitem"
+                      onClick={() => { onGoToAdmin(); setMobileMenuOpen(false); }}
+                      className="w-full text-left px-4 py-3 text-sm text-amber-300 hover:bg-gray-700 flex items-center gap-3 transition-colors border-t border-gray-700/50"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Admin Panel
+                    </button>
+                  )}
+                  <button
+                    role="menuitem"
+                    onClick={() => { handleExport(); setMobileMenuOpen(false); }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors border-t border-gray-700/50"
+                  >
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export CSV
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => { setLiveSearchOpen((o) => !o); setMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-700 flex items-center gap-3 transition-colors border-t border-gray-700/50 ${liveSearchOpen ? "text-green-300" : "text-gray-200"}`}
+                  >
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    {liveSearchOpen ? "Hide Live Search" : "Live Search"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <button
             onClick={() => setChatOpen(true)}
             className="btn-primary gap-1.5"
+            aria-label="Open AI chat"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -288,16 +360,29 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
                     </span>
                   )}
                 </h2>
-                {activeFilterCount > 0 && (
+                <div className="flex items-center gap-2">
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => setFilters(INITIAL_FILTERS)}
+                      className="text-xs text-gray-400 hover:text-white transition-colors"
+                    >
+                      Clear all
+                    </button>
+                  )}
                   <button
-                    onClick={() => setFilters(INITIAL_FILTERS)}
-                    className="text-xs text-gray-400 hover:text-white transition-colors"
+                    onClick={() => setFiltersOpen((o) => !o)}
+                    className="sm:hidden p-1 text-gray-400 hover:text-white transition-colors touch-manipulation"
+                    aria-expanded={filtersOpen}
+                    aria-label={filtersOpen ? "Hide filters" : "Show filters"}
                   >
-                    Clear all
+                    <svg className={`w-4 h-4 transition-transform duration-200 ${filtersOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </button>
-                )}
+                </div>
               </div>
 
+              <div className={`${filtersOpen ? "block" : "hidden"} sm:block space-y-3`}>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div className="col-span-2 sm:col-span-3 lg:col-span-1">
                   <label htmlFor="filter-search" className="sr-only">Search by name or sponsor</label>
@@ -379,6 +464,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
                   </button>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Live Search */}

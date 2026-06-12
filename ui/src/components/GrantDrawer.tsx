@@ -108,10 +108,15 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
         aria-modal="true"
         aria-labelledby="drawer-title"
         aria-label={grant ? `Grant details: ${grant.Name}` : "Grant details"}
-        className={`fixed right-0 top-0 h-full w-full max-w-xl bg-gray-900 border-l border-gray-800 z-50 flex flex-col transition-transform duration-300 ease-out ${grant ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed z-50 bg-gray-900 border-gray-800 flex flex-col transition-transform duration-300 ease-out bottom-0 left-0 right-0 h-[90vh] rounded-t-2xl border-t sm:bottom-auto sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:w-full sm:max-w-xl sm:rounded-none sm:border-t-0 sm:border-l ${grant ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}`}
       >
         {grant && (
           <>
+            {/* Drag handle (mobile only) */}
+            <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0" aria-hidden="true">
+              <div className="w-10 h-1 bg-gray-600 rounded-full" />
+            </div>
+
             {/* Header */}
             <div className="flex items-start justify-between p-5 border-b border-gray-800">
               <div className="flex-1 min-w-0 pr-4">
