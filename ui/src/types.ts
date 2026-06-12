@@ -17,6 +17,7 @@ export interface Grant {
   "Weighted Score": number | string;
   "Notes/Actions": string;
   score?: number;
+  source?: "live" | "db";
   [key: string]: string | number | undefined;
 }
 

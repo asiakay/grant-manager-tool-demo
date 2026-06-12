@@ -83,8 +83,11 @@ function GrantCard({ grant, isCandidate, isWatchlisted, onRowClick, onToggleCand
     >
       {/* Name + action buttons */}
       <div className="flex items-start justify-between gap-2">
-        <p className="font-medium text-white text-sm leading-snug line-clamp-2 flex-1 min-w-0">
+        <p className="font-medium text-white text-sm leading-snug line-clamp-2 flex-1 min-w-0 flex items-start gap-1.5 flex-wrap">
           {grant.Name}
+          {grant.source === "live" && (
+            <span className="badge bg-green-900/40 text-green-400 border border-green-800/50 text-[10px] px-1.5 py-0.5 shrink-0 mt-0.5">live</span>
+          )}
         </p>
         <div className="flex items-center shrink-0 -mt-0.5 -mr-1" onClick={(e) => e.stopPropagation()}>
           <button
@@ -173,8 +176,11 @@ export default function GrantTable({
       columnHelper.accessor("Name", {
         header: "Name",
         cell: (info) => (
-          <span className="font-medium text-white text-sm line-clamp-2 leading-snug">
+          <span className="font-medium text-white text-sm line-clamp-2 leading-snug flex items-start gap-1.5 flex-wrap">
             {info.getValue()}
+            {info.row.original.source === "live" && (
+              <span className="badge bg-green-900/40 text-green-400 border border-green-800/50 text-[10px] px-1.5 py-0.5 shrink-0 mt-0.5">live</span>
+            )}
           </span>
         ),
         size: 200,
