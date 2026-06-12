@@ -116,7 +116,12 @@ export async function sendChat(
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || "Chat request failed");
+    let msg = text || "Chat request failed";
+    try {
+      const data = JSON.parse(text);
+      if (data.error) msg = data.error;
+    } catch { /* not JSON, use raw text */ }
+    throw new Error(msg);
   }
 
   const contentType = res.headers.get("content-type") || "";
