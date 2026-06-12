@@ -118,7 +118,7 @@ export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) 
             type="button"
             disabled={loading}
             onClick={handleTryDemo}
-            className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-600 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium py-2.5 transition-colors disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 rounded-lg border-2 border-green-500 bg-transparent hover:bg-green-500/10 text-green-400 text-sm font-medium py-2.5 transition-colors disabled:opacity-50"
           >
             Try the demo
           </button>
