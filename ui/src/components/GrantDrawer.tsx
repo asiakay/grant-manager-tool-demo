@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Grant } from "../types";
+import type { UserProfile } from "../api";
 import { updateNotes } from "../api";
+import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
 
 interface Props {
   grant: Grant | null;
@@ -10,6 +12,7 @@ interface Props {
   candidates: Set<string>;
   onToggleWatchlist: (name: string) => void;
   onToggleCandidate: (name: string) => void;
+  profile?: UserProfile | null;
 }
 
 const COLUMNS: (keyof Grant)[] = [
@@ -36,7 +39,19 @@ interface RankingRationale {
   caveats: string[];
 }
 
-function buildRankingRationale(grant: Grant): RankingRationale {
+function grantText(grant: Grant): string {
+  return [
+    grant.Name,
+    grant.Sponsor,
+    grant.Benefits,
+    grant["Eligibility (key conditions)"],
+    grant["Region/Eligibility"],
+    grant.Type,
+    grant["Notes/Actions"],
+  ].join(" ").toLowerCase();
+}
+
+function buildRankingRationale(grant: Grant, profile?: UserProfile | null): RankingRationale {
   const score = grant.score ?? parseFloat(String(grant["Weighted Score"]));
   const relevance = parseFloat(String(grant.Relevance));
   const fit = parseFloat(String(grant.Fit));
@@ -45,31 +60,84 @@ function buildRankingRationale(grant: Grant): RankingRationale {
   const deadline = String(grant["Deadline/Next Cohort"] || "");
   const nonDilutive = String(grant["Non-dilutive?"] || "").toLowerCase();
 
-  let headline = "This grant was ranked based on its match to your profile and funding quality.";
-  if (!isNaN(score)) {
-    if (score >= 7) headline = "Strong match — this grant aligns well with your focus areas and quality criteria.";
-    else if (score >= 4) headline = "Moderate match — this grant meets several of your criteria but may not be a perfect fit.";
-    else headline = "Lower match — this grant may not align closely with your current profile or priorities.";
-  }
-
   const strengths: string[] = [];
   const caveats: string[] = [];
 
-  if (!isNaN(relevance)) {
-    if (relevance >= 2) strengths.push("Highly relevant funding opportunity");
-    else if (relevance < 1) caveats.push("Relevance to your focus area is limited");
+  const hasProfile = profile && (
+    (Array.isArray(profile.focusAreas) && profile.focusAreas.length > 0) ||
+    profile.orgType || profile.stage
+  );
+
+  let headline = "This grant was ranked based on funding quality scores.";
+
+  if (hasProfile) {
+    if (!isNaN(score)) {
+      if (score >= 7) headline = "Strong match — this grant aligns closely with your profile and priorities.";
+      else if (score >= 4) headline = "Moderate match — this grant meets several of your criteria.";
+      else headline = "Lower match — this grant has limited alignment with your current profile.";
+    }
+
+    const text = grantText(grant);
+
+    // Focus area matches — name the specific areas that hit
+    const focusAreas = Array.isArray(profile!.focusAreas) ? profile!.focusAreas : [];
+    const matchedAreas: string[] = [];
+    const missedAreas: string[] = [];
+    for (const area of focusAreas) {
+      const kws = FOCUS_AREA_KEYWORDS[area] || [];
+      if (kws.some((kw) => text.includes(kw))) matchedAreas.push(area);
+      else missedAreas.push(area);
+    }
+    if (matchedAreas.length > 0) {
+      strengths.push(`Matches your ${matchedAreas.join(" and ")} focus area${matchedAreas.length > 1 ? "s" : ""}`);
+    }
+    if (missedAreas.length > 0 && matchedAreas.length === 0) {
+      caveats.push(`No clear match for your ${missedAreas.join(" or ")} focus area${missedAreas.length > 1 ? "s" : ""}`);
+    }
+
+    // Org type match
+    if (profile!.orgType) {
+      const orgKws = ORG_TYPE_KEYWORDS[profile!.orgType] || [];
+      if (orgKws.some((kw) => text.includes(kw))) {
+        strengths.push(`Mentions ${profile!.orgType} eligibility`);
+      } else {
+        caveats.push(`No explicit mention of ${profile!.orgType} eligibility — verify requirements`);
+      }
+    }
+
+    // Stage match
+    if (profile!.stage) {
+      const stageKws = STAGE_KEYWORDS[profile!.stage] || [];
+      if (stageKws.some((kw) => text.includes(kw))) {
+        strengths.push(`Aligned with your ${profile!.stage} stage`);
+      } else {
+        caveats.push(`Grant text doesn't clearly reference your ${profile!.stage} stage`);
+      }
+    }
+  } else {
+    // No profile — explain using raw score values
+    if (!isNaN(score)) {
+      if (score >= 2) headline = "Strong quality scores across relevance, fit, and ease.";
+      else if (score >= 1) headline = "Moderate quality scores — set a profile for a personalised ranking.";
+      else headline = "Lower quality scores — consider setting a profile for better matches.";
+    }
+    if (!isNaN(relevance)) {
+      if (relevance >= 2) strengths.push(`High relevance score (${relevance.toFixed(1)}/3)`);
+      else if (relevance < 1) caveats.push(`Low relevance score (${relevance.toFixed(1)}/3)`);
+    }
+    if (!isNaN(fit)) {
+      if (fit >= 2) strengths.push(`Broad eligibility (Fit: ${fit.toFixed(1)}/3)`);
+      else if (fit < 1) caveats.push(`Narrow eligibility (Fit: ${fit.toFixed(1)}/3)`);
+    }
   }
 
-  if (!isNaN(fit)) {
-    if (fit >= 2) strengths.push("Broadly applicable across org types");
-    else if (fit < 1) caveats.push("Eligibility criteria may be restrictive for your org type");
-  }
-
+  // Ease — shown regardless of profile
   if (!isNaN(ease)) {
     if (ease >= 2) strengths.push("Straightforward application process");
-    else if (ease < 1) caveats.push("Application process may be complex or time-intensive");
+    else if (ease < 1) caveats.push(`Application may be complex (Ease: ${ease.toFixed(1)}/3)`);
   }
 
+  // Deadline / cadence
   if (cadence.includes("rolling")) {
     strengths.push("Rolling deadline — apply anytime");
   } else if (deadline) {
@@ -81,6 +149,7 @@ function buildRankingRationale(grant: Grant): RankingRationale {
     }
   }
 
+  // Non-dilutive
   if (nonDilutive === "yes" || nonDilutive === "true") {
     strengths.push("Non-dilutive funding (no equity required)");
   }
@@ -105,7 +174,7 @@ function ScoreBadge({ value }: { value: string | number }) {
   );
 }
 
-export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate }: Props) {
+export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate, profile }: Props) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -240,7 +309,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
 
               {/* Ranking Rationale */}
               {(() => {
-                const { headline, strengths, caveats } = buildRankingRationale(grant);
+                const { headline, strengths, caveats } = buildRankingRationale(grant, profile);
                 return (
                   <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
                     <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Why This Ranking</p>
