@@ -30,6 +30,64 @@ const COLUMNS: (keyof Grant)[] = [
   "Weighted Score",
 ];
 
+interface RankingRationale {
+  headline: string;
+  strengths: string[];
+  caveats: string[];
+}
+
+function buildRankingRationale(grant: Grant): RankingRationale {
+  const score = grant.score ?? parseFloat(String(grant["Weighted Score"]));
+  const relevance = parseFloat(String(grant.Relevance));
+  const fit = parseFloat(String(grant.Fit));
+  const ease = parseFloat(String(grant.Ease));
+  const cadence = String(grant.Cadence || "").toLowerCase();
+  const deadline = String(grant["Deadline/Next Cohort"] || "");
+  const nonDilutive = String(grant["Non-dilutive?"] || "").toLowerCase();
+
+  let headline = "This grant was ranked based on its match to your profile and funding quality.";
+  if (!isNaN(score)) {
+    if (score >= 7) headline = "Strong match — this grant aligns well with your focus areas and quality criteria.";
+    else if (score >= 4) headline = "Moderate match — this grant meets several of your criteria but may not be a perfect fit.";
+    else headline = "Lower match — this grant may not align closely with your current profile or priorities.";
+  }
+
+  const strengths: string[] = [];
+  const caveats: string[] = [];
+
+  if (!isNaN(relevance)) {
+    if (relevance >= 2) strengths.push("Highly relevant funding opportunity");
+    else if (relevance < 1) caveats.push("Relevance to your focus area is limited");
+  }
+
+  if (!isNaN(fit)) {
+    if (fit >= 2) strengths.push("Broadly applicable across org types");
+    else if (fit < 1) caveats.push("Eligibility criteria may be restrictive for your org type");
+  }
+
+  if (!isNaN(ease)) {
+    if (ease >= 2) strengths.push("Straightforward application process");
+    else if (ease < 1) caveats.push("Application process may be complex or time-intensive");
+  }
+
+  if (cadence.includes("rolling")) {
+    strengths.push("Rolling deadline — apply anytime");
+  } else if (deadline) {
+    const d = new Date(deadline);
+    if (!isNaN(d.getTime())) {
+      const daysUntil = (d.getTime() - Date.now()) / 86400000;
+      if (daysUntil > 0 && daysUntil <= 60) strengths.push("Deadline approaching soon — act quickly");
+      else if (daysUntil < 0) caveats.push("Deadline has passed — check for future cycles");
+    }
+  }
+
+  if (nonDilutive === "yes" || nonDilutive === "true") {
+    strengths.push("Non-dilutive funding (no equity required)");
+  }
+
+  return { headline, strengths, caveats };
+}
+
 function ScoreBadge({ value }: { value: string | number }) {
   const n = parseFloat(String(value));
   if (isNaN(n)) return <span className="text-gray-400" aria-label="No score">—</span>;
@@ -179,6 +237,33 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   </a>
                 </div>
               )}
+
+              {/* Ranking Rationale */}
+              {(() => {
+                const { headline, strengths, caveats } = buildRankingRationale(grant);
+                return (
+                  <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
+                    <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Why This Ranking</p>
+                    <p className="text-gray-300 text-sm">{headline}</p>
+                    {(strengths.length > 0 || caveats.length > 0) && (
+                      <ul className="space-y-1 pt-1">
+                        {strengths.map((s) => (
+                          <li key={s} className="flex items-start gap-2 text-sm text-green-300">
+                            <span aria-hidden="true" className="mt-0.5 shrink-0">✓</span>
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                        {caveats.map((c) => (
+                          <li key={c} className="flex items-start gap-2 text-sm text-yellow-300">
+                            <span aria-hidden="true" className="mt-0.5 shrink-0">⚠</span>
+                            <span>{c}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Fields grid */}
               <div className="grid grid-cols-2 gap-3">
