@@ -44,20 +44,16 @@ jobs:
         # avoids that error but creates undeployed versions that the live worker
         # never sees — so secrets were silently never applied.
         run: |
-          # Build secrets JSON; conditionally include optional keys
-          python3 - <<'PYEOF'
-          import json, os, sys
-          secrets = {
-            "CF_ACCOUNT_ID": os.environ["CLOUDFLARE_ACCOUNT_ID"],
-            "CF_AI_TOKEN":   os.environ["CLOUDFLARE_API_TOKEN"],
-          }
-          key = os.environ.get("SIMPLER_GRANTS_API_KEY", "")
-          if key:
-            secrets["SIMPLER_GRANTS_API_KEY"] = key
-          else:
-            print("SIMPLER_GRANTS_API_KEY repo secret not set — skipping (live search stays disabled)", file=sys.stderr)
-          print(json.dumps(secrets))
-          PYEOF | npx wrangler secret bulk
+          SECRETS=$(jq -n \
+            --arg account_id "$CLOUDFLARE_ACCOUNT_ID" \
+            --arg ai_token "$CLOUDFLARE_API_TOKEN" \
+            '{"CF_ACCOUNT_ID": $account_id, "CF_AI_TOKEN": $ai_token}')
+          if [ -n "$SIMPLER_GRANTS_API_KEY" ]; then
+            SECRETS=$(echo "$SECRETS" | jq --arg key "$SIMPLER_GRANTS_API_KEY" '. + {"SIMPLER_GRANTS_API_KEY": $key}')
+          else
+            echo "SIMPLER_GRANTS_API_KEY repo secret not set — skipping (live search stays disabled)" >&2
+          fi
+          echo "$SECRETS" | npx wrangler secret bulk
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
