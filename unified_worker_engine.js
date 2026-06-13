@@ -289,10 +289,18 @@ function computeScore(r, weights, profile) {
        + wn.StackAlignment * (stack * 3)
        + wn.CadenceRecency * (cadence * 3);
 
-  // Profile match bonus: up to +1.5 added on top of the 0-3 base score.
-  // Grants matching the user's focus areas, org type, and stage rank higher.
   const profileMatch = profile ? computeProfileMatch(r, profile) : 0;
-  return baseScore + profileMatch * 1.5;
+  const hasProfile = profile && (
+    (Array.isArray(profile.focusAreas) && profile.focusAreas.length) ||
+    profile.orgType || profile.stage
+  );
+
+  if (hasProfile) {
+    // Profile match (0–1) scaled to 0–10; base score (0–3) as tiebreaker scaled to 0–1.
+    return profileMatch * 10 + (baseScore / 3);
+  }
+  // No profile — scale 0–3 base score to 0–10 for consistent display.
+  return baseScore * (10 / 3);
 }
 
 const SESSION_TTL = 86400; // 24 hours in seconds
