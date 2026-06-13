@@ -312,7 +312,8 @@ function computeScore(r, weights, profile) {
     return Math.round((profileMatch * 10 + dbScore / 3) * 100) / 100;
   }
 
-  // No profile — rank purely by DB quality scores
+  // No profile — rank purely by DB quality scores (0–3), scaled to 0–10 to match the
+  // profile branch so ScoreCell and GrantDrawer thresholds are consistent.
   const w = weights || DEFAULT_WEIGHTS;
   const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
   return Math.round((
@@ -321,7 +322,7 @@ function computeScore(r, weights, profile) {
   + ((w.Ease           ?? 0) / total) * ease
   + ((w.StackAlignment ?? 0) / total) * (stack * 3)
   + ((w.CadenceRecency ?? 0) / total) * (cadence * 3)
-  ) * 100) / 100;
+  ) * (10 / 3) * 100) / 100;
 }
 
 // Computes heuristic Relevance, Fit, and Ease scores (0–3 each) for live search
