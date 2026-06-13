@@ -3,6 +3,7 @@ import type { Grant } from "../types";
 import type { UserProfile } from "../api";
 import { updateNotes } from "../api";
 import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
+import EligibilitySimulator from "./EligibilitySimulator";
 
 interface Props {
   grant: Grant | null;
@@ -13,6 +14,7 @@ interface Props {
   onToggleWatchlist: (name: string) => void;
   onToggleCandidate: (name: string) => void;
   profile?: UserProfile | null;
+  username?: string;
 }
 
 const COLUMNS: (keyof Grant)[] = [
@@ -186,7 +188,7 @@ function ScoreBadge({ value }: { value: string | number }) {
   );
 }
 
-export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate, profile }: Props) {
+export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate, profile, username }: Props) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -345,6 +347,15 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   </div>
                 );
               })()}
+
+              {/* Eligibility Simulator */}
+              {profile && (
+                <EligibilitySimulator
+                  grant={grant}
+                  profile={profile}
+                  username={username ?? "guest"}
+                />
+              )}
 
               {/* Fields grid */}
               <div className="grid grid-cols-2 gap-3">
