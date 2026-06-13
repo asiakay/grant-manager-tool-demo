@@ -113,6 +113,19 @@ function getAdminUsers(env) {
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
 }
 
+async function isAdminUser(env, username) {
+  if (getAdminUsers(env).has(username)) return true;
+  if (env.GRANT_MANAGER_DB) {
+    try {
+      const row = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT is_admin FROM users WHERE username = ?"
+      ).bind(username).first();
+      return row?.is_admin === 1;
+    } catch { return false; }
+  }
+  return false;
+}
+
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_UPLOAD_ROWS = 2000;
 
@@ -312,7 +325,8 @@ function computeScore(r, weights, profile) {
     return Math.round((profileMatch * 10 + dbScore / 3) * 100) / 100;
   }
 
-  // No profile — rank purely by DB quality scores
+  // No profile — rank purely by DB quality scores (0–3), scaled to 0–10 to match the
+  // profile branch so ScoreCell and GrantDrawer thresholds are consistent.
   const w = weights || DEFAULT_WEIGHTS;
   const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
   return Math.round((
@@ -321,7 +335,7 @@ function computeScore(r, weights, profile) {
   + ((w.Ease           ?? 0) / total) * ease
   + ((w.StackAlignment ?? 0) / total) * (stack * 3)
   + ((w.CadenceRecency ?? 0) / total) * (cadence * 3)
-  ) * 100) / 100;
+  ) * (10 / 3) * 100) / 100;
 }
 
 // Computes heuristic Relevance, Fit, and Ease scores (0–3 each) for live search
@@ -601,11 +615,11 @@ async function handleRequest(request, env, ctx) {
       const newPass = form.get("password") || "";
       const confirmPass = form.get("confirm_password") || "";
 
-      if (!newUser || newUser.length < 3 || newUser.length > 32) {
-        return jsonResponse(JSON.stringify({ error: "Username must be 3–32 characters." }), { status: 400 });
+      if (!newUser || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newUser)) {
+        return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
       }
-      if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
-        return jsonResponse(JSON.stringify({ error: "Username may only contain letters, numbers, and underscores." }), { status: 400 });
+      if (newUser.length > 254) {
+        return jsonResponse(JSON.stringify({ error: "Email address is too long." }), { status: 400 });
       }
       if (!newPass || newPass.length < MIN_PASSWORD_LENGTH) {
         return jsonResponse(JSON.stringify({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }), { status: 400 });
@@ -629,21 +643,21 @@ async function handleRequest(request, env, ctx) {
       }
 
       if (existing || users[newUser]) {
-        log("info", "signup_username_taken", { requestId, username: newUser });
-        return jsonResponse(JSON.stringify({ error: "Username is already taken." }), { status: 409 });
+        log("info", "signup_email_taken", { requestId });
+        return jsonResponse(JSON.stringify({ error: "An account with that email already exists." }), { status: 409 });
       }
 
       const hash = await hashPassword(newPass);
       try {
         await env.GRANT_MANAGER_DB.prepare(
-          "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
-        ).bind(newUser, hash, Date.now()).run();
+          "INSERT INTO users (username, password_hash, email, created_at) VALUES (?, ?, ?, ?)"
+        ).bind(newUser, hash, newUser, Date.now()).run();
       } catch (err) {
         log("error", "signup_db_insert_failed", { requestId, error: String(err) });
         return jsonResponse(JSON.stringify({ error: "Could not create account. Please try again." }), { status: 503 });
       }
 
-      log("info", "signup_success", { requestId, username: newUser });
+      log("info", "signup_success", { requestId });
       return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
     }
 
@@ -901,7 +915,48 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
 
     if (url.pathname === "/api/me") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      return jsonResponse(JSON.stringify({ username, isAdmin: getAdminUsers(env).has(username) }));
+      return jsonResponse(JSON.stringify({ username, isAdmin: await isAdminUser(env, username) }));
+    }
+
+    if (url.pathname === "/api/admin/users" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+      const { results } = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT username, is_admin FROM users ORDER BY created_at ASC"
+      ).all();
+      // Merge in env-var admins that may not be in D1 (legacy bootstrap accounts)
+      const envAdmins = getAdminUsers(env);
+      const rows = results.map((r) => ({ email: r.username, isAdmin: r.is_admin === 1 || envAdmins.has(r.username) }));
+      return jsonResponse(JSON.stringify(rows));
+    }
+
+    if (url.pathname === "/api/admin/set-admin" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+      const body = await request.json().catch(() => ({}));
+      const targetEmail = String(body.email || "").trim().toLowerCase();
+      const makeAdmin = body.isAdmin === true;
+      if (!targetEmail) {
+        return jsonResponse(JSON.stringify({ error: "email is required." }), { status: 400 });
+      }
+      // Prevent removing your own admin access
+      if (targetEmail === username && !makeAdmin) {
+        return jsonResponse(JSON.stringify({ error: "You cannot remove your own admin access." }), { status: 400 });
+      }
+      const target = await env.GRANT_MANAGER_DB.prepare(
+        "SELECT username FROM users WHERE username = ?"
+      ).bind(targetEmail).first();
+      if (!target) {
+        return jsonResponse(JSON.stringify({ error: "No account found with that email." }), { status: 404 });
+      }
+      await env.GRANT_MANAGER_DB.prepare(
+        "UPDATE users SET is_admin = ? WHERE username = ?"
+      ).bind(makeAdmin ? 1 : 0, targetEmail).run();
+      log("info", "admin_set", { requestId, by: username, target: targetEmail, isAdmin: makeAdmin });
+      return jsonResponse(JSON.stringify({ ok: true }));
     }
 
     if (url.pathname === "/api/csrf" && request.method === "GET") {
@@ -1054,7 +1109,7 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
 
     if (url.pathname === "/api/admin/upload-csv" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      if (!getAdminUsers(env).has(username)) {
+      if (!(await isAdminUser(env, username))) {
         log("warn", "admin_upload_forbidden", reqCtx);
         return new Response("Forbidden", { status: 403 });
       }
@@ -1158,7 +1213,7 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
 
     if (url.pathname === "/api/admin/score-grants" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
-      if (!getAdminUsers(env).has(username)) return new Response("Forbidden", { status: 403 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
       if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
       if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
 
@@ -1414,40 +1469,77 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
         if (blocked) return new Response("Too many requests. Try again later.", { status: 429 });
       }
       const body = await request.json().catch(() => ({}));
-      const resetUser = String(body.username || "").trim();
-      if (!resetUser) {
-        return jsonResponse(JSON.stringify({ error: "Username is required." }), { status: 400 });
+      const resetEmail = String(body.email || "").trim().toLowerCase();
+      if (!resetEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(resetEmail)) {
+        return jsonResponse(JSON.stringify({ error: "A valid email address is required." }), { status: 400 });
       }
-      // Check if user exists in D1 or env users
-      let userExists = !!users[resetUser];
-      if (!userExists && env.GRANT_MANAGER_DB) {
+      // Email IS the username — look up directly
+      let resetUsername = null;
+      if (env.GRANT_MANAGER_DB) {
         try {
           const row = await env.GRANT_MANAGER_DB.prepare(
             "SELECT username FROM users WHERE username = ?"
-          ).bind(resetUser).first();
-          userExists = !!row;
+          ).bind(resetEmail).first();
+          if (row) resetUsername = row.username;
         } catch { /* ignore */ }
       }
-      if (!userExists) {
-        // Don't reveal whether the username exists
+      if (!resetUsername) {
         return jsonResponse(JSON.stringify({
           ok: true,
-          message: "If that account exists, a reset token has been generated.",
+          message: "If an account with that email exists, a reset token has been sent.",
         }));
       }
       const resetToken = crypto.randomUUID();
       if (env.LOGIN_ATTEMPTS) {
         await env.LOGIN_ATTEMPTS.put(
           `reset:${resetToken}`,
-          JSON.stringify({ username: resetUser, expiresAt: Date.now() + 3_600_000 }),
+          JSON.stringify({ username: resetUsername, expiresAt: Date.now() + 3_600_000 }),
           { expirationTtl: 3600 }
         );
       }
-      log("info", "password_reset_requested", { requestId, username: resetUser });
+      log("info", "password_reset_requested", { requestId, username: resetUsername });
+      // Send reset token by email if Resend is configured
+      if (env.RESEND_API_KEY) {
+        try {
+          const emailRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "onboarding@resend.dev",
+              to: resetEmail,
+              subject: "Reset your Grant Manager password",
+              text: [
+                "You requested a password reset for your Grant Manager account.",
+                "",
+                `Your reset token is: ${resetToken}`,
+                "",
+                "Enter this token on the reset password page along with your new password.",
+                "This token expires in 1 hour.",
+                "",
+                "If you didn't request this, you can safely ignore this email.",
+              ].join("\n"),
+            }),
+          });
+          if (!emailRes.ok) {
+            const errText = await emailRes.text();
+            console.error("Resend error:", emailRes.status, errText);
+          }
+        } catch (err) {
+          console.error("Resend fetch failed:", err);
+        }
+        return jsonResponse(JSON.stringify({
+          ok: true,
+          message: "If an account with that email exists, a reset token has been sent. Check your inbox.",
+        }));
+      }
+      // Dev fallback: return token directly when Resend is not configured
       return jsonResponse(JSON.stringify({
         ok: true,
         token: resetToken,
-        message: "Reset token generated. In production this would be delivered via email.",
+        message: "Reset token generated (email not configured — token shown for development).",
       }));
     }
 

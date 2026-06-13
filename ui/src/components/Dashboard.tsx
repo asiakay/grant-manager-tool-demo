@@ -59,6 +59,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [liveSearchOpen, setLiveSearchOpen] = useState(false);
   const [liveGrantCount, setLiveGrantCount] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [username, setUsername] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -93,7 +94,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
         }
       })
       .finally(() => setLoading(false));
-    fetchMe().then((me) => setIsAdmin(me?.isAdmin ?? false)).catch(() => {});
+    fetchMe().then((me) => { setIsAdmin(me?.isAdmin ?? false); setUsername(me?.username ?? ""); }).catch(() => {});
   }, [onLogout]);
 
 
@@ -523,6 +524,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
         onToggleWatchlist={toggleWatchlist}
         onToggleCandidate={toggleCandidate}
         profile={profile}
+        username={username}
       />
 
       {/* Chat panel */}

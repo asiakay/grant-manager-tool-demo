@@ -121,7 +121,7 @@ function GrantCard({ grant, isCandidate, isWatchlisted, onRowClick, onToggleCand
         )}
         <DeadlineBadge value={grant["Deadline/Next Cohort"]} />
         <span className="ml-auto flex items-center gap-1 text-xs text-gray-400 shrink-0">
-          Match:&nbsp;<ScoreCell value={grant.score ?? grant["Weighted Score"] ?? 0} max={3} />
+          Match:&nbsp;<ScoreCell value={grant.score ?? grant["Weighted Score"] ?? 0} max={10} />
         </span>
       </div>
     </div>
@@ -232,25 +232,25 @@ export default function GrantTable({
       }),
       columnHelper.accessor("Relevance", {
         header: "Rel",
-        cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
         size: 55,
         meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("Fit", {
         header: "Fit",
-        cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
         size: 50,
         meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("Ease", {
         header: "Ease",
-        cell: (info) => <ScoreCell value={info.getValue()} max={3} />,
+        cell: (info) => <ScoreCell value={info.getValue()} max={10} />,
         size: 55,
         meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("score", {
         header: "Match ★",
-        cell: (info) => <ScoreCell value={info.getValue() ?? 0} max={3} />,
+        cell: (info) => <ScoreCell value={info.getValue() ?? 0} max={10} />,
         size: 65,
         sortingFn: (a, b) => {
           const sa = parseFloat(String(a.original.score ?? "0"));
