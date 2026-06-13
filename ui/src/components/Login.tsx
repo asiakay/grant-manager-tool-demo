@@ -3,11 +3,12 @@ import { login } from "../api";
 
 interface Props {
   onSuccess: () => void;
+  onDemoSuccess: () => void;
   onSignUp: () => void;
   onForgotPassword: () => void;
 }
 
-export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) {
+export default function Login({ onSuccess, onDemoSuccess, onSignUp, onForgotPassword }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -32,7 +33,7 @@ export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) 
     setLoading(true);
     try {
       await login("demo", "demo");
-      onSuccess();
+      onDemoSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Demo login failed");
     } finally {
@@ -118,15 +119,11 @@ export default function Login({ onSuccess, onSignUp, onForgotPassword }: Props) 
             type="button"
             disabled={loading}
             onClick={handleTryDemo}
-            className="w-full flex items-center justify-center gap-2 rounded-lg border-2 border-green-500 bg-transparent hover:bg-green-500/10 text-green-400 text-sm font-medium py-2.5 transition-colors disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2.5 transition-colors disabled:opacity-50"
           >
             Try the demo
           </button>
         </form>
-
-        <p className="text-center text-gray-600 text-xs mt-3">
-          Demo account: <span className="font-mono text-gray-500">demo</span> / <span className="font-mono text-gray-500">demo</span>
-        </p>
 
         <p className="text-center text-gray-500 text-sm mt-4">
           Don't have an account?{" "}

@@ -63,6 +63,19 @@ export default function App() {
     }
   }
 
+  async function handleDemoLoginSuccess() {
+    try {
+      const me = await fetchMe();
+      await fetchCsrfToken();
+      setProfile(null);
+      setUsername(me?.username ?? "");
+      setIsAdmin(me?.isAdmin ?? false);
+      setAuth("profile-setup");
+    } catch {
+      setAuth("unauthenticated");
+    }
+  }
+
   async function handleProfileSave(p: UserProfile) {
     setProfileSaving(true);
     try {
@@ -122,6 +135,7 @@ export default function App() {
     return (
       <Login
         onSuccess={handleLoginSuccess}
+        onDemoSuccess={handleDemoLoginSuccess}
         onSignUp={() => setAuth("signup")}
         onForgotPassword={() => setAuth("forgot-password")}
       />
