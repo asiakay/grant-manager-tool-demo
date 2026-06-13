@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function Signup({ onSuccess, onBackToLogin }: Props) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -36,8 +36,8 @@ export default function Signup({ onSuccess, onBackToLogin }: Props) {
     setError("");
     setLoading(true);
     try {
-      await signup(username, password, confirmPassword);
-      onSuccess(username, password);
+      await signup(email, password, confirmPassword);
+      onSuccess(email, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-up failed");
     } finally {
@@ -62,18 +62,15 @@ export default function Signup({ onSuccess, onBackToLogin }: Props) {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Username</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
             <input
               className="input"
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              minLength={3}
-              maxLength={32}
-              pattern="[a-zA-Z0-9_]+"
-              title="Letters, numbers, and underscores only"
+              placeholder="you@example.com"
             />
           </div>
 
