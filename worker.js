@@ -324,6 +324,71 @@ function computeScore(r, weights, profile) {
   ) * 100) / 100;
 }
 
+// Computes heuristic Relevance, Fit, and Ease scores (0–3 each) for live search
+// results that have no AI-generated scores. Uses profile keywords and deadline data.
+function computeLiveHeuristicScores(grant, profile) {
+  const text = [
+    grant.Name || "",
+    grant.Sponsor || "",
+    grant.Benefits || "",
+    grant["Eligibility (key conditions)"] || "",
+    grant.Type || "",
+  ].join(" ").toLowerCase();
+
+  // Relevance: keyword match against user focus areas (0–3)
+  let relevance = 1.5; // neutral default when no profile
+  if (profile && Array.isArray(profile.focusAreas) && profile.focusAreas.length) {
+    let areaHits = 0;
+    for (const fa of profile.focusAreas) {
+      const kws = FOCUS_AREA_KEYWORDS[fa] || [];
+      if (kws.some(kw => text.includes(kw))) areaHits++;
+    }
+    relevance = Math.min(3, (areaHits / profile.focusAreas.length) * 3);
+  }
+
+  // Fit: org type + stage keyword match (0–3)
+  let fit = 1.5; // neutral default
+  if (profile && (profile.orgType || profile.stage)) {
+    let fitHits = 0, fitChecks = 0;
+    const orgKws = ORG_TYPE_KEYWORDS[profile.orgType] || [];
+    if (orgKws.length) {
+      fitChecks++;
+      if (orgKws.some(kw => text.includes(kw))) fitHits++;
+    }
+    const stageKws = STAGE_KEYWORDS[profile.stage] || [];
+    if (stageKws.length) {
+      fitChecks++;
+      if (stageKws.some(kw => text.includes(kw))) fitHits++;
+    }
+    if (fitChecks > 0) fit = (fitHits / fitChecks) * 3;
+  }
+
+  // Ease: based on deadline proximity (farther deadline = more time = easier to apply)
+  let ease = 1.5;
+  const deadlineRaw = grant["Deadline/Next Cohort"] || grant["Deadline / Next Cohort"] || "";
+  const cadence = String(grant.Cadence || "").toLowerCase();
+  if (cadence.includes("rolling")) {
+    ease = 3;
+  } else if (deadlineRaw) {
+    const dl = new Date(deadlineRaw);
+    if (!isNaN(dl.getTime())) {
+      const daysUntil = (dl.getTime() - Date.now()) / 86400000;
+      if (daysUntil < 0)       ease = 0;
+      else if (daysUntil < 14) ease = 0.5;
+      else if (daysUntil < 30) ease = 1;
+      else if (daysUntil < 60) ease = 1.5;
+      else if (daysUntil < 90) ease = 2;
+      else                     ease = 2.5;
+    }
+  }
+
+  return {
+    Relevance: Math.round(relevance * 100) / 100,
+    Fit:       Math.round(fit       * 100) / 100,
+    Ease:      Math.round(ease      * 100) / 100,
+  };
+}
+
 const SESSION_TTL = 86400; // 24 hours in seconds
 
 function jsonResponse(body, init = {}) {
@@ -848,6 +913,17 @@ async function handleRequest(request, env, ctx) {
           "Weighted Score": 0,
           "Notes/Actions": "",
         };
+        const heuristic = computeLiveHeuristicScores(grant, lsProfile);
+        grant.Relevance = heuristic.Relevance;
+        grant.Fit       = heuristic.Fit;
+        grant.Ease      = heuristic.Ease;
+        const w = lsWeights || DEFAULT_WEIGHTS;
+        const wTotal = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+        grant["Weighted Score"] = Math.round((
+          ((w.Relevance ?? 0) / wTotal) * grant.Relevance
+        + ((w.Fit       ?? 0) / wTotal) * grant.Fit
+        + ((w.Ease      ?? 0) / wTotal) * grant.Ease
+        ) * 100) / 100;
         return { ...grant, score: Math.round(computeScore(grant, lsWeights, lsProfile) * 100) / 100 };
       });
 
