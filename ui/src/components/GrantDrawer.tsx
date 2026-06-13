@@ -79,27 +79,38 @@ function buildRankingRationale(grant: Grant, profile?: UserProfile | null): Rank
 
     const text = grantText(grant);
 
-    // Focus area matches — name the specific areas that hit
+    // Focus area matches — require ≥2 keyword hits to avoid false positives from
+    // generic words like "community" appearing in unrelated grant text.
     const focusAreas = Array.isArray(profile!.focusAreas) ? profile!.focusAreas : [];
     const matchedAreas: string[] = [];
     const missedAreas: string[] = [];
     for (const area of focusAreas) {
       const kws = FOCUS_AREA_KEYWORDS[area] || [];
-      if (kws.some((kw) => text.includes(kw))) matchedAreas.push(area);
-      else missedAreas.push(area);
+      const hits = kws.filter((kw) => text.includes(kw));
+      if (hits.length >= 2) {
+        matchedAreas.push(`${area} (via: ${hits.slice(0, 3).join(", ")})`);
+      } else if (hits.length === 1) {
+        // Weak single-keyword hit — surface as a caveat so user can verify
+        caveats.push(`Weak signal for ${area} — only one keyword matched (${hits[0]})`);
+      } else {
+        missedAreas.push(area);
+      }
     }
     if (matchedAreas.length > 0) {
-      strengths.push(`Matches your ${matchedAreas.join(" and ")} focus area${matchedAreas.length > 1 ? "s" : ""}`);
+      for (const area of matchedAreas) {
+        strengths.push(`Matches your ${area} focus area`);
+      }
     }
     if (missedAreas.length > 0 && matchedAreas.length === 0) {
       caveats.push(`No clear match for your ${missedAreas.join(" or ")} focus area${missedAreas.length > 1 ? "s" : ""}`);
     }
 
-    // Org type match
+    // Org type match — single keyword hit is acceptable here since org-type keywords are more specific
     if (profile!.orgType) {
       const orgKws = ORG_TYPE_KEYWORDS[profile!.orgType] || [];
-      if (orgKws.some((kw) => text.includes(kw))) {
-        strengths.push(`Mentions ${profile!.orgType} eligibility`);
+      const hits = orgKws.filter((kw) => text.includes(kw));
+      if (hits.length > 0) {
+        strengths.push(`Mentions ${profile!.orgType} eligibility (via: ${hits[0]})`);
       } else {
         caveats.push(`No explicit mention of ${profile!.orgType} eligibility — verify requirements`);
       }
@@ -108,8 +119,9 @@ function buildRankingRationale(grant: Grant, profile?: UserProfile | null): Rank
     // Stage match
     if (profile!.stage) {
       const stageKws = STAGE_KEYWORDS[profile!.stage] || [];
-      if (stageKws.some((kw) => text.includes(kw))) {
-        strengths.push(`Aligned with your ${profile!.stage} stage`);
+      const hits = stageKws.filter((kw) => text.includes(kw));
+      if (hits.length > 0) {
+        strengths.push(`Aligned with your ${profile!.stage} stage (via: ${hits[0]})`);
       } else {
         caveats.push(`Grant text doesn't clearly reference your ${profile!.stage} stage`);
       }
