@@ -149,8 +149,8 @@ export default function GrantTable({
     return grants.filter((g) => {
       const name = String(g.Name);
       if (filters.savedOnly && !candidates.has(name) && !watchlist.has(name)) return false;
-      if (filters.type && g.Type !== filters.type) return false;
-      if (filters.stage && g.Stage !== filters.stage) return false;
+      if (filters.type && String(g.Type || "").toLowerCase() !== filters.type.toLowerCase()) return false;
+      if (filters.stage && String(g.Stage || "").toLowerCase() !== filters.stage.toLowerCase()) return false;
       if (filters.minScore) {
         const score = parseFloat(String(g.score ?? g["Weighted Score"] ?? "0"));
         if (score < parseFloat(filters.minScore)) return false;

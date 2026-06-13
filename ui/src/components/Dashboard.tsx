@@ -157,8 +157,9 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
     );
   }, []);
 
-  const types = [...new Set(grants.map((g) => g.Type).filter(Boolean))].sort();
-  const stages = [...new Set(grants.map((g) => g.Stage).filter(Boolean))].sort();
+  const toTitle = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  const types  = [...new Set(grants.map((g) => g.Type  ? toTitle(String(g.Type))  : "").filter(Boolean))].sort();
+  const stages = [...new Set(grants.map((g) => g.Stage ? toTitle(String(g.Stage)) : "").filter(Boolean))].sort();
 
   const activeFilterCount = Object.entries(filters).filter(
     ([, v]) => v !== "" && v !== false
