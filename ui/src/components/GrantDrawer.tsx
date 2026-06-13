@@ -122,7 +122,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
               <div className="flex-1 min-w-0 pr-4">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <span className="badge bg-gray-800 text-gray-300 text-xs">{grant.Type || "—"}</span>
-                  <ScoreBadge value={grant["Weighted Score"]} />
+                  <ScoreBadge value={grant.score ?? grant["Weighted Score"]} />
                 </div>
                 <h2 id="drawer-title" className="text-lg font-semibold text-white leading-snug">{grant.Name}</h2>
                 <p className="text-gray-400 text-sm">{grant.Sponsor}</p>
@@ -189,7 +189,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   >
                     <p className="text-gray-500 text-xs font-medium mb-1">{col as string}</p>
                     {isScoreCol(col) ? (
-                      <ScoreBadge value={grant[col] ?? ""} />
+                      <ScoreBadge value={col === "Weighted Score" ? (grant.score ?? grant["Weighted Score"]) : (grant[col] ?? "")} />
                     ) : (
                       <p className="text-gray-200 text-sm leading-snug">
                         {String(grant[col] || "—")}
