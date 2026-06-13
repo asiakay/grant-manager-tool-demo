@@ -521,6 +521,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
         candidates={candidates}
         onToggleWatchlist={toggleWatchlist}
         onToggleCandidate={toggleCandidate}
+        profile={profile}
       />
 
       {/* Chat panel */}

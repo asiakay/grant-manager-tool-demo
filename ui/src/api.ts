@@ -189,6 +189,7 @@ export interface UserProfile {
   focusAreas: string[];
   orgType: string;
   stage: string;
+  mission?: string;
   // Step 2: scoring weights
   weights: {
     Relevance: number;
@@ -221,6 +222,24 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
     body: JSON.stringify(profile),
   });
   if (!res.ok) throw new Error("Failed to save profile");
+}
+
+export interface MissionAnalysis {
+  focusAreas: string[];
+  orgType: string;
+  stage: string;
+  rationale: string;
+}
+
+export async function analyzeMission(mission: string): Promise<MissionAnalysis> {
+  const res = await fetch(`${BASE}/api/profile/analyze-mission`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ mission }),
+  });
+  if (!res.ok) throw new Error("Analysis failed");
+  return res.json();
 }
 
 export interface MeInfo {

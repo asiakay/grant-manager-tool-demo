@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Grant } from "../types";
+import type { UserProfile } from "../api";
 import { updateNotes } from "../api";
+import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
 
 interface Props {
   grant: Grant | null;
@@ -10,6 +12,7 @@ interface Props {
   candidates: Set<string>;
   onToggleWatchlist: (name: string) => void;
   onToggleCandidate: (name: string) => void;
+  profile?: UserProfile | null;
 }
 
 const COLUMNS: (keyof Grant)[] = [
@@ -30,6 +33,142 @@ const COLUMNS: (keyof Grant)[] = [
   "Weighted Score",
 ];
 
+interface RankingRationale {
+  headline: string;
+  strengths: string[];
+  caveats: string[];
+}
+
+function grantText(grant: Grant): string {
+  return [
+    grant.Name,
+    grant.Sponsor,
+    grant.Benefits,
+    grant["Eligibility (key conditions)"],
+    grant["Region/Eligibility"],
+    grant.Type,
+    grant["Notes/Actions"],
+  ].join(" ").toLowerCase();
+}
+
+function buildRankingRationale(grant: Grant, profile?: UserProfile | null): RankingRationale {
+  const score = grant.score ?? parseFloat(String(grant["Weighted Score"]));
+  const relevance = parseFloat(String(grant.Relevance));
+  const fit = parseFloat(String(grant.Fit));
+  const ease = parseFloat(String(grant.Ease));
+  const cadence = String(grant.Cadence || "").toLowerCase();
+  const deadline = String(grant["Deadline/Next Cohort"] || "");
+  const nonDilutive = String(grant["Non-dilutive?"] || "").toLowerCase();
+
+  const strengths: string[] = [];
+  const caveats: string[] = [];
+
+  const hasProfile = profile && (
+    (Array.isArray(profile.focusAreas) && profile.focusAreas.length > 0) ||
+    profile.orgType || profile.stage
+  );
+
+  let headline = "This grant was ranked based on funding quality scores.";
+
+  if (hasProfile) {
+    if (!isNaN(score)) {
+      if (score >= 7) headline = "Strong match — this grant aligns closely with your profile and priorities.";
+      else if (score >= 4) headline = "Moderate match — this grant meets several of your criteria.";
+      else headline = "Lower match — this grant has limited alignment with your current profile.";
+    }
+
+    const text = grantText(grant);
+
+    // Focus area matches — require ≥2 keyword hits to avoid false positives from
+    // generic words like "community" appearing in unrelated grant text.
+    const focusAreas = Array.isArray(profile!.focusAreas) ? profile!.focusAreas : [];
+    const matchedAreas: string[] = [];
+    const missedAreas: string[] = [];
+    for (const area of focusAreas) {
+      const kws = FOCUS_AREA_KEYWORDS[area] || [];
+      const hits = kws.filter((kw) => text.includes(kw));
+      if (hits.length >= 2) {
+        matchedAreas.push(`${area} (via: ${hits.slice(0, 3).join(", ")})`);
+      } else if (hits.length === 1) {
+        // Weak single-keyword hit — surface as a caveat so user can verify
+        caveats.push(`Weak signal for ${area} — only one keyword matched (${hits[0]})`);
+      } else {
+        missedAreas.push(area);
+      }
+    }
+    if (matchedAreas.length > 0) {
+      for (const area of matchedAreas) {
+        strengths.push(`Matches your ${area} focus area`);
+      }
+    }
+    if (missedAreas.length > 0 && matchedAreas.length === 0) {
+      caveats.push(`No clear match for your ${missedAreas.join(" or ")} focus area${missedAreas.length > 1 ? "s" : ""}`);
+    }
+
+    // Org type match — single keyword hit is acceptable here since org-type keywords are more specific
+    if (profile!.orgType) {
+      const orgKws = ORG_TYPE_KEYWORDS[profile!.orgType] || [];
+      const hits = orgKws.filter((kw) => text.includes(kw));
+      if (hits.length > 0) {
+        strengths.push(`Mentions ${profile!.orgType} eligibility (via: ${hits[0]})`);
+      } else {
+        caveats.push(`No explicit mention of ${profile!.orgType} eligibility — verify requirements`);
+      }
+    }
+
+    // Stage match
+    if (profile!.stage) {
+      const stageKws = STAGE_KEYWORDS[profile!.stage] || [];
+      const hits = stageKws.filter((kw) => text.includes(kw));
+      if (hits.length > 0) {
+        strengths.push(`Aligned with your ${profile!.stage} stage (via: ${hits[0]})`);
+      } else {
+        caveats.push(`Grant text doesn't clearly reference your ${profile!.stage} stage`);
+      }
+    }
+  } else {
+    // No profile — explain using raw score values
+    if (!isNaN(score)) {
+      if (score >= 2) headline = "Strong quality scores across relevance, fit, and ease.";
+      else if (score >= 1) headline = "Moderate quality scores — set a profile for a personalised ranking.";
+      else headline = "Lower quality scores — consider setting a profile for better matches.";
+    }
+    if (!isNaN(relevance)) {
+      if (relevance >= 2) strengths.push(`High relevance score (${relevance.toFixed(1)}/3)`);
+      else if (relevance < 1) caveats.push(`Low relevance score (${relevance.toFixed(1)}/3)`);
+    }
+    if (!isNaN(fit)) {
+      if (fit >= 2) strengths.push(`Broad eligibility (Fit: ${fit.toFixed(1)}/3)`);
+      else if (fit < 1) caveats.push(`Narrow eligibility (Fit: ${fit.toFixed(1)}/3)`);
+    }
+  }
+
+  // Ease — shown regardless of profile
+  if (!isNaN(ease)) {
+    if (ease >= 2) strengths.push("Straightforward application process");
+    else if (ease < 1) caveats.push(`Application may be complex (Ease: ${ease.toFixed(1)}/3)`);
+  }
+
+  // Deadline / cadence
+  if (cadence.includes("rolling")) {
+    strengths.push("Rolling deadline — apply anytime");
+  } else if (deadline) {
+    const d = new Date(deadline);
+    if (!isNaN(d.getTime())) {
+      const daysUntil = (d.getTime() - Date.now()) / 86400000;
+      if (daysUntil > 0 && daysUntil <= 60) strengths.push("Deadline approaching soon — act quickly");
+      else if (daysUntil < 0) caveats.push("Deadline has passed — check for future cycles");
+    }
+  }
+
+  // Non-dilutive
+  if (nonDilutive === "yes" || nonDilutive === "true") {
+    strengths.push("Non-dilutive funding (no equity required)");
+  }
+
+  return { headline, strengths, caveats };
+}
+
 function ScoreBadge({ value }: { value: string | number }) {
   const n = parseFloat(String(value));
   if (isNaN(n)) return <span className="text-gray-400" aria-label="No score">—</span>;
@@ -47,7 +186,7 @@ function ScoreBadge({ value }: { value: string | number }) {
   );
 }
 
-export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate }: Props) {
+export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate, profile }: Props) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -179,6 +318,33 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   </a>
                 </div>
               )}
+
+              {/* Ranking Rationale */}
+              {(() => {
+                const { headline, strengths, caveats } = buildRankingRationale(grant, profile);
+                return (
+                  <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
+                    <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Why This Ranking</p>
+                    <p className="text-gray-300 text-sm">{headline}</p>
+                    {(strengths.length > 0 || caveats.length > 0) && (
+                      <ul className="space-y-1 pt-1">
+                        {strengths.map((s) => (
+                          <li key={s} className="flex items-start gap-2 text-sm text-green-300">
+                            <span aria-hidden="true" className="mt-0.5 shrink-0">✓</span>
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                        {caveats.map((c) => (
+                          <li key={c} className="flex items-start gap-2 text-sm text-yellow-300">
+                            <span aria-hidden="true" className="mt-0.5 shrink-0">⚠</span>
+                            <span>{c}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Fields grid */}
               <div className="grid grid-cols-2 gap-3">

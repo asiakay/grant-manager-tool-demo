@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { UserProfile } from "../api";
-import { DEFAULT_WEIGHTS } from "../api";
+import type { UserProfile, MissionAnalysis } from "../api";
+import { DEFAULT_WEIGHTS, analyzeMission } from "../api";
 
 // ── Step 1 data ────────────────────────────────────────────────────────────
 
@@ -34,6 +34,23 @@ const STAGES = [
   { value: "growth",      label: "Growth / Scaling" },
   { value: "established", label: "Established Program" },
 ];
+
+// Maps full AI-returned labels → short form values used by the app
+const ORG_TYPE_LABEL_TO_VALUE: Record<string, string> = {
+  "Nonprofit/NGO":                   "nonprofit",
+  "University/Research Institution": "university",
+  "Startup/Small Business":          "startup",
+  "Government/Tribal":               "government",
+  "Individual Researcher":           "individual",
+  "Hospital/Health System":          "hospital",
+};
+
+const STAGE_LABEL_TO_VALUE: Record<string, string> = {
+  "Early Research / Ideation": "research",
+  "Pilot / Proof of Concept":  "pilot",
+  "Growth / Scaling":          "growth",
+  "Established Program":       "established",
+};
 
 // ── Step 2 data ────────────────────────────────────────────────────────────
 
@@ -88,6 +105,12 @@ interface Props {
 export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props) {
   const [step, setStep] = useState<1 | 2>(1);
 
+  // Mission analysis state
+  const [mission, setMission]           = useState(initial?.mission ?? "");
+  const [analyzing, setAnalyzing]       = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+  const [rationale, setRationale]       = useState("");
+
   // Step 1 state
   const [focusAreas, setFocusAreas] = useState<string[]>(initial?.focusAreas ?? []);
   const [orgType, setOrgType]       = useState(initial?.orgType ?? "");
@@ -112,12 +135,30 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     setSliders(prev => ({ ...prev, [key]: value }));
   }
 
+  async function handleAnalyze() {
+    if (mission.trim().length < 20) return;
+    setAnalyzing(true);
+    setAnalyzeError("");
+    setRationale("");
+    try {
+      const result: MissionAnalysis = await analyzeMission(mission);
+      if (result.focusAreas?.length) setFocusAreas(result.focusAreas);
+      if (result.orgType) setOrgType(ORG_TYPE_LABEL_TO_VALUE[result.orgType] ?? "");
+      if (result.stage)   setStage(STAGE_LABEL_TO_VALUE[result.stage] ?? "");
+      if (result.rationale) setRationale(result.rationale);
+    } catch {
+      setAnalyzeError("Analysis failed — please fill in your profile manually.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   const step1Valid = focusAreas.length > 0 && orgType && stage;
   const totalPct   = Object.values(sliders).reduce((a, b) => a + b, 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ focusAreas, orgType, stage, weights: normalize(sliders) });
+    onSave({ focusAreas, orgType, stage, mission: mission.trim() || undefined, weights: normalize(sliders) });
   }
 
   // ── Step indicator ──────────────────────────────────────────────────────
@@ -155,6 +196,45 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
           <StepIndicator />
 
           <div className="card space-y-6">
+            {/* Mission statement analyzer */}
+            <div className="border border-gray-700 rounded-lg p-4 space-y-3 bg-gray-800/30">
+              <div>
+                <label htmlFor="mission-input" className="block text-sm font-semibold text-white mb-1">
+                  Generate from mission statement
+                  <span className="ml-2 text-xs font-normal text-gray-400">optional</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-2">Paste your org's mission and we'll suggest matching focus areas, org type, and stage.</p>
+                <textarea
+                  id="mission-input"
+                  className="input resize-none h-24 leading-relaxed text-sm"
+                  value={mission}
+                  onChange={(e) => setMission(e.target.value)}
+                  placeholder="e.g. We are a nonprofit that advances health equity through community-based clinical research and workforce training…"
+                />
+              </div>
+              {analyzeError && <p className="text-red-400 text-xs">{analyzeError}</p>}
+              {rationale && (
+                <p className="text-xs text-brand-300 bg-brand-900/20 border border-brand-800 rounded px-3 py-2">
+                  {rationale} — Review the suggestions below and adjust as needed.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleAnalyze}
+                disabled={analyzing || mission.trim().length < 20}
+                className="btn-outline text-sm py-1.5 px-4 flex items-center gap-2"
+              >
+                {analyzing ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-gray-400/30 border-t-gray-300 rounded-full animate-spin" />
+                    Analyzing…
+                  </>
+                ) : (
+                  "Analyze mission →"
+                )}
+              </button>
+            </div>
+
             {/* Focus areas */}
             <div>
               <label className="block text-sm font-semibold text-white mb-3">
