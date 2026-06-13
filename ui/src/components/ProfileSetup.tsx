@@ -1,6 +1,7 @@
 import { useState } from "react";
-import type { UserProfile, MissionAnalysis } from "../api";
-import { DEFAULT_WEIGHTS, analyzeMission } from "../api";
+import type { UserProfile } from "../api";
+import { DEFAULT_WEIGHTS } from "../api";
+import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
 
 // ── Step 1 data ────────────────────────────────────────────────────────────
 
@@ -107,7 +108,6 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
   // Mission analysis state
   const [mission, setMission]           = useState(initial?.mission ?? "");
-  const [analyzing, setAnalyzing]       = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [rationale, setRationale]       = useState("");
 
@@ -135,22 +135,51 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     setSliders(prev => ({ ...prev, [key]: value }));
   }
 
-  async function handleAnalyze() {
-    if (mission.trim().length < 20) return;
-    setAnalyzing(true);
+  function handleAnalyze() {
+    const text = mission.trim().toLowerCase();
+    if (text.length < 20) return;
     setAnalyzeError("");
     setRationale("");
-    try {
-      const result: MissionAnalysis = await analyzeMission(mission);
-      if (result.focusAreas?.length) setFocusAreas(result.focusAreas);
-      if (result.orgType) setOrgType(ORG_TYPE_LABEL_TO_VALUE[result.orgType] ?? "");
-      if (result.stage)   setStage(STAGE_LABEL_TO_VALUE[result.stage] ?? "");
-      if (result.rationale) setRationale(result.rationale);
-    } catch {
-      setAnalyzeError("Analysis failed — please fill in your profile manually.");
-    } finally {
-      setAnalyzing(false);
+
+    // Score each focus area by counting keyword hits in the mission text
+    const areaScores = Object.entries(FOCUS_AREA_KEYWORDS).map(([area, kws]) => {
+      const hits = kws.filter((kw) => text.includes(kw));
+      return { area, hits };
+    }).filter(({ hits }) => hits.length > 0)
+      .sort((a, b) => b.hits.length - a.hits.length);
+
+    const suggestedAreas = areaScores.slice(0, 3).map(({ area }) => area);
+
+    // Best org type — most keyword hits
+    const orgScores = Object.entries(ORG_TYPE_KEYWORDS).map(([label, kws]) => ({
+      label,
+      value: ORG_TYPE_LABEL_TO_VALUE[label] ?? "",
+      hits: kws.filter((kw) => text.includes(kw)).length,
+    })).sort((a, b) => b.hits - a.hits);
+    const suggestedOrg = orgScores[0]?.hits > 0 ? orgScores[0].value : "";
+
+    // Best stage — most keyword hits
+    const stageScores = Object.entries(STAGE_KEYWORDS).map(([label, kws]) => ({
+      label,
+      value: STAGE_LABEL_TO_VALUE[label] ?? "",
+      hits: kws.filter((kw) => text.includes(kw)).length,
+    })).sort((a, b) => b.hits - a.hits);
+    const suggestedStage = stageScores[0]?.hits > 0 ? stageScores[0].value : "";
+
+    if (suggestedAreas.length === 0 && !suggestedOrg && !suggestedStage) {
+      setAnalyzeError("No strong keyword matches found — try expanding your mission text or fill in manually.");
+      return;
     }
+
+    if (suggestedAreas.length) setFocusAreas(suggestedAreas);
+    if (suggestedOrg)          setOrgType(suggestedOrg);
+    if (suggestedStage)        setStage(suggestedStage);
+
+    // Build a rationale showing what matched
+    const topHits = areaScores.slice(0, 3).map(({ area, hits }) =>
+      `${area} (${hits.slice(0, 3).join(", ")})`
+    );
+    setRationale(`Matched: ${topHits.join("; ")}. Review the suggestions below and adjust as needed.`);
   }
 
   const step1Valid = focusAreas.length > 0 && orgType && stage;
@@ -221,17 +250,10 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
               <button
                 type="button"
                 onClick={handleAnalyze}
-                disabled={analyzing || mission.trim().length < 20}
-                className="btn-outline text-sm py-1.5 px-4 flex items-center gap-2"
+                disabled={mission.trim().length < 20}
+                className="btn-outline text-sm py-1.5 px-4"
               >
-                {analyzing ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-gray-400/30 border-t-gray-300 rounded-full animate-spin" />
-                    Analyzing…
-                  </>
-                ) : (
-                  "Analyze mission →"
-                )}
+                Analyze mission →
               </button>
             </div>
 
