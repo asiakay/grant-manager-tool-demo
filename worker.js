@@ -755,6 +755,85 @@ async function handleRequest(request, env, ctx) {
       }
     }
 
+    if (url.pathname === "/api/profile/analyze-mission" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.AI && !(env.CF_ACCOUNT_ID && env.CF_AI_TOKEN)) {
+        return new Response("AI not configured", { status: 503 });
+      }
+      const { mission } = await request.json();
+      if (!mission || typeof mission !== "string" || mission.trim().length < 20) {
+        return new Response(JSON.stringify({ error: "Mission text too short" }), { status: 400 });
+      }
+
+      const FOCUS_AREA_OPTIONS = [
+        "Health & Medicine","Education & Workforce","Technology & Innovation",
+        "Housing & Community","Environment & Climate","Agriculture & Food",
+        "Social Services","Arts & Humanities","International Development",
+        "Veterans & Military","Research & Science","Justice & Safety",
+      ];
+      const ORG_TYPE_OPTIONS = [
+        "Nonprofit/NGO","University/Research Institution","Startup/Small Business",
+        "Government/Tribal","Individual Researcher","Hospital/Health System",
+      ];
+      const STAGE_OPTIONS = [
+        "Early Research / Ideation","Pilot / Proof of Concept",
+        "Growth / Scaling","Established Program",
+      ];
+
+      const prompt = `You are a grant-matching assistant. Analyze this organization's mission statement and classify it.
+
+Mission statement:
+"""
+${mission.trim().slice(0, 2000)}
+"""
+
+Return ONLY a JSON object with these exact keys:
+- "focusAreas": array of 1-3 strings chosen ONLY from: ${JSON.stringify(FOCUS_AREA_OPTIONS)}
+- "orgType": one string chosen ONLY from: ${JSON.stringify(ORG_TYPE_OPTIONS)}
+- "stage": one string chosen ONLY from: ${JSON.stringify(STAGE_OPTIONS)}
+- "rationale": one sentence explaining your choices
+
+Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Nonprofit/NGO","stage":"Growth / Scaling","rationale":"The mission focuses on clinical health research delivered by an established nonprofit."}`;
+
+      const messages = [{ role: "user", content: prompt }];
+      let text = "";
+      try {
+        if (env.AI) {
+          const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
+          text = result.response || "";
+        } else {
+          const res = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+            { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
+          );
+          const data = await res.json();
+          text = data.result?.response ?? "";
+        }
+      } catch (err) {
+        log("error", "mission_analysis_ai_error", { ...reqCtx, err: String(err) });
+        return new Response(JSON.stringify({ error: "AI call failed" }), { status: 502 });
+      }
+
+      const jsonMatch = text.match(/\{[\s\S]*?\}/);
+      if (!jsonMatch) return new Response(JSON.stringify({ error: "Could not parse AI response" }), { status: 502 });
+
+      let parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch {
+        return new Response(JSON.stringify({ error: "Invalid AI JSON" }), { status: 502 });
+      }
+
+      // Validate and sanitize — only allow values from the known option lists
+      const focusAreas = (Array.isArray(parsed.focusAreas) ? parsed.focusAreas : [])
+        .filter(v => FOCUS_AREA_OPTIONS.includes(v)).slice(0, 3);
+      const orgType = ORG_TYPE_OPTIONS.includes(parsed.orgType) ? parsed.orgType : "";
+      const stage = STAGE_OPTIONS.includes(parsed.stage) ? parsed.stage : "";
+      const rationale = typeof parsed.rationale === "string" ? parsed.rationale.slice(0, 300) : "";
+
+      log("info", "mission_analyzed", reqCtx);
+      return jsonResponse(JSON.stringify({ focusAreas, orgType, stage, rationale }));
+    }
+
     if (url.pathname === "/api/ai-status") {
       const hasBinding = !!env.AI;
       const hasRestApi = !!(env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
