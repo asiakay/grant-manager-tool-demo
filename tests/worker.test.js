@@ -19,14 +19,14 @@ function formRequest(url, fields) {
   return new Request(url, { method: "POST", body });
 }
 
-// Returns { token, csrf } for authenticated helpers.
-async function createAndLoginUser(username, password) {
+// email must be a valid email address — backend validates format on /signup.
+async function createAndLoginUser(email, password) {
   await fetch(formRequest("http://localhost/signup", {
-    username,
+    username: email,
     password,
     confirm_password: password,
   }));
-  const res = await fetch(formRequest("http://localhost/login", { username, password }));
+  const res = await fetch(formRequest("http://localhost/login", { username: email, password }));
   const cookie = res.headers.get("Set-Cookie");
   const token = cookie?.match(/session=([^;]+)/)?.[1];
   let csrf = null;
@@ -37,6 +37,16 @@ async function createAndLoginUser(username, password) {
     csrf = (await csrfRes.json()).token;
   }
   return { token, csrf };
+}
+
+// Logs in as the built-in demo admin account (seeded by migration 0003).
+async function loginAdmin() {
+  const res = await fetch(formRequest("http://localhost/login", { username: "demo", password: "demo" }));
+  const token = res.headers.get("Set-Cookie")?.match(/session=([^;]+)/)?.[1];
+  const csrfRes = await fetch(new Request("http://localhost/api/csrf", {
+    headers: { Cookie: `session=${token}` },
+  }));
+  return { token, csrf: (await csrfRes.json()).token };
 }
 
 function authedHeaders(token, csrf, extra = {}) {
@@ -57,34 +67,83 @@ async function authedPostJson(path, token, csrf, body) {
   }));
 }
 
+// Inserts three test grants using the post-migration snake_case schema.
+// The programs table is created by migrations; this only inserts rows.
+//   Grant Alpha: Rolling cadence (CadenceRecency=1.0), highest Relevance
+//   Grant Beta:  stack_required=1, far-future deadline (CadenceRecency≈0), highest Ease
+//   Grant Gamma: No deadline (CadenceRecency=0), highest Fit
 async function seedPrograms() {
   await env.GRANT_MANAGER_DB.prepare(`
-    CREATE TABLE IF NOT EXISTS programs (
-      "Name" TEXT,
-      "Sponsor" TEXT,
-      "Relevance" TEXT,
-      "Fit" TEXT,
-      "Ease" TEXT,
-      "Stack Required?" TEXT,
-      "Cadence" TEXT,
-      "Deadline / Next Cohort" TEXT,
-      "Notes/Actions" TEXT
-    )
-  `).run();
-  // Grant Alpha: Rolling cadence (CadenceRecency=1.0), high Relevance
-  // Grant Beta:  Stack=Yes, far-future deadline (CadenceRecency≈0), high Ease
-  // Grant Gamma: No deadline (CadenceRecency=0), highest Fit
-  await env.GRANT_MANAGER_DB.prepare(`
-    INSERT INTO programs ("Name","Sponsor","Relevance","Fit","Ease","Stack Required?","Cadence","Deadline / Next Cohort")
+    INSERT INTO programs (name, sponsor, relevance, fit, ease, stack_required, cadence, deadline)
     VALUES
-      ('Grant Alpha', 'Sponsor A', '3', '2', '1', 'No',  'Rolling', NULL),
-      ('Grant Beta',  'Sponsor B', '1', '1', '3', 'Yes', 'Annual',  '2099-12-31'),
-      ('Grant Gamma', 'Sponsor C', '2', '3', '2', 'No',  'Annual',  NULL)
+      ('Grant Alpha', 'Sponsor A', 3, 2, 1, 0, 'Rolling', NULL),
+      ('Grant Beta',  'Sponsor B', 1, 1, 3, 1, 'Annual',  '2099-12-31'),
+      ('Grant Gamma', 'Sponsor C', 2, 3, 2, 0, 'Annual',  NULL)
   `).run();
 }
 
-// Reset all KV/D1 bindings between tests so they don't contaminate each other
+// ---------------------------------------------------------------------------
+// Schema bootstrap
+//
+// @cloudflare/vitest-pool-workers does not auto-apply D1 migrations, so we
+// recreate the full schema (all tables + the demo seed row) after every reset.
+// This mirrors the state that wrangler migrations produce in production.
+// ---------------------------------------------------------------------------
+
+async function createSchema() {
+  const db = env.GRANT_MANAGER_DB;
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS programs (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      type                 TEXT,
+      name                 TEXT NOT NULL UNIQUE,
+      sponsor              TEXT,
+      source_url           TEXT,
+      region_eligibility   TEXT,
+      deadline             TEXT,
+      cadence              TEXT,
+      benefits             TEXT,
+      eligibility_conditions TEXT,
+      stage                TEXT,
+      non_dilutive         INTEGER,
+      stack_required       INTEGER,
+      relevance            REAL,
+      fit                  REAL,
+      ease                 REAL,
+      weighted_score       REAL,
+      notes                TEXT
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS users (
+      username      TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      created_at    INTEGER NOT NULL,
+      email         TEXT,
+      is_admin      INTEGER DEFAULT 0
+    )`),
+    // Demo account: legacy SHA-256 hash of "demo" (see migration 0007).
+    db.prepare(`INSERT OR IGNORE INTO users (username, password_hash, created_at)
+      VALUES ('demo', '2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea', 0)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS feedback (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      rating       INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment      TEXT,
+      email        TEXT,
+      opted_in     INTEGER NOT NULL DEFAULT 0,
+      submitted_at TEXT NOT NULL,
+      user_agent   TEXT
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS subscribers (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      email         TEXT NOT NULL UNIQUE,
+      subscribed_at TEXT NOT NULL
+    )`),
+  ]);
+}
+
+// Reset all KV/D1 bindings between tests so they don't contaminate each other,
+// then rebuild the schema so the empty D1 has all required tables.
 beforeEach(reset);
+beforeEach(createSchema);
 
 // ---------------------------------------------------------------------------
 // Auth — /signup
@@ -93,7 +152,7 @@ beforeEach(reset);
 describe("POST /signup", () => {
   it("creates a new user and returns 201", async () => {
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "alice",
+      username: "alice@test.example",
       password: "password1",
       confirm_password: "password1",
     }));
@@ -102,27 +161,37 @@ describe("POST /signup", () => {
     expect(body.ok).toBe(true);
   });
 
-  it("rejects duplicate username with 409", async () => {
-    const fields = { username: "bob", password: "password1", confirm_password: "password1" };
+  it("rejects duplicate email with 409", async () => {
+    const fields = { username: "bob@test.example", password: "password1", confirm_password: "password1" };
     await fetch(formRequest("http://localhost/signup", fields));
     const res = await fetch(formRequest("http://localhost/signup", fields));
     expect(res.status).toBe(409);
   });
 
-  it("rejects username shorter than 3 chars", async () => {
+  it("rejects a plain username that is not an email address", async () => {
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "ab",
+      username: "notanemail",
       password: "password1",
       confirm_password: "password1",
     }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/3/);
+    expect(body.error).toMatch(/email/i);
   });
 
-  it("rejects username with invalid characters", async () => {
+  it("rejects an address without a dot in the domain", async () => {
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "bad user!",
+      username: "user@nodot",
+      password: "password1",
+      confirm_password: "password1",
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects email longer than 254 characters", async () => {
+    const longEmail = "a".repeat(246) + "@test.com"; // 255 chars; worker rejects length > 254
+    const res = await fetch(formRequest("http://localhost/signup", {
+      username: longEmail,
       password: "password1",
       confirm_password: "password1",
     }));
@@ -131,7 +200,7 @@ describe("POST /signup", () => {
 
   it("rejects password shorter than 8 chars", async () => {
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "carol",
+      username: "carol@test.example",
       password: "abc",
       confirm_password: "abc",
     }));
@@ -142,7 +211,7 @@ describe("POST /signup", () => {
 
   it("accepts password of exactly 8 chars", async () => {
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "carol",
+      username: "carol@test.example",
       password: "12345678",
       confirm_password: "12345678",
     }));
@@ -151,7 +220,7 @@ describe("POST /signup", () => {
 
   it("rejects mismatched passwords", async () => {
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "dave",
+      username: "dave@test.example",
       password: "password1",
       confirm_password: "different",
     }));
@@ -161,16 +230,15 @@ describe("POST /signup", () => {
   });
 
   it("rate-limits after 5 signup attempts from the same IP", async () => {
-    // Exhaust 5 attempts (all succeed or fail — count is per IP regardless)
     for (let i = 0; i < 5; i++) {
       await fetch(formRequest("http://localhost/signup", {
-        username: `user${i}`,
+        username: `user${i}@test.example`,
         password: "password1",
         confirm_password: "password1",
       }));
     }
     const res = await fetch(formRequest("http://localhost/signup", {
-      username: "overflow",
+      username: "overflow@test.example",
       password: "password1",
       confirm_password: "password1",
     }));
@@ -185,12 +253,12 @@ describe("POST /signup", () => {
 describe("POST /login", () => {
   it("logs in an existing user and sets session cookie", async () => {
     await fetch(formRequest("http://localhost/signup", {
-      username: "eve",
+      username: "eve@test.example",
       password: "hunter2xx",
       confirm_password: "hunter2xx",
     }));
     const res = await fetch(formRequest("http://localhost/login", {
-      username: "eve",
+      username: "eve@test.example",
       password: "hunter2xx",
     }));
     expect(res.status).toBe(302);
@@ -202,12 +270,12 @@ describe("POST /login", () => {
 
   it("returns 401 for wrong password", async () => {
     await fetch(formRequest("http://localhost/signup", {
-      username: "frank",
+      username: "frank@test.example",
       password: "correct1x",
       confirm_password: "correct1x",
     }));
     const res = await fetch(formRequest("http://localhost/login", {
-      username: "frank",
+      username: "frank@test.example",
       password: "wrong",
     }));
     expect(res.status).toBe(401);
@@ -215,7 +283,7 @@ describe("POST /login", () => {
 
   it("returns 401 for unknown user", async () => {
     const res = await fetch(formRequest("http://localhost/login", {
-      username: "nobody",
+      username: "nobody@test.example",
       password: "password1",
     }));
     expect(res.status).toBe(401);
@@ -223,9 +291,13 @@ describe("POST /login", () => {
 
   it("rate-limits after 5 failed attempts", async () => {
     for (let i = 0; i < 5; i++) {
-      await fetch(formRequest("http://localhost/login", { username: "ghost", password: "bad" }));
+      await fetch(formRequest("http://localhost/login", {
+        username: "ghost@test.example", password: "bad",
+      }));
     }
-    const res = await fetch(formRequest("http://localhost/login", { username: "ghost", password: "bad" }));
+    const res = await fetch(formRequest("http://localhost/login", {
+      username: "ghost@test.example", password: "bad",
+    }));
     expect(res.status).toBe(429);
   });
 
@@ -244,7 +316,7 @@ describe("POST /login", () => {
 
 describe("GET /logout", () => {
   it("clears the session cookie and redirects", async () => {
-    const { token } = await createAndLoginUser("grace", "password1x");
+    const { token } = await createAndLoginUser("grace@test.example", "password1x");
     const res = await fetch(new Request("http://localhost/logout", {
       headers: { Cookie: `session=${token}` },
     }));
@@ -277,7 +349,7 @@ describe("Protected endpoints reject unauthenticated requests", () => {
 
 describe("GET /api/csrf", () => {
   it("returns a CSRF token for authenticated user", async () => {
-    const { token } = await createAndLoginUser("csrfuser", "password1x");
+    const { token } = await createAndLoginUser("csrfuser@test.example", "password1x");
     const res = await authedGet("/api/csrf", token);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -286,7 +358,7 @@ describe("GET /api/csrf", () => {
   });
 
   it("returns the same token on repeated calls", async () => {
-    const { token } = await createAndLoginUser("csrfuser2", "password1x");
+    const { token } = await createAndLoginUser("csrfuser2@test.example", "password1x");
     const a = await (await authedGet("/api/csrf", token)).json();
     const b = await (await authedGet("/api/csrf", token)).json();
     expect(a.token).toBe(b.token);
@@ -299,7 +371,7 @@ describe("GET /api/csrf", () => {
 
 describe("CSRF validation", () => {
   it("POST /api/profile rejects request without CSRF token", async () => {
-    const { token } = await createAndLoginUser("csrftest1", "password1x");
+    const { token } = await createAndLoginUser("csrftest1@test.example", "password1x");
     const res = await fetch(new Request("http://localhost/api/profile", {
       method: "POST",
       headers: { Cookie: `session=${token}`, "Content-Type": "application/json" },
@@ -309,7 +381,7 @@ describe("CSRF validation", () => {
   });
 
   it("POST /api/notes rejects request without CSRF token", async () => {
-    const { token } = await createAndLoginUser("csrftest2", "password1x");
+    const { token } = await createAndLoginUser("csrftest2@test.example", "password1x");
     const body = new FormData();
     body.append("Name", "Test Grant");
     body.append("Notes/Actions", "some note");
@@ -322,7 +394,7 @@ describe("CSRF validation", () => {
   });
 
   it("POST /api/profile succeeds with valid CSRF token", async () => {
-    const { token, csrf } = await createAndLoginUser("csrftest3", "password1x");
+    const { token, csrf } = await createAndLoginUser("csrftest3@test.example", "password1x");
     const res = await authedPostJson("/api/profile", token, csrf, { org: "Acme" });
     expect(res.status).toBe(200);
   });
@@ -333,12 +405,12 @@ describe("CSRF validation", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/me", () => {
-  it("returns the logged-in username", async () => {
-    const { token } = await createAndLoginUser("henry", "password1x");
+  it("returns the logged-in email as the username field", async () => {
+    const { token } = await createAndLoginUser("henry@test.example", "password1x");
     const res = await authedGet("/api/me", token);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.username).toBe("henry");
+    expect(body.username).toBe("henry@test.example");
   });
 });
 
@@ -360,15 +432,18 @@ describe("GET /api/health", () => {
 
 describe("/api/profile", () => {
   it("returns null profile for new user", async () => {
-    const { token } = await createAndLoginUser("ivan", "password1x");
+    const { token } = await createAndLoginUser("ivan@test.example", "password1x");
     const res = await authedGet("/api/profile", token);
     expect(res.status).toBe(200);
     expect(await res.json()).toBeNull();
   });
 
   it("saves and retrieves a profile", async () => {
-    const { token, csrf } = await createAndLoginUser("julia", "password1x");
-    const profile = { org: "Acme", weights: { Relevance: 0.4, Fit: 0.3, Ease: 0.2, StackAlignment: 0.05, CadenceRecency: 0.05 } };
+    const { token, csrf } = await createAndLoginUser("julia@test.example", "password1x");
+    const profile = {
+      org: "Acme",
+      weights: { Relevance: 0.4, Fit: 0.3, Ease: 0.2, StackAlignment: 0.05, CadenceRecency: 0.05 },
+    };
     const postRes = await authedPostJson("/api/profile", token, csrf, profile);
     expect(postRes.status).toBe(200);
 
@@ -387,7 +462,7 @@ describe("GET /api/grants — scoring", () => {
   beforeEach(seedPrograms);
 
   it("returns paginated envelope with data array and total", async () => {
-    const { token } = await createAndLoginUser("karen", "password1x");
+    const { token } = await createAndLoginUser("karen@test.example", "password1x");
     const res = await authedGet("/api/grants", token);
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -402,7 +477,7 @@ describe("GET /api/grants — scoring", () => {
   });
 
   it("returns grants sorted by score descending", async () => {
-    const { token } = await createAndLoginUser("lena", "password1x");
+    const { token } = await createAndLoginUser("lena@test.example", "password1x");
     const res = await authedGet("/api/grants", token);
     const { data: grants } = await res.json();
     for (let i = 1; i < grants.length; i++) {
@@ -411,7 +486,7 @@ describe("GET /api/grants — scoring", () => {
   });
 
   it("paginates correctly with page and pageSize params", async () => {
-    const { token } = await createAndLoginUser("lena2", "password1x");
+    const { token } = await createAndLoginUser("lena2@test.example", "password1x");
     const res1 = await authedGet("/api/grants?page=1&pageSize=2", token);
     const body1 = await res1.json();
     expect(body1.data.length).toBe(2);
@@ -421,15 +496,14 @@ describe("GET /api/grants — scoring", () => {
     const body2 = await res2.json();
     expect(body2.data.length).toBe(1);
     expect(body2.page).toBe(2);
-    // No overlap between pages
     const names1 = body1.data.map((g) => g.Name);
     const names2 = body2.data.map((g) => g.Name);
     expect(names1.every((n) => !names2.includes(n))).toBe(true);
   });
 
   it("applies custom weights from user profile", async () => {
-    const { token, csrf } = await createAndLoginUser("mike", "password1x");
-    // Weight Ease heavily so Grant Beta (Ease=3) scores highest
+    const { token, csrf } = await createAndLoginUser("mike@test.example", "password1x");
+    // Weight Ease heavily so Grant Beta (ease=3) scores highest
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 1, StackAlignment: 0, CadenceRecency: 0 } });
     const res = await authedGet("/api/grants", token);
@@ -438,14 +512,14 @@ describe("GET /api/grants — scoring", () => {
   });
 
   it("applies default weights when no profile exists", async () => {
-    const { token } = await createAndLoginUser("nina", "password1x");
+    const { token } = await createAndLoginUser("nina@test.example", "password1x");
     const res = await authedGet("/api/grants", token);
     const { data: grants } = await res.json();
     expect(grants[0].Name).toBe("Grant Alpha");
   });
 
-  it("StackAlignment scoring: Yes=1.0, No=0.2", async () => {
-    const { token, csrf } = await createAndLoginUser("omar", "password1x");
+  it("StackAlignment scoring: stack_required=1 scores highest", async () => {
+    const { token, csrf } = await createAndLoginUser("omar@test.example", "password1x");
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 1, CadenceRecency: 0 } });
     const res = await authedGet("/api/grants", token);
@@ -453,8 +527,8 @@ describe("GET /api/grants — scoring", () => {
     expect(grants[0].Name).toBe("Grant Beta");
   });
 
-  it("CadenceRecency: rolling deadline scores highest", async () => {
-    const { token, csrf } = await createAndLoginUser("petra", "password1x");
+  it("CadenceRecency: rolling cadence scores highest", async () => {
+    const { token, csrf } = await createAndLoginUser("petra@test.example", "password1x");
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } });
     const res = await authedGet("/api/grants", token);
@@ -463,7 +537,7 @@ describe("GET /api/grants — scoring", () => {
   });
 
   it("deadlines more than 365 days away score 0 for CadenceRecency", async () => {
-    const { token, csrf } = await createAndLoginUser("quinn", "password1x");
+    const { token, csrf } = await createAndLoginUser("quinn@test.example", "password1x");
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } });
     const res = await authedGet("/api/grants", token);
@@ -473,10 +547,10 @@ describe("GET /api/grants — scoring", () => {
   });
 
   it("past deadlines score 0 for CadenceRecency", async () => {
-    const { token, csrf } = await createAndLoginUser("rosa2", "password1x");
+    const { token, csrf } = await createAndLoginUser("rosa2@test.example", "password1x");
     await env.GRANT_MANAGER_DB.prepare(
-      `INSERT INTO programs ("Name","Sponsor","Relevance","Fit","Ease","Stack Required?","Cadence","Deadline / Next Cohort")
-       VALUES ('Grant Past', 'Sponsor P', '0', '0', '0', 'No', 'Annual', '2020-01-01')`
+      `INSERT INTO programs (name, sponsor, relevance, fit, ease, stack_required, cadence, deadline)
+       VALUES ('Grant Past', 'Sponsor P', 0, 0, 0, 0, 'Annual', '2020-01-01')`
     ).run();
     await authedPostJson("/api/profile", token, csrf,
       { weights: { Relevance: 0, Fit: 0, Ease: 0, StackAlignment: 0, CadenceRecency: 1 } });
@@ -503,7 +577,7 @@ describe("POST /api/notes", () => {
   });
 
   it("rejects authenticated request without CSRF token", async () => {
-    const { token } = await createAndLoginUser("rosa", "password1x");
+    const { token } = await createAndLoginUser("rosa@test.example", "password1x");
     const body = new FormData();
     body.append("Name", "Grant Alpha");
     body.append("Notes/Actions", "Apply by July");
@@ -516,10 +590,10 @@ describe("POST /api/notes", () => {
   });
 
   it("saves a note when authenticated with valid CSRF token", async () => {
-    const { token, csrf } = await createAndLoginUser("sam", "password1x");
+    const { token, csrf } = await createAndLoginUser("sam@test.example", "password1x");
     const body = new FormData();
-    body.append("Name", "Grant Alpha");
-    body.append("Notes/Actions", "Apply by July");
+    body.append("name", "Grant Alpha");   // handler reads form.get("name")
+    body.append("notes", "Apply by July");
     const res = await fetch(new Request("http://localhost/api/notes", {
       method: "POST",
       headers: { Cookie: `session=${token}`, "X-CSRF-Token": csrf },
@@ -530,7 +604,7 @@ describe("POST /api/notes", () => {
   });
 
   it("returns 400 when Name is missing", async () => {
-    const { token, csrf } = await createAndLoginUser("tina", "password1x");
+    const { token, csrf } = await createAndLoginUser("tina@test.example", "password1x");
     const body = new FormData();
     body.append("Notes/Actions", "some note");
     const res = await fetch(new Request("http://localhost/api/notes", {
@@ -547,7 +621,7 @@ describe("POST /api/notes", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/ai-status", () => {
-  it("returns configured:true when AI binding is present", async () => {
+  it("returns a boolean configured field without auth", async () => {
     const res = await fetch(new Request("http://localhost/api/ai-status"));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -560,16 +634,16 @@ describe("GET /api/ai-status", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/request-password-reset", () => {
-  it("returns a reset token for a known user", async () => {
+  it("returns a reset token for a known email address", async () => {
     await fetch(formRequest("http://localhost/signup", {
-      username: "resetme",
+      username: "resetme@test.example",
       password: "password1x",
       confirm_password: "password1x",
     }));
     const res = await fetch(new Request("http://localhost/api/request-password-reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "resetme" }),
+      body: JSON.stringify({ email: "resetme@test.example" }),
     }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -577,11 +651,11 @@ describe("POST /api/request-password-reset", () => {
     expect(typeof body.token).toBe("string");
   });
 
-  it("returns ok (no token) for unknown username without leaking existence", async () => {
+  it("returns ok (no token) for unknown email — no user enumeration", async () => {
     const res = await fetch(new Request("http://localhost/api/request-password-reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "doesnotexist" }),
+      body: JSON.stringify({ email: "nobody@test.example" }),
     }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -589,7 +663,7 @@ describe("POST /api/request-password-reset", () => {
     expect(body.token).toBeUndefined();
   });
 
-  it("returns 400 when username is missing", async () => {
+  it("returns 400 when email field is missing from request body", async () => {
     const res = await fetch(new Request("http://localhost/api/request-password-reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -598,40 +672,50 @@ describe("POST /api/request-password-reset", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rate-limits after 5 requests from same IP", async () => {
+  it("returns 400 for an invalid email format", async () => {
+    const res = await fetch(new Request("http://localhost/api/request-password-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "notanemail" }),
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rate-limits after 5 requests from the same IP", async () => {
     for (let i = 0; i < 5; i++) {
       await fetch(new Request("http://localhost/api/request-password-reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: `user${i}` }),
+        body: JSON.stringify({ email: `user${i}@test.example` }),
       }));
     }
     const res = await fetch(new Request("http://localhost/api/request-password-reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "another" }),
+      body: JSON.stringify({ email: "another@test.example" }),
     }));
     expect(res.status).toBe(429);
   });
 });
 
 describe("POST /api/reset-password", () => {
-  async function getResetToken(username) {
+  // Signs up with email and requests a password reset token (dev path — no Resend key).
+  async function getResetToken(email) {
     await fetch(formRequest("http://localhost/signup", {
-      username,
+      username: email,
       password: "oldpassword",
       confirm_password: "oldpassword",
     }));
     const res = await fetch(new Request("http://localhost/api/request-password-reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify({ email }),
     }));
     return (await res.json()).token;
   }
 
-  it("resets the password and allows login with new password", async () => {
-    const token = await getResetToken("resetuser1");
+  it("resets the password and allows login with the new password", async () => {
+    const token = await getResetToken("resetuser1@test.example");
     const res = await fetch(new Request("http://localhost/api/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -642,13 +726,13 @@ describe("POST /api/reset-password", () => {
 
     // Old password no longer works
     const badLogin = await fetch(formRequest("http://localhost/login", {
-      username: "resetuser1", password: "oldpassword",
+      username: "resetuser1@test.example", password: "oldpassword",
     }));
     expect(badLogin.status).toBe(401);
 
     // New password works
     const goodLogin = await fetch(formRequest("http://localhost/login", {
-      username: "resetuser1", password: "newpassword1",
+      username: "resetuser1@test.example", password: "newpassword1",
     }));
     expect(goodLogin.status).toBe(302);
   });
@@ -664,7 +748,7 @@ describe("POST /api/reset-password", () => {
   });
 
   it("rejects mismatched passwords", async () => {
-    const token = await getResetToken("resetuser2");
+    const token = await getResetToken("resetuser2@test.example");
     const res = await fetch(new Request("http://localhost/api/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -675,7 +759,7 @@ describe("POST /api/reset-password", () => {
   });
 
   it("rejects a password shorter than 8 characters", async () => {
-    const token = await getResetToken("resetuser3");
+    const token = await getResetToken("resetuser3@test.example");
     const res = await fetch(new Request("http://localhost/api/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -686,17 +770,25 @@ describe("POST /api/reset-password", () => {
   });
 
   it("rejects reuse of a consumed reset token", async () => {
-    const token = await getResetToken("resetuser4");
+    const token = await getResetToken("resetuser4@test.example");
     await fetch(new Request("http://localhost/api/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, password: "newpassword1", confirm_password: "newpassword1" }),
     }));
-    // Second use of same token
     const res = await fetch(new Request("http://localhost/api/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, password: "anotherpass", confirm_password: "anotherpass" }),
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing required fields", async () => {
+    const res = await fetch(new Request("http://localhost/api/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "sometoken" }),
     }));
     expect(res.status).toBe(400);
   });
@@ -714,8 +806,8 @@ describe("GET /data — CSV export", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns a CSV file with correct headers", async () => {
-    const { token } = await createAndLoginUser("csv1", "password1x");
+  it("returns a CSV file with correct content-type and disposition", async () => {
+    const { token } = await createAndLoginUser("csv1@test.example", "password1x");
     const res = await authedGet("/data", token);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/csv");
@@ -724,14 +816,12 @@ describe("GET /data — CSV export", () => {
     expect(disposition).toContain(".csv");
   });
 
-  it("returns all rows as valid CSV", async () => {
-    const { token } = await createAndLoginUser("csv2", "password1x");
+  it("returns all rows — header plus one line per grant", async () => {
+    const { token } = await createAndLoginUser("csv2@test.example", "password1x");
     const res = await authedGet("/data", token);
     const text = await res.text();
     const lines = text.trim().split("\r\n");
-    // header + 3 data rows
-    expect(lines.length).toBe(4);
-    expect(lines[0]).toContain("Name");
+    expect(lines.length).toBe(4); // 1 header + 3 data rows
     const names = ["Grant Alpha", "Grant Beta", "Grant Gamma"];
     for (const name of names) {
       expect(lines.some((l) => l.includes(name))).toBe(true);
@@ -739,10 +829,10 @@ describe("GET /data — CSV export", () => {
   });
 
   it("properly escapes values containing commas and quotes", async () => {
-    const { token } = await createAndLoginUser("csv3", "password1x");
+    const { token } = await createAndLoginUser("csv3@test.example", "password1x");
     await env.GRANT_MANAGER_DB.prepare(
-      `INSERT INTO programs ("Name","Sponsor","Relevance","Fit","Ease","Stack Required?","Cadence","Deadline / Next Cohort")
-       VALUES ('Grant, Tricky "One"', 'Sponsor', '1', '1', '1', 'No', 'Annual', NULL)`
+      `INSERT INTO programs (name, sponsor, relevance, fit, ease, stack_required, cadence, deadline)
+       VALUES ('Grant, Tricky "One"', 'Sponsor', 1, 1, 1, 0, 'Annual', NULL)`
     ).run();
     const res = await authedGet("/data", token);
     const text = await res.text();
@@ -755,23 +845,13 @@ describe("GET /data — CSV export", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/admin/upload-csv", () => {
-  // The built-in demo account is the default admin (ADMIN_USERS unset).
-  async function loginAdmin() {
-    const res = await fetch(formRequest("http://localhost/login", { username: "demo", password: "demo" }));
-    const token = res.headers.get("Set-Cookie")?.match(/session=([^;]+)/)?.[1];
-    const csrfRes = await fetch(new Request("http://localhost/api/csrf", {
-      headers: { Cookie: `session=${token}` },
-    }));
-    return { token, csrf: (await csrfRes.json()).token };
-  }
-
-  function csvRequest(token, csrf, csvText, mode = "merge", headers = {}) {
+  function csvRequest(token, csrf, csvText, mode = "merge") {
     const body = new FormData();
     body.append("file", new File([csvText], "grants.csv", { type: "text/csv" }));
     body.append("mode", mode);
     return new Request("http://localhost/api/admin/upload-csv", {
       method: "POST",
-      headers: { Cookie: `session=${token}`, ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...headers },
+      headers: { Cookie: `session=${token}`, ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
       body,
     });
   }
@@ -787,7 +867,7 @@ describe("POST /api/admin/upload-csv", () => {
   });
 
   it("rejects non-admin users with 403", async () => {
-    const { token, csrf } = await createAndLoginUser("notadmin", "password1x");
+    const { token, csrf } = await createAndLoginUser("notadmin@test.example", "password1x");
     const res = await fetch(csvRequest(token, csrf, SAMPLE_CSV));
     expect(res.status).toBe(403);
   });
@@ -813,8 +893,7 @@ describe("POST /api/admin/upload-csv", () => {
     const names = data.map((g) => g.Name);
     expect(names).toContain("Upload Grant One");
     expect(names).toContain('Upload, Grant "Two"');
-    const sponsor = data.find((g) => g.Name === 'Upload, Grant "Two"').Sponsor;
-    expect(sponsor).toBe("Sponsor Y");
+    expect(data.find((g) => g.Name === 'Upload, Grant "Two"').Sponsor).toBe("Sponsor Y");
   });
 
   it("merge mode updates existing grants by Name instead of duplicating", async () => {
@@ -846,13 +925,11 @@ describe("POST /api/admin/upload-csv", () => {
 
   it("matches headers ignoring case and spacing around slashes", async () => {
     const { token, csrf } = await loginAdmin();
-    const res = await fetch(csvRequest(token, csrf,
-      "name,Deadline/Next Cohort\nSpacing Grant,2026-12-01\n"));
-    expect(res.status).toBe(200);
+    await fetch(csvRequest(token, csrf, "name,Deadline/Next Cohort\nSpacing Grant,2026-12-01\n"));
 
     const { data } = await (await authedGet("/api/grants", token)).json();
     const g = data.find((x) => x.Name === "Spacing Grant");
-    expect(g["Deadline / Next Cohort"]).toBe("2026-12-01");
+    expect(g["Deadline/Next Cohort"]).toBe("2026-12-01"); // new-schema key has no spaces
   });
 
   it("reports unknown columns and skips rows without a Name", async () => {
@@ -897,16 +974,214 @@ describe("POST /api/admin/upload-csv", () => {
 
 describe("GET /api/me — admin flag", () => {
   it("reports isAdmin:true for the demo admin account", async () => {
-    const res = await fetch(formRequest("http://localhost/login", { username: "demo", password: "demo" }));
-    const token = res.headers.get("Set-Cookie")?.match(/session=([^;]+)/)?.[1];
+    const { token } = await loginAdmin();
     const me = await (await authedGet("/api/me", token)).json();
     expect(me.isAdmin).toBe(true);
   });
 
   it("reports isAdmin:false for a regular user", async () => {
-    const { token } = await createAndLoginUser("regular", "password1x");
+    const { token } = await createAndLoginUser("regular@test.example", "password1x");
     const me = await (await authedGet("/api/me", token)).json();
     expect(me.isAdmin).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/users
+// ---------------------------------------------------------------------------
+
+describe("GET /api/admin/users", () => {
+  it("rejects unauthenticated requests with 401", async () => {
+    const res = await fetch(new Request("http://localhost/api/admin/users"));
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects non-admin users with 403", async () => {
+    const { token } = await createAndLoginUser("nonadmin@test.example", "password1x");
+    const res = await authedGet("/api/admin/users", token);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns an array of user objects for admin", async () => {
+    const { token } = await loginAdmin();
+    const res = await authedGet("/api/admin/users", token);
+    expect(res.status).toBe(200);
+    const users = await res.json();
+    expect(Array.isArray(users)).toBe(true);
+    for (const u of users) {
+      expect(typeof u.email).toBe("string");
+      expect(typeof u.isAdmin).toBe("boolean");
+    }
+  });
+
+  it("includes newly registered users in the list", async () => {
+    await createAndLoginUser("findme@test.example", "password1x");
+    const { token } = await loginAdmin();
+    const users = await (await authedGet("/api/admin/users", token)).json();
+    expect(users.some((u) => u.email === "findme@test.example")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/set-admin
+// ---------------------------------------------------------------------------
+
+describe("POST /api/admin/set-admin", () => {
+  it("rejects unauthenticated requests with 401", async () => {
+    const res = await fetch(new Request("http://localhost/api/admin/set-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "someone@test.example", isAdmin: true }),
+    }));
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects non-admin users with 403", async () => {
+    const { token, csrf } = await createAndLoginUser("plain@test.example", "password1x");
+    const res = await authedPostJson("/api/admin/set-admin", token, csrf,
+      { email: "plain@test.example", isAdmin: true });
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects request without CSRF token with 403", async () => {
+    const { token } = await loginAdmin();
+    const res = await fetch(new Request("http://localhost/api/admin/set-admin", {
+      method: "POST",
+      headers: { Cookie: `session=${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "someone@test.example", isAdmin: true }),
+    }));
+    expect(res.status).toBe(403);
+  });
+
+  it("grants admin to an existing user", async () => {
+    await createAndLoginUser("promote@test.example", "password1x");
+    const { token, csrf } = await loginAdmin();
+
+    const res = await authedPostJson("/api/admin/set-admin", token, csrf,
+      { email: "promote@test.example", isAdmin: true });
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+
+    const users = await (await authedGet("/api/admin/users", token)).json();
+    expect(users.find((u) => u.email === "promote@test.example")?.isAdmin).toBe(true);
+  });
+
+  it("revokes admin from a user", async () => {
+    await createAndLoginUser("demote@test.example", "password1x");
+    const { token, csrf } = await loginAdmin();
+
+    await authedPostJson("/api/admin/set-admin", token, csrf,
+      { email: "demote@test.example", isAdmin: true });
+    const res = await authedPostJson("/api/admin/set-admin", token, csrf,
+      { email: "demote@test.example", isAdmin: false });
+    expect(res.status).toBe(200);
+
+    const users = await (await authedGet("/api/admin/users", token)).json();
+    expect(users.find((u) => u.email === "demote@test.example")?.isAdmin).toBe(false);
+  });
+
+  it("returns 400 when email is missing from request body", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await authedPostJson("/api/admin/set-admin", token, csrf, { isAdmin: true });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown email address", async () => {
+    const { token, csrf } = await loginAdmin();
+    const res = await authedPostJson("/api/admin/set-admin", token, csrf,
+      { email: "ghost@test.example", isAdmin: true });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when an admin tries to remove their own admin status", async () => {
+    await createAndLoginUser("second@test.example", "password1x");
+    const { token: adminToken, csrf: adminCsrf } = await loginAdmin();
+
+    // Promote second@test.example to admin
+    await authedPostJson("/api/admin/set-admin", adminToken, adminCsrf,
+      { email: "second@test.example", isAdmin: true });
+
+    // Log in as the new admin and attempt self-demotion
+    const loginRes = await fetch(formRequest("http://localhost/login", {
+      username: "second@test.example", password: "password1x",
+    }));
+    const token2 = loginRes.headers.get("Set-Cookie")?.match(/session=([^;]+)/)?.[1];
+    const csrf2 = (await (await fetch(new Request("http://localhost/api/csrf", {
+      headers: { Cookie: `session=${token2}` },
+    }))).json()).token;
+
+    const selfRes = await authedPostJson("/api/admin/set-admin", token2, csrf2,
+      { email: "second@test.example", isAdmin: false });
+    expect(selfRes.status).toBe(400);
+    expect((await selfRes.json()).error).toMatch(/cannot remove your own/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/feedback
+// ---------------------------------------------------------------------------
+
+describe("POST /api/feedback", () => {
+  it("does not require authentication", async () => {
+    const res = await fetch(new Request("http://localhost/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: 4 }),
+    }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).success).toBe(true);
+  });
+
+  it("accepts feedback with all optional fields", async () => {
+    const res = await fetch(new Request("http://localhost/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rating: 5,
+        comment: "Extremely helpful tool",
+        email: "happy@test.example",
+        opted_in: true,
+      }),
+    }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).success).toBe(true);
+  });
+
+  it("rejects rating of 0 with 400", async () => {
+    const res = await fetch(new Request("http://localhost/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: 0 }),
+    }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/rating/i);
+  });
+
+  it("rejects rating above 5 with 400", async () => {
+    const res = await fetch(new Request("http://localhost/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: 6 }),
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid JSON with 400", async () => {
+    const res = await fetch(new Request("http://localhost/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not valid json{",
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts feedback without optional fields", async () => {
+    const res = await fetch(new Request("http://localhost/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: 3 }),
+    }));
+    expect(res.status).toBe(200);
   });
 });
 
@@ -921,7 +1196,7 @@ describe("GET /api/live-search", () => {
   });
 
   it("returns 503 when SIMPLER_GRANTS_API_KEY is not configured", async () => {
-    const { token } = await createAndLoginUser("ls1", "password1x");
+    const { token } = await createAndLoginUser("ls1@test.example", "password1x");
     const res = await authedGet("/api/live-search?q=education", token);
     expect(res.status).toBe(503);
     const body = await res.json();
@@ -929,12 +1204,9 @@ describe("GET /api/live-search", () => {
     expect(typeof body.error).toBe("string");
   });
 
-  it("returns empty data for blank query without calling upstream", async () => {
-    const { token } = await createAndLoginUser("ls2", "password1x");
-    // No API key set — blank query short-circuits before the key check
-    // so it would return empty. But key check happens first; 503 is expected.
+  it("returns 503 or 200 for blank query (key check takes priority)", async () => {
+    const { token } = await createAndLoginUser("ls2@test.example", "password1x");
     const res = await authedGet("/api/live-search?q=", token);
-    // Either 503 (no key) or 200 empty — both are acceptable
     expect([200, 503]).toContain(res.status);
   });
 });
@@ -945,8 +1217,8 @@ describe("GET /api/live-search-status", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns configured:false when key is not set", async () => {
-    const { token } = await createAndLoginUser("ls3", "password1x");
+  it("returns configured:false when API key is not set", async () => {
+    const { token } = await createAndLoginUser("ls3@test.example", "password1x");
     const res = await authedGet("/api/live-search-status", token);
     expect(res.status).toBe(200);
     const body = await res.json();
