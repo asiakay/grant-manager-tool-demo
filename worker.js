@@ -769,6 +769,38 @@ async function handleRequest(request, env, ctx) {
       }
     }
 
+    if (url.pathname === "/api/profile/select-grant") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      if (!env.USER_PROFILES) return new Response("KV not configured", { status: 503 });
+
+      const { grantId } = await request.json();
+      const id = Number(grantId);
+      if (!Number.isFinite(id) || id <= 0) {
+        return new Response(JSON.stringify({ error: "Invalid grantId" }), { status: 400 });
+      }
+
+      const key = `selections:${username}`;
+      const existing = await env.USER_PROFILES.get(key, "json").catch(() => null);
+      const selections = Array.isArray(existing) ? existing : [];
+
+      if (request.method === "POST") {
+        if (!selections.includes(id)) selections.push(id);
+        await env.USER_PROFILES.put(key, JSON.stringify(selections));
+        log("info", "grant_selected", { ...reqCtx, grantId: id });
+        return jsonResponse(JSON.stringify({ ok: true, selected: selections }));
+      }
+
+      if (request.method === "DELETE") {
+        const updated = selections.filter(s => s !== id);
+        await env.USER_PROFILES.put(key, JSON.stringify(updated));
+        log("info", "grant_deselected", { ...reqCtx, grantId: id });
+        return jsonResponse(JSON.stringify({ ok: true, selected: updated }));
+      }
+    }
+
     if (url.pathname === "/api/profile/analyze-mission" && request.method === "POST") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
       if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });

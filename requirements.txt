@@ -4,3 +4,5 @@ flask
 plotly
 pyyaml
 certifi
+pytest
+freezegun
