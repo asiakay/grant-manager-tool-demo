@@ -58,11 +58,11 @@ export default function Login({ onSuccess, onDemoSuccess, onSignUp, onForgotPass
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Email or username</label>
             <input
               className="input"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
