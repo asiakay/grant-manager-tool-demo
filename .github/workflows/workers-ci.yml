@@ -57,6 +57,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Create notification queue (idempotent)
+        # Must run before any worker that binds NOTIFY_QUEUE is deployed.
+        # wrangler exits 1 if the queue already exists; || echo treats that as success.
+        run: npx wrangler queues create grant-notify-queue || echo "Queue already exists — continuing"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy main worker
         working-directory: .
         run: npx wrangler deploy
@@ -90,13 +98,6 @@ jobs:
       - name: Deploy agents-starter
         working-directory: agents-starter-1
         run: npm ci && npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Create notification queue (idempotent)
-        # wrangler exits 1 if the queue already exists; treat that as success.
-        run: npx wrangler queues create grant-notify-queue || echo "Queue already exists — continuing"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

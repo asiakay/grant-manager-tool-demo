@@ -29,10 +29,6 @@ database_name = "grant-manager-db"
 database_id = "e99396be-8043-41f6-9762-07c2b6fc4d3f"
 migrations_dir = "migrations"
 
-[[queues.producers]]
-binding = "NOTIFY_QUEUE"
-queue = "grant-notify-queue"
-
 [ai]
 binding = "AI"
 
