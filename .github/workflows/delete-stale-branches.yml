@@ -1,0 +1,30 @@
+name: Delete stale branches
+
+on:
+  workflow_dispatch:
+
+jobs:
+  delete-branches:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete all branches except main and active session
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          KEEP="main claude/new-session-l8wec8"
+          gh api repos/$REPO/branches --paginate --jq '.[].name' | \
+          while read branch; do
+            skip=false
+            for k in $KEEP; do
+              [ "$branch" = "$k" ] && skip=true && break
+            done
+            if [ "$skip" = false ]; then
+              echo "Deleting: $branch"
+              gh api "repos/$REPO/git/refs/heads/$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$branch")" -X DELETE && echo "  deleted" || echo "  failed"
+            else
+              echo "Keeping: $branch"
+            fi
+          done
