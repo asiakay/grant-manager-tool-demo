@@ -281,7 +281,7 @@ function computeProfileMatch(r, profile) {
 }
 
 function computeStackAlignment(r) {
-  return (r.stack_required === 1) ? 1.0 : 0.2;
+  return (r.stack_required === 1 || r["Stack Required?"] === "Yes") ? 1.0 : 0.2;
 }
 
 function computeCadenceRecency(r) {
