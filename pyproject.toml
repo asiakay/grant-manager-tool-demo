@@ -18,3 +18,6 @@ dependencies = [
 [project.scripts]
 wrangle-grants = "wrangle_grants:main"
 search-grants = "search_grants:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

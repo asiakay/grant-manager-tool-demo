@@ -83,9 +83,15 @@ def add_program_scores(df: pd.DataFrame) -> pd.DataFrame:
                 else:
                     cad_rec = max(0.0, 1 - min(days, 365) / 365)
 
-        r = pd.to_numeric(row["Relevance"], errors="coerce") or 0
-        f = pd.to_numeric(row["Fit"], errors="coerce") or 0
-        e = pd.to_numeric(row["Ease"], errors="coerce") or 0
+        # NaN is truthy in Python so `x or 0` does NOT coerce NaN to 0.
+        # Use explicit isna() check instead.
+        def _num(v: object) -> float:
+            x = pd.to_numeric(v, errors="coerce")
+            return 0.0 if pd.isna(x) else float(x)
+
+        r = _num(row["Relevance"])
+        f = _num(row["Fit"])
+        e = _num(row["Ease"])
         score = 0.3 * r + 0.3 * f + 0.2 * e + 0.1 * stack_alignment + 0.1 * cad_rec
 
         stack_align.append(round(stack_alignment, 3))

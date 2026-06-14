@@ -12,6 +12,8 @@ command = "cd ui && npm install && npm run build"
 # Comma-separated usernames allowed to use admin features (CSV grant upload).
 # Defaults to "demo" when unset.
 ADMIN_USERS = "demo,asialakay"
+# Score threshold (0–10) used by the profile matcher worker.
+SCORE_THRESHOLD = "6.0"
 
 [[kv_namespaces]]
 binding = "USER_PROFILES"
@@ -26,6 +28,10 @@ binding = "GRANT_MANAGER_DB"
 database_name = "grant-manager-db"
 database_id = "e99396be-8043-41f6-9762-07c2b6fc4d3f"
 migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "NOTIFY_QUEUE"
+queue = "grant-notify-queue"
 
 [ai]
 binding = "AI"
