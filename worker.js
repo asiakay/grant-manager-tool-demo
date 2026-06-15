@@ -202,7 +202,7 @@ const FOCUS_AREA_KEYWORDS = {
   "Education & Workforce":    ["education", "workforce", "training", "learning", "student", "school", "academic", "career"],
   "Technology & Innovation":  ["technology", "innovation", "tech", "software", "digital", "engineering", "data", "ai", "computing"],
   "Housing & Community":      ["housing", "community", "neighborhood", "affordable", "urban", "rural", "infrastructure"],
-  "Environment & Climate":    ["environment", "climate", "energy", "sustainability", "clean", "emissions", "carbon", "ecology"],
+  "Environment & Climate":    ["environment", "climate", "energy", "sustainability", "clean", "emissions", "carbon", "ecology", "conservation", "biodiversity", "water", "pollution", "resilience", "natural resources", "land use"],
   "Agriculture & Food":       ["agriculture", "food", "farm", "crop", "nutrition", "rural", "livestock"],
   "Social Services":          ["social", "welfare", "poverty", "disability", "elderly", "child", "family", "services"],
   "Arts & Humanities":        ["arts", "humanities", "culture", "museum", "heritage", "creative", "media"],
