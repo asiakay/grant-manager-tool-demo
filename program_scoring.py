@@ -13,7 +13,7 @@ StackAlignment is 1.0 when the required stack is used, else 0.2.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import datetime
 import pandas as pd
 
 # Canonical column names and their accepted aliases (first alias wins on read).
@@ -56,7 +56,7 @@ def add_program_scores(df: pd.DataFrame) -> pd.DataFrame:
     df = _normalize_columns(df)
     _validate_columns(df)
 
-    today = pd.Timestamp.today().normalize()
+    today = pd.Timestamp(datetime.date.today())
 
     stack_align = []
     cadence_recency = []
