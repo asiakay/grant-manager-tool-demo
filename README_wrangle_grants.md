@@ -63,7 +63,7 @@ The window lets you choose folders and output paths, tweak weights, set a deadli
 * Scans a folder of CSV/TSV files → merges into **one clean master**
 * Normalizes headers into your **Clean Table** schema
 * Parses **money** (Award max/min/Total funding) and **dates** (Deadline)
-* Computes **Weighted Score** from Relevance, EQORE Fit, Ease of Use (weights configurable)
+* Computes **Weighted Score** from Relevance, Fit, and Ease of Use (weights configurable)
 * Adds **Days to Deadline** + **Expired** flags
 * Deduplicates by **Grant name + Sponsor org**
 * Sorts by **Weighted Score (desc)** then **Deadline (asc)**
