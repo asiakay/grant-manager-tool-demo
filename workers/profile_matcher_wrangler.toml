@@ -1,5 +1,5 @@
 name = "grant-profile-matcher"
-main = "workers/profile_matcher_worker.js"
+main = "profile_matcher_worker.js"
 compatibility_date = "2024-05-29"
 workers_dev = true
 
