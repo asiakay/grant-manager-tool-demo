@@ -550,6 +550,97 @@ async function syncGrantsWithD1(env, query) {
   return { success: true, inserted: opportunities.length, message: `Successfully loaded ${opportunities.length} active opportunities to local storage.` };
 }
 
+// ===== Anonymous Feedback (GitHub Issues) =====
+
+const FEEDBACK_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/png", "image/gif", "image/webp", "image/avif",
+]);
+const FEEDBACK_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const FEEDBACK_RATE_MAX = 5;
+const FEEDBACK_WINDOW_SECS = 3600; // 1 hour
+
+// Returns { allowed: boolean }. Increments the counter on each allowed call.
+export async function checkFeedbackRateLimit(env, ip) {
+  if (!env.FEEDBACK_RATE_LIMIT) return { allowed: true };
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(now / FEEDBACK_WINDOW_SECS) * FEEDBACK_WINDOW_SECS;
+  const key = `anon-fb:${ip}:${windowStart}`;
+  const stored = await env.FEEDBACK_RATE_LIMIT.get(key, { type: "json" });
+  const count = stored?.count ?? 0;
+  if (count >= FEEDBACK_RATE_MAX) return { allowed: false };
+  const ttl = windowStart + FEEDBACK_WINDOW_SECS - now + 60;
+  await env.FEEDBACK_RATE_LIMIT.put(
+    key,
+    JSON.stringify({ count: count + 1 }),
+    { expirationTtl: Math.max(ttl, 1) },
+  );
+  return { allowed: true };
+}
+
+// Uploads a screenshot File to R2, returns the public URL or null on failure.
+// A null return must never block issue creation.
+export async function uploadFeedbackScreenshot(file, env) {
+  if (!env.FEEDBACK_ATTACHMENTS || !env.FEEDBACK_R2_PUBLIC_BASE_URL) return null;
+  if (!FEEDBACK_ALLOWED_MIME.has(file.type)) return null;
+  if (file.size > FEEDBACK_MAX_BYTES) return null;
+  try {
+    const rawExt = file.type.split("/")[1] || "bin";
+    const ext = rawExt === "jpeg" ? "jpg" : rawExt;
+    const key = `feedback/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const bytes = await file.arrayBuffer();
+    await env.FEEDBACK_ATTACHMENTS.put(key, bytes, {
+      httpMetadata: { contentType: file.type },
+    });
+    const base = env.FEEDBACK_R2_PUBLIC_BASE_URL.replace(/\/$/, "");
+    return `${base}/${key}`;
+  } catch (err) {
+    log("warn", "feedback_r2_upload_failed", { error: String(err) });
+    return null;
+  }
+}
+
+export function buildFeedbackIssueBody({ name, email, message, category, screenshotUrl, userAgent }) {
+  const categoryLabel =
+    category === "bug" ? "Bug Report" :
+    category === "feature" ? "Feature Request" :
+    "General Feedback";
+
+  const rows = [
+    `| Category | ${categoryLabel} |`,
+    `| Submitted | ${new Date().toISOString()} |`,
+    `| Name | ${name || "_Anonymous_"} |`,
+    `| Email | ${email || "_Not provided_"} |`,
+    `| User Agent | ${userAgent ? userAgent.slice(0, 120) : "_Unknown_"} |`,
+  ].join("\n");
+
+  const parts = [
+    `## Feedback Report\n`,
+    `| Field | Value |\n|---|---|\n${rows}\n`,
+    `---\n\n## Message\n\n${message}`,
+  ];
+
+  if (screenshotUrl) {
+    parts.push(`---\n\n## Screenshot\n\n![Screenshot](${screenshotUrl})`);
+  }
+
+  parts.push(`---\n\n_Submitted anonymously via FoundationPlanner feedback form_`);
+  return parts.join("\n\n");
+}
+
+// Thin wrapper so tests can mock the outbound GitHub call without stubbing globalThis.fetch.
+export async function postGitHubIssue(env, payload) {
+  return fetch("https://api.github.com/repos/asiakay/grant-manager-tool-demo/issues", {
+    method: "POST",
+    headers: {
+      Authorization: `token ${env.GITHUB_TOKEN}`,
+      "Content-Type": "application/json",
+      "User-Agent": "FoundationPlanner-FeedbackBot/1.0",
+      Accept: "application/vnd.github.v3+json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -1712,6 +1803,118 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       return new Response(JSON.stringify({ success: true }), {
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // POST /api/anonymous-feedback — no auth required; creates a GitHub issue
+    // Secrets: GITHUB_TOKEN (required), FEEDBACK_R2_PUBLIC_BASE_URL (optional, enables screenshots)
+    if (url.pathname === "/api/anonymous-feedback" && request.method === "POST") {
+      const ip =
+        (request.headers.get("CF-Connecting-IP") ||
+         request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+         "unknown");
+
+      const { allowed } = await checkFeedbackRateLimit(env, ip);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ error: "Too many submissions. Please try again in an hour." }),
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "3600" } },
+        );
+      }
+
+      let fd;
+      try {
+        fd = await request.formData();
+      } catch {
+        return new Response(
+          JSON.stringify({ error: "Invalid request body" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const rawMsg = fd.get("message");
+      if (!rawMsg || typeof rawMsg !== "string" || rawMsg.trim().length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Message is required" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const VALID_CATS = ["bug", "feature", "general"];
+      const rawCat = fd.get("category");
+      const category = VALID_CATS.includes(rawCat) ? rawCat : "general";
+      const name     = fd.get("name")  ? String(fd.get("name")).slice(0, 100).trim()  : null;
+      const email    = fd.get("email") ? String(fd.get("email")).slice(0, 255).trim() : null;
+      const message  = rawMsg.slice(0, 5000).trim();
+      const userAgent = request.headers.get("User-Agent") || null;
+
+      // Optional screenshot upload — failure is non-blocking
+      let screenshotUrl = null;
+      const screenshotFile = fd.get("screenshot");
+      if (screenshotFile instanceof File && screenshotFile.size > 0) {
+        screenshotUrl = await uploadFeedbackScreenshot(screenshotFile, env);
+      }
+
+      if (!env.GITHUB_TOKEN) {
+        log("error", "anon_feedback_no_token", reqCtx);
+        return new Response(
+          JSON.stringify({ error: "Feedback service is not configured" }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const catLabel = category === "bug" ? "bug" : category === "feature" ? "enhancement" : "feedback";
+      const issueTitle =
+        category === "bug"     ? "[Feedback] Bug Report" :
+        category === "feature" ? "[Feedback] Feature Request" :
+                                 "[Feedback] General Feedback";
+      const issueBody = buildFeedbackIssueBody({ name, email, message, category, screenshotUrl, userAgent });
+
+      let ghRes;
+      try {
+        ghRes = await postGitHubIssue(env, {
+          title: issueTitle,
+          body: issueBody,
+          labels: [catLabel, "anonymous-feedback"],
+        });
+      } catch (err) {
+        log("error", "anon_feedback_github_network", { ...reqCtx, error: String(err) });
+        return new Response(
+          JSON.stringify({ error: "Failed to submit feedback. Please try again." }),
+          { status: 502, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (ghRes.status === 401 || ghRes.status === 403) {
+        log("error", "anon_feedback_github_auth", { ...reqCtx, status: ghRes.status });
+        return new Response(
+          JSON.stringify({ error: "Feedback service is temporarily unavailable." }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (ghRes.status === 429) {
+        log("warn", "anon_feedback_github_ratelimit", reqCtx);
+        return new Response(
+          JSON.stringify({ error: "Feedback service is busy. Please try again later." }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (!ghRes.ok) {
+        const errText = await ghRes.text().catch(() => "");
+        log("error", "anon_feedback_github_error", { ...reqCtx, status: ghRes.status, error: errText.slice(0, 200) });
+        return new Response(
+          JSON.stringify({ error: "Failed to submit feedback. Please try again." }),
+          { status: 502, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const issue = await ghRes.json();
+      log("info", "anon_feedback_submitted", { ...reqCtx, issueNumber: issue.number, category });
+      return new Response(
+        JSON.stringify({ success: true, issueNumber: issue.number }),
+        { headers: { "Content-Type": "application/json" } },
+      );
     }
 
     if (url.pathname === "/logout") {

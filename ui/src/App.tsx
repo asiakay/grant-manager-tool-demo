@@ -7,6 +7,7 @@ import WelcomePage from "./components/WelcomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import AdminPage from "./components/AdminPage";
 import FeedbackBar from "./components/FeedbackBar";
+import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
 
@@ -115,30 +116,39 @@ export default function App() {
 
   if (auth === "signup") {
     return (
-      <Signup
-        onSuccess={(user, password) => handleSignupSuccess(user, password)}
-        onBackToLogin={() => setAuth("unauthenticated")}
-      />
+      <>
+        <Signup
+          onSuccess={(user, password) => handleSignupSuccess(user, password)}
+          onBackToLogin={() => setAuth("unauthenticated")}
+        />
+        <AnonymousFeedbackWidget />
+      </>
     );
   }
 
   if (auth === "forgot-password") {
     return (
-      <ForgotPassword
-        onBack={() => setAuth("unauthenticated")}
-        onSuccess={() => setAuth("unauthenticated")}
-      />
+      <>
+        <ForgotPassword
+          onBack={() => setAuth("unauthenticated")}
+          onSuccess={() => setAuth("unauthenticated")}
+        />
+        <AnonymousFeedbackWidget />
+      </>
     );
   }
 
   if (auth === "unauthenticated") {
     return (
-      <Login
-        onSuccess={handleLoginSuccess}
-        onDemoSuccess={handleDemoLoginSuccess}
-        onSignUp={() => setAuth("signup")}
-        onForgotPassword={() => setAuth("forgot-password")}
-      />
+      <>
+        <Login
+          onSuccess={handleLoginSuccess}
+          onDemoSuccess={handleDemoLoginSuccess}
+          onSignUp={() => setAuth("signup")}
+          onForgotPassword={() => setAuth("forgot-password")}
+        />
+        <AnonymousFeedbackWidget />
+      </>
     );
   }
 
@@ -152,6 +162,7 @@ export default function App() {
           saving={profileSaving}
         />
         <FeedbackBar />
+        <AnonymousFeedbackWidget />
       </>
     );
   }
@@ -167,6 +178,7 @@ export default function App() {
           saving={profileSaving}
         />
         <FeedbackBar />
+        <AnonymousFeedbackWidget />
       </>
     );
   }
@@ -179,6 +191,7 @@ export default function App() {
           onBack={() => setAuth("authenticated")}
         />
         <FeedbackBar />
+        <AnonymousFeedbackWidget />
       </>
     );
   }
@@ -191,6 +204,7 @@ export default function App() {
         onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
       />
       <FeedbackBar />
+      <AnonymousFeedbackWidget />
     </>
   );
 }

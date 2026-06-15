@@ -200,6 +200,90 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 ---
 
+## Anonymous Feedback (GitHub Issues)
+
+A persistent feedback widget — available on every page without requiring a GitHub account — that files user reports directly as GitHub issues, with optional screenshot attachments.
+
+### How it works
+
+1. The user clicks the **Feedback** button (bottom-right corner, any page).
+2. They fill in a category (Bug Report / Feature Request / General), a message, and optionally their name, email, and a screenshot.
+3. The form `POST`s to `/api/anonymous-feedback` as `multipart/form-data`.
+4. The Cloudflare Worker:
+   - Checks a **KV rate limit** (5 submissions per IP per hour).
+   - If a screenshot is attached, **uploads it to R2** and gets a public URL. If R2 upload fails for any reason, the issue is still created without the image.
+   - Calls the **GitHub Issues API** (`POST /repos/asiakay/grant-manager-tool-demo/issues`) using the `GITHUB_TOKEN` secret, embedding the screenshot as `![Screenshot](url)` in the Markdown body.
+5. The user sees a success confirmation; no GitHub account is needed.
+
+### Setup & deploy
+
+**Required secret**
+
+```bash
+# A GitHub personal access token (classic or fine-grained) with repo Issues write permission
+wrangler secret put GITHUB_TOKEN
+```
+
+**Optional — screenshot uploads**
+
+Screenshots require an R2 bucket with public access enabled and a known public URL:
+
+```bash
+# 1. Create the bucket (already provisioned if you see it in wrangler.toml)
+wrangler r2 bucket create foundationplanner-feedback-attachments
+
+# 2. Enable public access in the Cloudflare dashboard → R2 → bucket → Settings → Public Access
+#    Copy the r2.dev URL (e.g. https://pub-abc123.r2.dev)
+
+# 3. Set the public base URL as a Worker variable
+wrangler secret put FEEDBACK_R2_PUBLIC_BASE_URL
+# Enter: https://pub-abc123.r2.dev/foundationplanner-feedback-attachments
+```
+
+If `FEEDBACK_R2_PUBLIC_BASE_URL` is not set, the widget still works — screenshots are silently skipped and issues are created without images.
+
+### wrangler.toml additions
+
+```toml
+# Rate limiting (KV namespace already provisioned)
+[[kv_namespaces]]
+binding = "FEEDBACK_RATE_LIMIT"
+id = "786a52996c0b4ad4884a48fd10d65d82"
+
+# Screenshot storage (R2 bucket already provisioned)
+[[r2_buckets]]
+binding = "FEEDBACK_ATTACHMENTS"
+bucket_name = "foundationplanner-feedback-attachments"
+```
+
+### Environment variables / secrets
+
+| Name | Required | Description |
+|---|---|---|
+| `GITHUB_TOKEN` | **Yes** | GitHub PAT with `repo` Issues write scope |
+| `FEEDBACK_R2_PUBLIC_BASE_URL` | No | Public base URL of the R2 bucket (enables screenshot embedding) |
+
+### Rate limiting
+
+5 submissions per IP address per hour, enforced via the `FEEDBACK_RATE_LIMIT` KV namespace. Exceeding the limit returns HTTP 429 with a `Retry-After: 3600` header. The counter resets automatically at the top of each hour (KV TTL).
+
+### File upload constraints
+
+- Accepted types: JPEG, PNG, GIF, WebP, AVIF
+- Maximum size: 5 MB
+- Files stored under `feedback/{timestamp}-{uuid}.{ext}` in the R2 bucket
+- Invalid type or oversized files are silently skipped — the issue is still created
+
+### Running tests
+
+```bash
+npm run test:worker
+# or run just the feedback suite:
+npx vitest run tests/anonymous-feedback.test.js
+```
+
+---
+
 ## The Builder
 
 **Asia Grady** is a cooperative economist, civic technologist, and builder based in Jamaica Plain, Boston. She is developing a portfolio of civic infrastructure projects at the intersection of Afrofuturism, cooperative economics, and community wealth — spanning energy, capital access, civic education, and media. She holds published research in urban economics and AI systems.
