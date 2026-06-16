@@ -11,6 +11,18 @@ id = "test-user-profiles"
 binding = "LOGIN_ATTEMPTS"
 id = "test-login-attempts"
 
+[[kv_namespaces]]
+binding = "FEEDBACK_RATE_LIMIT"
+id = "test-feedback-rate-limit"
+
+[[r2_buckets]]
+binding = "FEEDBACK_ATTACHMENTS"
+bucket_name = "test-feedback-attachments"
+
+[vars]
+GITHUB_TOKEN = "test-github-token"
+FEEDBACK_R2_PUBLIC_BASE_URL = "https://test-r2.example.com"
+
 [[d1_databases]]
 binding = "GRANT_MANAGER_DB"
 database_name = "grant-manager-test"

@@ -23,6 +23,14 @@ id = "3613c184af7d4890a70f1c9d28583329"
 binding = "LOGIN_ATTEMPTS"
 id = "713c8d1d9eb34d1ea13656bf40f14ccc"
 
+[[kv_namespaces]]
+binding = "FEEDBACK_RATE_LIMIT"
+id = "786a52996c0b4ad4884a48fd10d65d82"
+
+[[r2_buckets]]
+binding = "FEEDBACK_ATTACHMENTS"
+bucket_name = "foundationplanner-feedback-attachments"
+
 [[d1_databases]]
 binding = "GRANT_MANAGER_DB"
 database_name = "grant-manager-db"
