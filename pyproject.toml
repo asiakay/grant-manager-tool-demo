@@ -15,6 +15,9 @@ dependencies = [
     "plotly",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest", "freezegun"]
+
 [project.scripts]
 wrangle-grants = "wrangle_grants:main"
 search-grants = "search_grants:main"

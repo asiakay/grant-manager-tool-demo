@@ -29,7 +29,7 @@ jobs:
         run: pip install pandas freezegun pytest
 
       - name: Run scoring unit tests (pytest)
-        run: python -m pytest tests/test_program_scoring.py -v
+        run: python -m pytest tests/ -v
 
       - name: Run worker tests (vitest)
         run: npm run test:worker

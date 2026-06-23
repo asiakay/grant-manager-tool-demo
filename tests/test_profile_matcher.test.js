@@ -261,6 +261,28 @@ describe("scheduled: matching logic", () => {
     await seedProfile("alice", ALICE_PROFILE);
     await expect(runScheduled()).resolves.not.toThrow();
   });
+
+  it("notifies Bob when Health Research Grant scores above threshold", async () => {
+    // Bob: Health & Medicine focus + Hospital/Health System org type.
+    // Health Research Grant benefits = "health medicine medical clinical research".
+    // computeProfileMatch uses substring `.includes()`:
+    //   - "health" matches Health & Medicine focus area keyword → 1 focus-area hit
+    //   - "clinical" contains "clinic" (Hospital/Health System keyword) → org-type hit
+    // → profileMatch = 2/2 = 1.0 → finalScore ≈ 10.55 (above the 6.0 threshold).
+    await seedProfile("bob", BOB_PROFILE);
+    const sent = captureQueueSends();
+
+    await runScheduled();
+
+    const bobMsg = sent.find(m => m.username === "bob");
+    expect(bobMsg).toBeDefined();
+    expect(bobMsg.email).toBe("bob@example.com");
+    const grantNames = bobMsg.matches.map(m => m.grant.name);
+    expect(grantNames).toContain("Health Research Grant");
+    for (const { score } of bobMsg.matches) {
+      expect(score).toBeGreaterThanOrEqual(6.0);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
