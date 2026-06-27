@@ -18,6 +18,11 @@ export interface Grant {
   "Notes/Actions": string;
   score?: number;
   source?: "live" | "db";
+  ai_score?: number;
+  ai_summary?: string;
+  ai_tier?: string;
+  ai_scored_at?: string;
+  pdf_url?: string;
   [key: string]: string | number | undefined;
 }
 

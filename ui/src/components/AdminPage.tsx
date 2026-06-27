@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import AdminUpload from "./AdminUpload";
-import { fetchAdminUsers, setAdminStatus, type AdminUser } from "../api";
+import { fetchAdminUsers, setAdminStatus, scoreGrantsAI, sendDigest, type AdminUser, type ScoreGrantsResult, type DigestResult } from "../api";
 
 interface Props {
   isAdmin: boolean;
@@ -16,6 +16,13 @@ export default function AdminPage({ isAdmin, onBack }: Props) {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
+
+  const [aiScoring, setAiScoring] = useState(false);
+  const [aiResult, setAiResult] = useState<ScoreGrantsResult | null>(null);
+  const [aiError, setAiError] = useState("");
+  const [digestSending, setDigestSending] = useState(false);
+  const [digestResult, setDigestResult] = useState<DigestResult | null>(null);
+  const [digestError, setDigestError] = useState("");
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -100,6 +107,75 @@ export default function AdminPage({ isAdmin, onBack }: Props) {
               onClose={onBack}
               onUploaded={() => setUploaded(true)}
             />
+
+            <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider pt-2">
+              AI scoring
+            </h2>
+
+            <div className="card space-y-3">
+              <p className="text-sm text-gray-300 font-medium">Solar Roots profile matching</p>
+              <p className="text-xs text-gray-500">
+                Score unscored grants against the Solar Roots profile (solar, clean energy, climate).
+                Generates a summary and Hot/Warm/Cool tier for each grant.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={async () => {
+                    setAiError("");
+                    setAiResult(null);
+                    setAiScoring(true);
+                    try {
+                      const r = await scoreGrantsAI(false, 5);
+                      setAiResult(r);
+                    } catch (e) {
+                      setAiError(e instanceof Error ? e.message : "Failed");
+                    } finally {
+                      setAiScoring(false);
+                    }
+                  }}
+                  disabled={aiScoring}
+                  className="btn-primary px-4 flex items-center gap-2"
+                >
+                  {aiScoring && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                  Score Grants (AI)
+                </button>
+                <button
+                  onClick={async () => {
+                    setDigestError("");
+                    setDigestResult(null);
+                    setDigestSending(true);
+                    try {
+                      const r = await sendDigest();
+                      setDigestResult(r);
+                    } catch (e) {
+                      setDigestError(e instanceof Error ? e.message : "Failed");
+                    } finally {
+                      setDigestSending(false);
+                    }
+                  }}
+                  disabled={digestSending}
+                  className="btn-ghost px-4 flex items-center gap-2"
+                >
+                  {digestSending && <span className="w-4 h-4 border-2 border-gray-400/30 border-t-gray-400 rounded-full animate-spin" />}
+                  Send Digest
+                </button>
+              </div>
+              {aiError && <p className="text-red-400 text-sm">{aiError}</p>}
+              {aiResult && (
+                <p className="text-green-400 text-sm">
+                  {aiResult.message ?? `Scored ${aiResult.scored} of ${aiResult.total} grant(s).`}
+                  {aiResult.errors.length > 0 && ` (${aiResult.errors.length} error(s))`}
+                </p>
+              )}
+              {digestError && <p className="text-red-400 text-sm">{digestError}</p>}
+              {digestResult && (
+                <p className="text-green-400 text-sm">
+                  {digestResult.message ?? (digestResult.sent
+                    ? `Digest sent with ${digestResult.count} grant(s).`
+                    : "No Hot or Warm grants to send.")}
+                </p>
+              )}
+            </div>
 
             <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider pt-2">
               Manage admins

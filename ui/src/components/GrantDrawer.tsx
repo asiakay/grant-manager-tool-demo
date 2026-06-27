@@ -348,6 +348,30 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                 );
               })()}
 
+              {/* AI Summary + Tier */}
+              {(grant.ai_tier || grant.ai_summary) && (
+                <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
+                  <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">AI Assessment</p>
+                  {grant.ai_tier && (
+                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold ${
+                      grant.ai_tier === "Hot"
+                        ? "bg-orange-900/40 text-orange-300 border border-orange-700/40"
+                        : grant.ai_tier === "Warm"
+                        ? "bg-yellow-900/40 text-yellow-300 border border-yellow-700/40"
+                        : "bg-gray-700/60 text-gray-400 border border-gray-600/40"
+                    }`}>
+                      {grant.ai_tier}
+                    </span>
+                  )}
+                  {grant.ai_summary && (
+                    <p className="text-gray-300 text-sm leading-snug">{grant.ai_summary}</p>
+                  )}
+                  {grant.ai_score != null && (
+                    <p className="text-gray-500 text-xs">AI score: {Number(grant.ai_score).toFixed(1)} / 10</p>
+                  )}
+                </div>
+              )}
+
               {/* Eligibility Simulator */}
               {profile && (
                 <EligibilitySimulator

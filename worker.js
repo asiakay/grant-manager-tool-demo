@@ -641,6 +641,36 @@ export async function postGitHubIssue(env, payload) {
   });
 }
 
+async function fetchPageText(pageUrl) {
+  if (!pageUrl) return "";
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    let res;
+    try {
+      res = await fetch(pageUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return "";
+    const html = await res.text();
+    return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
+  } catch {
+    return "";
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
@@ -1380,29 +1410,6 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
         return jsonResponse(JSON.stringify({ ok: true, scored: 0, message: "No unscored grants found." }));
       }
 
-      async function fetchPageText(pageUrl) {
-        if (!pageUrl) return "";
-        try {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 5000);
-          let res;
-          try {
-            res = await fetch(pageUrl, {
-              headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
-              signal: controller.signal,
-            });
-          } finally {
-            clearTimeout(timer);
-          }
-          if (!res.ok) return "";
-          const html = await res.text();
-          // Strip tags and collapse whitespace; cap at 2000 chars so it fits in the prompt.
-          return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
-        } catch {
-          return "";
-        }
-      }
-
       async function scoreWithAI(grant, pageText) {
         const context = [
           `Name: ${grant.name}`,
@@ -1472,6 +1479,209 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
       return jsonResponse(JSON.stringify({ ok: true, scored, total: grants.length, errors }));
       } catch (e) {
         log("error", "score_grants_failed", { ...reqCtx, error: String(e) });
+        return jsonResponse(JSON.stringify({ error: String(e) }), { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/admin/score-grants-ai" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+      if (!env.AI && !(env.CF_ACCOUNT_ID && env.CF_AI_TOKEN)) return new Response("AI not configured", { status: 503 });
+
+      try {
+        const body = await request.json().catch(() => ({}));
+        const batch = Math.min(20, Math.max(1, parseInt(body.batch ?? "5", 10)));
+        const rescore = body.rescore === true;
+
+        const profileRaw = env.USER_PROFILES
+          ? await env.USER_PROFILES.get("profile:solar_roots", { type: "json" }).catch(() => null)
+          : null;
+        const focusAreas = profileRaw?.focusAreas ?? ["solar", "clean energy", "climate", "renewable energy"];
+        const orgType    = profileRaw?.orgType ?? "Nonprofit";
+        const stage      = profileRaw?.stage ?? "Growth";
+        const missionCtx = `${focusAreas.join(", ")} | ${orgType} | ${stage}`;
+
+        const filter = rescore
+          ? "ORDER BY rowid LIMIT ?"
+          : "WHERE (ai_scored_at IS NULL) ORDER BY rowid LIMIT ?";
+        const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT name, sponsor, source_url, benefits, eligibility_conditions, type, stage, deadline
+           FROM programs ${filter}`
+        ).bind(batch).all();
+
+        if (grants.length === 0) {
+          return jsonResponse(JSON.stringify({ ok: true, scored: 0, message: "No unscored grants found." }));
+        }
+
+        const SOLAR_KEYWORDS = ["solar", "clean energy", "climate", "renewable", "energy efficiency", "environment", "sustainability"];
+
+        async function scoreGrantWithAI(grant, pageText) {
+          const context = [
+            `Name: ${grant.name}`,
+            `Sponsor: ${grant.sponsor || "Unknown"}`,
+            `Type: ${grant.type || ""}`,
+            `Stage: ${grant.stage || ""}`,
+            `Benefits: ${grant.benefits || ""}`,
+            `Eligibility: ${grant.eligibility_conditions || ""}`,
+            pageText ? `Page excerpt:\n${pageText}` : "",
+          ].filter(Boolean).join("\n");
+
+          const prompt = `You are scoring a grant for an organization whose mission covers: ${missionCtx}.
+
+Score this grant on three dimensions (integers 0–3 each):
+- relevance: How specific and well-described is this funding opportunity? 0=vague, 3=very clear.
+- fit: How broadly accessible is it (nonprofits, startups, researchers)? 0=very narrow, 3=widely open.
+- ease: How easy to apply (rolling, simple requirements)? 0=complex, 3=straightforward.
+
+Also provide:
+- summary: 1–2 sentence plain-English description of what this grant funds and who it's for.
+- tier: "Hot" if excellent fit for our mission + clear eligibility + easy apply; "Warm" if partial fit or some friction; "Cool" otherwise.
+
+Grant:
+${context}
+
+Respond with ONLY a JSON object. Example: {"relevance":2,"fit":2,"ease":3,"summary":"Funds clean-energy projects for nonprofits.","tier":"Hot"}`;
+
+          const messages = [{ role: "user", content: prompt }];
+          let text = "";
+          if (env.AI) {
+            const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
+            text = result.response || "";
+          } else {
+            const res = await fetch(
+              `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+              { method: "POST", headers: { Authorization: `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
+            );
+            const data = await res.json();
+            text = data.result?.response ?? "";
+          }
+
+          const match = text.match(/\{[\s\S]*?\}/);
+          if (!match) return null;
+          try {
+            const parsed = JSON.parse(match[0]);
+            const clamp = (v) => Math.min(3, Math.max(0, parseInt(v, 10) || 0));
+            const validTiers = new Set(["Hot", "Warm", "Cool"]);
+            return {
+              relevance: clamp(parsed.relevance),
+              fit:       clamp(parsed.fit),
+              ease:      clamp(parsed.ease),
+              summary:   typeof parsed.summary === "string" ? parsed.summary.slice(0, 500) : "",
+              tier:      validTiers.has(parsed.tier) ? parsed.tier : "Cool",
+            };
+          } catch { return null; }
+        }
+
+        let scored = 0;
+        const errors = [];
+        for (const grant of grants) {
+          try {
+            const pageText = await fetchPageText(grant.source_url);
+            const result = await scoreGrantWithAI(grant, pageText);
+            if (result) {
+              const grantText = [grant.name, grant.benefits, grant.eligibility_conditions].join(" ").toLowerCase();
+              const hitCount = SOLAR_KEYWORDS.filter(k => grantText.includes(k)).length;
+              const profileBonus = hitCount > 0 ? Math.min(2.0, hitCount * 0.5) : 0;
+              const baseScore = (result.relevance * 0.3 + result.fit * 0.3 + result.ease * 0.2) * (10 / 3);
+              const aiScore = Math.min(10, Math.round((baseScore + profileBonus) * 100) / 100);
+
+              await env.GRANT_MANAGER_DB.prepare(
+                `UPDATE programs SET ai_score = ?, ai_summary = ?, ai_tier = ?, ai_scored_at = ? WHERE name = ?`
+              ).bind(aiScore, result.summary, result.tier, new Date().toISOString(), grant.name).run();
+              scored++;
+            }
+          } catch (e) {
+            errors.push({ name: grant.name, error: String(e).slice(0, 100) });
+          }
+        }
+
+        log("info", "grants_ai_scored", { ...reqCtx, scored, errors: errors.length });
+        return jsonResponse(JSON.stringify({ ok: true, scored, total: grants.length, errors }));
+      } catch (e) {
+        log("error", "score_grants_ai_failed", { ...reqCtx, error: String(e) });
+        return jsonResponse(JSON.stringify({ error: String(e) }), { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/admin/send-digest" && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!(await validateCsrf(request, env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.GRANT_MANAGER_DB) return new Response("Database not configured", { status: 503 });
+
+      try {
+        const profileRaw = env.USER_PROFILES
+          ? await env.USER_PROFILES.get("profile:solar_roots", { type: "json" }).catch(() => null)
+          : null;
+        const digestEmail = profileRaw?.digestEmail;
+        if (!digestEmail) {
+          return jsonResponse(JSON.stringify({ error: "No digestEmail set in profile:solar_roots KV entry." }), { status: 400 });
+        }
+        if (!env.RESEND_API_KEY) {
+          return jsonResponse(JSON.stringify({ error: "RESEND_API_KEY secret not configured." }), { status: 503 });
+        }
+
+        const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT name, sponsor, deadline, ai_score, ai_summary, ai_tier, source_url
+           FROM programs WHERE ai_tier IN ('Hot','Warm') ORDER BY ai_score DESC LIMIT 20`
+        ).all();
+
+        if (grants.length === 0) {
+          return jsonResponse(JSON.stringify({ ok: true, count: 0, sent: false, message: "No Hot or Warm grants to send." }));
+        }
+
+        const TIER_COLOR = { Hot: "#f97316", Warm: "#eab308", Cool: "#6b7280" };
+        const grantCards = grants.map(g => {
+          const tierColor = TIER_COLOR[g.ai_tier] ?? "#6b7280";
+          const deadlineStr = g.deadline ? `<span style="color:#9ca3af;font-size:12px">Deadline: ${escapeHtml(g.deadline)}</span>` : "";
+          const summaryStr = g.ai_summary ? `<p style="margin:6px 0 0;color:#d1d5db;font-size:14px">${escapeHtml(g.ai_summary)}</p>` : "";
+          const sourceLink = g.source_url
+            ? `<a href="${escapeHtml(g.source_url)}" style="color:#60a5fa;font-size:13px">View grant</a>`
+            : "";
+          return `<div style="border:1px solid #374151;border-radius:8px;padding:16px;margin-bottom:12px;background:#1f2937">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <span style="background:${tierColor}22;color:${tierColor};border:1px solid ${tierColor}44;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${escapeHtml(g.ai_tier)}</span>
+    <strong style="color:#f9fafb;font-size:15px">${escapeHtml(g.name)}</strong>
+  </div>
+  <div style="color:#9ca3af;font-size:13px;margin-bottom:4px">${escapeHtml(g.sponsor ?? "")}</div>
+  ${deadlineStr}
+  ${summaryStr}
+  <div style="margin-top:8px">${sourceLink}</div>
+</div>`;
+        }).join("\n");
+
+        const monthLabel = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        const htmlBody = `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#111827;color:#f9fafb;padding:24px;max-width:640px;margin:auto">
+<h1 style="color:#f9fafb;font-size:22px;margin-bottom:4px">Solar Roots Grant Digest</h1>
+<p style="color:#9ca3af;margin-bottom:20px">${monthLabel} &mdash; ${grants.length} grant${grants.length !== 1 ? "s" : ""} matched</p>
+${grantCards}
+<hr style="border-color:#374151;margin:24px 0">
+<p style="color:#6b7280;font-size:12px">You're receiving this because you're subscribed to the Solar Roots grant digest. Manage your profile to update preferences.</p>
+</body></html>`;
+
+        const emailRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: "onboarding@resend.dev",
+            to: digestEmail,
+            subject: `Solar Roots Grant Digest — ${monthLabel}`,
+            html: htmlBody,
+          }),
+        });
+
+        if (!emailRes.ok) {
+          const errText = await emailRes.text().catch(() => "");
+          log("error", "digest_resend_error", { ...reqCtx, status: emailRes.status, error: errText.slice(0, 200) });
+          return jsonResponse(JSON.stringify({ error: `Resend error ${emailRes.status}` }), { status: 502 });
+        }
+
+        log("info", "digest_sent", { ...reqCtx, count: grants.length, to: digestEmail });
+        return jsonResponse(JSON.stringify({ ok: true, count: grants.length, sent: true }));
+      } catch (e) {
+        log("error", "send_digest_failed", { ...reqCtx, error: String(e) });
         return jsonResponse(JSON.stringify({ error: String(e) }), { status: 500 });
       }
     }
