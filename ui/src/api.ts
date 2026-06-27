@@ -336,6 +336,42 @@ export async function scoreGrants(rescore = false, batch = 10): Promise<ScoreGra
   return res.json();
 }
 
+export async function scoreGrantsAI(rescore = false, batch = 5): Promise<ScoreGrantsResult> {
+  const res = await fetch(`${BASE}/api/admin/score-grants-ai`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ batch, rescore }),
+  });
+  if (res.status === 401) throw new Error("Unauthenticated");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error || `Server error (${res.status})`);
+  }
+  return res.json();
+}
+
+export interface DigestResult {
+  ok: boolean;
+  count: number;
+  sent: boolean;
+  message?: string;
+}
+
+export async function sendDigest(): Promise<DigestResult> {
+  const res = await fetch(`${BASE}/api/admin/send-digest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+  });
+  if (res.status === 401) throw new Error("Unauthenticated");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error || `Server error (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function requestPasswordReset(email: string): Promise<{ token?: string; message: string }> {
   const res = await fetch(`${BASE}/api/request-password-reset`, {
     method: "POST",
