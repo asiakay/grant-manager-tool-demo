@@ -103,7 +103,22 @@ const PROGRAMS_SCHEMA = `CREATE TABLE IF NOT EXISTS programs (
   fit              REAL,
   ease             REAL,
   weighted_score   REAL,
-  notes            TEXT
+  notes            TEXT,
+  pdf_url          TEXT,
+  ai_score         REAL,
+  ai_summary       TEXT,
+  ai_tier          TEXT,
+  ai_scored_at     TEXT,
+  opportunity_id   TEXT,
+  opportunity_number TEXT,
+  cfda_numbers     TEXT,
+  eligible_applicants TEXT,
+  award_ceiling    REAL,
+  award_floor      REAL,
+  is_forecast      INTEGER DEFAULT 0,
+  estimated_post_date TEXT,
+  source_channel   TEXT,
+  last_synced_at   TEXT
 )`;
 
 function getAdminUsers(env) {
@@ -177,6 +192,7 @@ const CSV_COLUMN_ALIASES = {
   "grantname":                    "name",
   "easeofuse":                    "ease",
   "link":                         "source_url",
+  "sourceurl":                    "source_url", // "Source URL" — underscore in the DB column isn't whitespace, so normalizeHeader() alone won't match it; needs an explicit alias like every other multi-word column below.
   "matchreq%":                    "weighted_score",
   "match%":                       "weighted_score",
   // Standard CSV format with spaces/slashes/punctuation
@@ -187,6 +203,16 @@ const CSV_COLUMN_ALIASES = {
   "non-dilutive?":                "non_dilutive",
   "stackrequired?":               "stack_required",
   "weightedscore":                "weighted_score",
+  // Grants.gov extract fields (fetch_xml_extract.py) / Simpler Grants.gov sync
+  "opportunityid":                "opportunity_id",
+  "opportunitynumber":            "opportunity_number",
+  "cfdanumbers":                  "cfda_numbers",
+  "eligibleapplicants":           "eligible_applicants",
+  "awardceiling":                 "award_ceiling",
+  "awardfloor":                   "award_floor",
+  "isforecast":                   "is_forecast",
+  "estimatedpostdate":            "estimated_post_date",
+  "sourcechannel":                "source_channel",
 };
 
 function resolveHeader(h) {
@@ -484,69 +510,126 @@ async function fetchFromSimplerGrants(env, query, page = 1, pageSize = 25) {
   return await response.json();
 }
 
+// Max opportunities fetched per sync run, across all pages — bounds Worker CPU
+// time / subrequest count even if the catalog grows well past this.
+const SYNC_MAX_OPPORTUNITIES = 2000;
+const SYNC_PAGE_SIZE = 100;
+
+// Walks every page of the Simpler Grants.gov search API for `query` (an empty
+// query returns the full catalog matching the filters), stopping when a page
+// comes back short (last page) or SYNC_MAX_OPPORTUNITIES is reached.
+async function fetchAllFromSimplerGrants(env, query) {
+  const all = [];
+  for (let page = 1; all.length < SYNC_MAX_OPPORTUNITIES; page++) {
+    const apiData = await fetchFromSimplerGrants(env, query, page, SYNC_PAGE_SIZE);
+    const opportunities = apiData?.data || apiData?.data?.oppHits || apiData?.items || [];
+    all.push(...opportunities);
+    if (opportunities.length < SYNC_PAGE_SIZE) break;
+  }
+  return all.slice(0, SYNC_MAX_OPPORTUNITIES);
+}
+
+function fmtAward(floor, ceiling) {
+  const fmt = (n) => "$" + Number(n).toLocaleString("en-US");
+  if (floor && ceiling) return `${fmt(floor)} – ${fmt(ceiling)}`;
+  if (ceiling) return `Up to ${fmt(ceiling)}`;
+  if (floor) return `From ${fmt(floor)}`;
+  return "";
+}
+
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") : "";
+}
+
 async function syncGrantsWithD1(env, query) {
   if (!env.GRANT_MANAGER_DB) {
     throw new Error("D1 binding (GRANT_MANAGER_DB) is missing.");
   }
-  const apiData = await fetchFromSimplerGrants(env, query, 1, 25);
-  const opportunities = apiData?.data || apiData?.data?.oppHits || apiData?.items || [];
+  const opportunities = await fetchAllFromSimplerGrants(env, query);
   if (opportunities.length === 0) {
     return { success: true, inserted: 0, message: "Sync complete. No records returned from server filters." };
   }
 
   await env.GRANT_MANAGER_DB.prepare(PROGRAMS_SCHEMA).run();
 
-  function fmtAward(floor, ceiling) {
-    const fmt = (n) => "$" + Number(n).toLocaleString("en-US");
-    if (floor && ceiling) return `${fmt(floor)} – ${fmt(ceiling)}`;
-    if (ceiling) return `Up to ${fmt(ceiling)}`;
-    if (floor) return `From ${fmt(floor)}`;
-    return "";
-  }
-
-  function capitalize(s) {
-    return s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") : "";
-  }
-
-  const insertStmt = env.GRANT_MANAGER_DB.prepare(`
-    INSERT INTO programs (
-      type, name, sponsor, source_url, region_eligibility, deadline, cadence, benefits,
-      eligibility_conditions, stage, non_dilutive, stack_required, relevance, fit, ease,
-      weighted_score, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(name) DO UPDATE SET
+  // Fields that are safe to refresh on every sync (descriptive/structural data
+  // from Grants.gov). relevance/fit/ease/weighted_score/non_dilutive/stack_required
+  // are deliberately left alone on conflict — they may have been hand-tuned or
+  // set by the AI scoring pass, and a resync shouldn't clobber that.
+  const REFRESHABLE_SET = `
+      name = excluded.name,
       type = excluded.type,
       sponsor = excluded.sponsor,
       source_url = excluded.source_url,
       deadline = excluded.deadline,
       benefits = excluded.benefits,
       eligibility_conditions = excluded.eligibility_conditions,
-      stage = excluded.stage
+      stage = excluded.stage,
+      cfda_numbers = excluded.cfda_numbers,
+      eligible_applicants = excluded.eligible_applicants,
+      award_ceiling = excluded.award_ceiling,
+      award_floor = excluded.award_floor,
+      source_channel = excluded.source_channel,
+      last_synced_at = excluded.last_synced_at
+  `;
+
+  const insertStmt = env.GRANT_MANAGER_DB.prepare(`
+    INSERT INTO programs (
+      type, name, sponsor, source_url, region_eligibility, deadline, cadence, benefits,
+      eligibility_conditions, stage, non_dilutive, stack_required, relevance, fit, ease,
+      weighted_score, notes, opportunity_id, cfda_numbers, eligible_applicants,
+      award_ceiling, award_floor, source_channel, last_synced_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(opportunity_id) WHERE opportunity_id IS NOT NULL DO UPDATE SET
+      ${REFRESHABLE_SET}
+    ON CONFLICT(name) DO UPDATE SET
+      opportunity_id = excluded.opportunity_id,
+      ${REFRESHABLE_SET}
   `);
 
+  const syncedAt = new Date().toISOString();
   const statements = opportunities.map((opp) => {
     const summary = opp.summary || opp;
     const name = opp.opportunity_title || summary.opportunity_title || "Untitled Grant";
+    const opportunityId = opp.opportunity_id != null ? String(opp.opportunity_id) : null;
     const type = capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant");
     const sponsor = opp.agency_name || summary.agency_name || opp.agency_code || "Unknown Agency";
-    const sourceUrl = opp.opportunity_id ? `https://simpler.grants.gov/opportunity/${opp.opportunity_id}` : "";
+    const sourceUrl = opportunityId ? `https://simpler.grants.gov/opportunity/${opportunityId}` : "";
     const deadline = opp.close_date || summary.close_date || "";
-    const benefits = fmtAward(opp.award_floor ?? summary.award_floor, opp.award_ceiling ?? summary.award_ceiling);
-    const eligibility = Array.isArray(opp.applicant_types)
-      ? opp.applicant_types.map(capitalize).join(", ")
+    const awardFloor = opp.award_floor ?? summary.award_floor ?? null;
+    const awardCeiling = opp.award_ceiling ?? summary.award_ceiling ?? null;
+    const benefits = fmtAward(awardFloor, awardCeiling);
+    const applicantTypes = Array.isArray(opp.applicant_types)
+      ? opp.applicant_types
       : Array.isArray(summary.applicant_types)
-        ? summary.applicant_types.map(capitalize).join(", ")
-        : "";
+        ? summary.applicant_types
+        : [];
+    const eligibility = applicantTypes.map(capitalize).join(", ");
+    const cfdaList = Array.isArray(opp.cfda_numbers)
+      ? opp.cfda_numbers
+      : Array.isArray(opp.assistance_listing_numbers)
+        ? opp.assistance_listing_numbers
+        : Array.isArray(summary.assistance_listing_numbers)
+          ? summary.assistance_listing_numbers
+          : [];
+    const cfdaNumbers = cfdaList.join(", ");
     const stage = capitalize(opp.opportunity_status || "");
     // Derive a simple relevance score (0-3) from how many known grant domains the
     // title/eligibility text mentions, so grants aren't all scored equally at 0.
     const grantText = [name, sponsor, benefits, eligibility].join(" ").toLowerCase();
     const domainCount = Object.values(FOCUS_AREA_KEYWORDS).filter(kws => kws.some(kw => grantText.includes(kw))).length;
     const derivedRelevance = Math.min(3, Math.round((domainCount / Object.keys(FOCUS_AREA_KEYWORDS).length) * 3 * 10) / 10);
-    return insertStmt.bind(type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0, derivedRelevance, 0, 0, 0, "");
+    return insertStmt.bind(
+      type, name, sponsor, sourceUrl, "", deadline, "", benefits, eligibility, stage, 1, 0,
+      derivedRelevance, 0, 0, 0, "", opportunityId, cfdaNumbers, eligibility,
+      awardCeiling, awardFloor, "simpler_api", syncedAt,
+    );
   });
 
-  await env.GRANT_MANAGER_DB.batch(statements);
+  // D1 caps batch size; chunk to stay well under it regardless of SYNC_MAX_OPPORTUNITIES.
+  for (let i = 0; i < statements.length; i += 50) {
+    await env.GRANT_MANAGER_DB.batch(statements.slice(i, i + 50));
+  }
   return { success: true, inserted: opportunities.length, message: `Successfully loaded ${opportunities.length} active opportunities to local storage.` };
 }
 
@@ -1028,36 +1111,94 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
       const pageSize = Math.min(500, Math.max(1, parseInt(url.searchParams.get("pageSize") || "100", 10)));
 
+      // Forecasted opportunities aren't formally applyable yet, so they're hidden
+      // from the main ranked list unless explicitly requested.
+      const includeForecast = url.searchParams.get("includeForecast") === "true";
+      // Award-size range filter, in dollars. minAward keeps grants whose ceiling
+      // could plausibly reach that amount; maxAward excludes grants whose floor
+      // (or ceiling, if no floor is known) exceeds the cap.
+      const minAwardParam = url.searchParams.get("minAward");
+      const maxAwardParam = url.searchParams.get("maxAward");
+      const minAward = minAwardParam !== null && minAwardParam !== "" ? Number(minAwardParam) : null;
+      const maxAward = maxAwardParam !== null && maxAwardParam !== "" ? Number(maxAwardParam) : null;
+      // Collapses cohort-year duplicates of the same underlying program (same
+      // CFDA/Assistance Listing Number) down to the most recent one, deterministically.
+      const dedupeByCfda = url.searchParams.get("dedupeByCfda") !== "false";
+
       const grantsStart = Date.now();
       const columns = await getColumns(env.GRANT_MANAGER_DB);
       let scored = [];
       if (columns.length > 0) {
         const { results: rows } = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM programs`).all();
         const hasNewSchema = columns.includes("source_url");
-        scored = rows
-          .map((r) => {
-            const g = hasNewSchema ? {
-              "Type": r.type ?? "",
-              "Name": r.name ?? "",
-              "Sponsor": r.sponsor ?? "",
-              "Source URL": r.source_url ?? "",
-              "Region/Eligibility": r.region_eligibility ?? "",
-              "Deadline/Next Cohort": r.deadline ?? "",
-              "Cadence": r.cadence ?? "",
-              "Benefits": r.benefits ?? "",
-              "Eligibility (key conditions)": r.eligibility_conditions ?? "",
-              "Stage": r.stage ?? "",
-              "Non-dilutive?": r.non_dilutive === 1 ? "Yes" : r.non_dilutive === 0 ? "No" : "",
-              "Stack Required?": r.stack_required === 1 ? "Yes" : r.stack_required === 0 ? "No" : "",
-              "Relevance": r.relevance ?? 0,
-              "Fit": r.fit ?? 0,
-              "Ease": r.ease ?? 0,
-              "Weighted Score": r.weighted_score ?? 0,
-              "Notes/Actions": r.notes ?? "",
-            } : r;
-            return { ...g, score: computeScore(g, userWeights, profile) };
-          })
-          .sort((a, b) => b.score - a.score);
+        scored = rows.map((r) => {
+          const g = hasNewSchema ? {
+            "Type": r.type ?? "",
+            "Name": r.name ?? "",
+            "Sponsor": r.sponsor ?? "",
+            "Source URL": r.source_url ?? "",
+            "Region/Eligibility": r.region_eligibility ?? "",
+            "Deadline/Next Cohort": r.deadline ?? "",
+            "Cadence": r.cadence ?? "",
+            "Benefits": r.benefits ?? "",
+            "Eligibility (key conditions)": r.eligibility_conditions ?? "",
+            "Stage": r.stage ?? "",
+            "Non-dilutive?": r.non_dilutive === 1 ? "Yes" : r.non_dilutive === 0 ? "No" : "",
+            "Stack Required?": r.stack_required === 1 ? "Yes" : r.stack_required === 0 ? "No" : "",
+            "Relevance": r.relevance ?? 0,
+            "Fit": r.fit ?? 0,
+            "Ease": r.ease ?? 0,
+            "Weighted Score": r.weighted_score ?? 0,
+            "Notes/Actions": r.notes ?? "",
+            // AI scoring pass output (worker.js /api/admin/score-grants) — previously
+            // computed and stored but never actually returned here, so GrantDrawer's
+            // AI tier/summary/score section was always empty.
+            "ai_score": r.ai_score ?? null,
+            "ai_summary": r.ai_summary ?? "",
+            "ai_tier": r.ai_tier ?? "",
+            "ai_scored_at": r.ai_scored_at ?? "",
+            "pdf_url": r.pdf_url ?? "",
+            "Opportunity ID": r.opportunity_id ?? "",
+            "Opportunity Number": r.opportunity_number ?? "",
+            "CFDA Numbers": r.cfda_numbers ?? "",
+            "Eligible Applicants": r.eligible_applicants ?? "",
+            "Award Ceiling": r.award_ceiling ?? null,
+            "Award Floor": r.award_floor ?? null,
+            "Is Forecast": r.is_forecast === 1,
+            "Estimated Post Date": r.estimated_post_date ?? "",
+            "Source Channel": r.source_channel ?? "",
+          } : r;
+          return { ...g, score: computeScore(g, userWeights, profile) };
+        });
+
+        if (!includeForecast) {
+          scored = scored.filter((g) => !g["Is Forecast"]);
+        }
+        if (minAward !== null && !Number.isNaN(minAward)) {
+          scored = scored.filter((g) => g["Award Ceiling"] != null && Number(g["Award Ceiling"]) >= minAward);
+        }
+        if (maxAward !== null && !Number.isNaN(maxAward)) {
+          scored = scored.filter((g) => {
+            const floor = g["Award Floor"] ?? g["Award Ceiling"];
+            return floor != null && Number(floor) <= maxAward;
+          });
+        }
+        if (dedupeByCfda) {
+          const byCfda = new Map();
+          const noCfda = [];
+          for (const g of scored) {
+            const cfda = String(g["CFDA Numbers"] || "").trim();
+            if (!cfda) { noCfda.push(g); continue; }
+            const existing = byCfda.get(cfda);
+            if (!existing) { byCfda.set(cfda, g); continue; }
+            const gDate = Date.parse(g["Deadline/Next Cohort"] || g["Estimated Post Date"] || "");
+            const eDate = Date.parse(existing["Deadline/Next Cohort"] || existing["Estimated Post Date"] || "");
+            if (!Number.isNaN(gDate) && (Number.isNaN(eDate) || gDate > eDate)) byCfda.set(cfda, g);
+          }
+          scored = [...noCfda, ...byCfda.values()];
+        }
+
+        scored.sort((a, b) => b.score - a.score);
       }
       const total = scored.length;
       const start = (page - 1) * pageSize;

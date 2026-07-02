@@ -102,13 +102,20 @@ export default function EligibilitySimulator({ grant, profile, username }: Props
   const key = storageKey(String(grant.Name), username);
 
   const requirements = useMemo<EligibilityRequirement[]>(() => {
-    const raw = String(grant["Eligibility (key conditions)"] || "");
-    return parseFragments(raw).map((text, i) => ({
+    // Grants.gov-sourced grants carry a structured "Eligible Applicants" list
+    // (decoded EligibleApplicantTypes categories) — prefer that over the
+    // free-text field, since it needs no heuristic fragment-splitting and is
+    // exactly the set of eligible applicant types Grants.gov published.
+    const structured = String(grant["Eligible Applicants"] || "").trim();
+    const fragments = structured
+      ? structured.split(",").map((s) => s.trim()).filter(Boolean)
+      : parseFragments(String(grant["Eligibility (key conditions)"] || ""));
+    return fragments.map((text, i) => ({
       id: `req-${i}`,
       text,
       autoStatus: detectStatus(text, profile),
     }));
-  }, [grant.Name, profile]);
+  }, [grant.Name, grant["Eligible Applicants"], grant["Eligibility (key conditions)"], profile]);
 
   const [overrides, setOverrides] = useState<Record<string, EligibilityStatus | null>>({});
   const [collapsed, setCollapsed] = useState(false);

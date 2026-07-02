@@ -39,6 +39,8 @@ const INITIAL_FILTERS: FilterState = {
   deadlineBefore: "",
   search: "",
   savedOnly: false,
+  minAward: "",
+  maxAward: "",
 };
 
 export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Props) {
@@ -62,11 +64,13 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
   const [username, setUsername] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
 
   useEffect(() => {
     const profilePromise = fetchProfile().then((p) => { setProfile(p); return p; }).catch(() => null);
 
-    fetchGrants()
+    setLoading(true);
+    fetchGrants(1, 500, { includeForecast: showForecast })
       .then(async ({ data, total }: PagedGrants) => {
         const dbNames = new Set(data.map((g) => String(g.Name).trim().toLowerCase()));
         const p = await profilePromise;
@@ -95,7 +99,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
       })
       .finally(() => setLoading(false));
     fetchMe().then((me) => { setIsAdmin(me?.isAdmin ?? false); setUsername(me?.username ?? ""); }).catch(() => {});
-  }, [onLogout]);
+  }, [onLogout, showForecast]);
 
 
 
@@ -107,7 +111,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
       setProfile(p);
       setProfileOpen(false);
       setLoading(true);
-      const { data: updated, total } = await fetchGrants();
+      const { data: updated, total } = await fetchGrants(1, 500, { includeForecast: showForecast });
       setGrants(updated);
       setGrantsTotal(total);
     } catch {
@@ -471,18 +475,56 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
                     }
                   />
                 </div>
+
+                <div>
+                  <label htmlFor="filter-min-award" className="sr-only">Minimum award amount</label>
+                  <input
+                    id="filter-min-award"
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    placeholder="Min award ($)"
+                    aria-label="Minimum award amount"
+                    value={filters.minAward}
+                    onChange={(e) => setFilters((f) => ({ ...f, minAward: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="filter-max-award" className="sr-only">Maximum award amount</label>
+                  <input
+                    id="filter-max-award"
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    placeholder="Max award ($)"
+                    aria-label="Maximum award amount"
+                    value={filters.maxAward}
+                    onChange={(e) => setFilters((f) => ({ ...f, maxAward: e.target.value }))}
+                  />
+                </div>
               </div>
 
-              {(watchlist.size > 0 || candidates.size > 0) && (
-                <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(watchlist.size > 0 || candidates.size > 0) && (
                   <button
                     onClick={() => setFilters((f) => ({ ...f, savedOnly: !f.savedOnly }))}
                     className={`badge transition-colors cursor-pointer ${filters.savedOnly ? "bg-brand-600/60 text-brand-200 ring-1 ring-brand-400" : "bg-brand-900/50 text-brand-300 hover:bg-brand-800/50"}`}
                   >
                     ★ {candidates.size + watchlist.size} saved — {filters.savedOnly ? "showing saved" : "show saved"}
                   </button>
-                </div>
-              )}
+                )}
+                <button
+                  onClick={() => setShowForecast((v) => !v)}
+                  aria-pressed={showForecast}
+                  title="Forecasted opportunities are announced by an agency before they're formally posted — not yet applyable, but worth planning ahead for."
+                  className={`badge transition-colors cursor-pointer ${showForecast ? "bg-purple-600/60 text-purple-200 ring-1 ring-purple-400" : "bg-purple-900/40 text-purple-300 hover:bg-purple-800/50"}`}
+                >
+                  🔭 {showForecast ? "Showing forecasted opportunities" : "Include forecasted (coming soon)"}
+                </button>
+              </div>
               </div>
             </div>
 

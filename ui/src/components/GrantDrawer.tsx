@@ -35,6 +35,22 @@ const COLUMNS: (keyof Grant)[] = [
   "Weighted Score",
 ];
 
+// Structured Grants.gov fields — only rendered when present, so CSV-sourced
+// grants without them don't show a grid of empty "—" boxes.
+const GRANTS_GOV_COLUMNS: (keyof Grant)[] = [
+  "Opportunity Number",
+  "CFDA Numbers",
+  "Eligible Applicants",
+  "Award Ceiling",
+  "Award Floor",
+];
+
+function formatAward(value: number | string | null | undefined): string {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  return Number.isNaN(n) ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
 interface RankingRationale {
   headline: string;
   strengths: string[];
@@ -264,6 +280,14 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <span className="badge bg-gray-800 text-gray-300 text-xs">{grant.Type || "—"}</span>
                   <ScoreBadge value={grant.score ?? grant["Weighted Score"]} />
+                  {grant["Is Forecast"] && (
+                    <span
+                      className="badge bg-purple-900/40 text-purple-300 border border-purple-700/40 text-xs"
+                      title="Announced by the agency but not yet formally posted"
+                    >
+                      🔭 Forecasted{grant["Estimated Post Date"] ? ` — expected ${grant["Estimated Post Date"]}` : ""}
+                    </span>
+                  )}
                 </div>
                 <h2 id="drawer-title" className="text-lg font-semibold text-white leading-snug">{grant.Name}</h2>
                 <p className="text-gray-400 text-sm">{grant.Sponsor}</p>
@@ -390,7 +414,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   >
                     <p className="text-gray-500 text-xs font-medium mb-1">{col as string}</p>
                     {isScoreCol(col) ? (
-                      <ScoreBadge value={col === "Weighted Score" ? (grant.score ?? grant["Weighted Score"]) : (grant[col] ?? "")} />
+                      <ScoreBadge value={col === "Weighted Score" ? (grant.score ?? grant["Weighted Score"]) : (grant[col] as string | number ?? "")} />
                     ) : (
                       <p className="text-gray-200 text-sm leading-snug">
                         {String(grant[col] || "—")}
@@ -399,6 +423,25 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   </div>
                 ))}
               </div>
+
+              {/* Grants.gov structured fields (opportunity number, CFDA, award range, eligibility) */}
+              {GRANTS_GOV_COLUMNS.some((col) => grant[col] != null && grant[col] !== "") && (
+                <div className="grid grid-cols-2 gap-3">
+                  {GRANTS_GOV_COLUMNS.filter((col) => grant[col] != null && grant[col] !== "").map((col) => (
+                    <div
+                      key={col as string}
+                      className={`bg-gray-800/50 rounded-lg p-3 ${col === "Eligible Applicants" ? "col-span-2" : ""}`}
+                    >
+                      <p className="text-gray-500 text-xs font-medium mb-1">{col as string}</p>
+                      <p className="text-gray-200 text-sm leading-snug">
+                        {col === "Award Ceiling" || col === "Award Floor"
+                          ? formatAward(grant[col] as number | string | null)
+                          : String(grant[col] || "—")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Notes editor */}
               <div>

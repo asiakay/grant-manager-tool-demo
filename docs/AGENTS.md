@@ -16,16 +16,22 @@ Map these tables to the client's requested columns before delivery. Use `docs/da
 
 ## Run Books
 
-- **Fetch opportunities from Grants.gov**
+- **Fetch opportunities from Grants.gov (keyword search — targeted, requires a query)**
 
   ```bash
   python search_grants.py "water"
   ```
 
+- **Fetch the full Grants.gov catalog (XML Extract — no query, includes forecasted opportunities)**
+
+  ```bash
+  python fetch_xml_extract.py --output data/csvs/grants_gov_extract.csv
+  ```
+
 - **Merge raw CSVs**
 
   ```bash
-  python wrangle_grants.py data/csvs/ out/master.csv
+  python scripts/wrangle_grants.py --input data/csvs --out out/master.csv
   ```
 
 - **Summarize grant documents**

@@ -76,8 +76,14 @@ export interface PagedGrants {
   pageSize: number;
 }
 
-export async function fetchGrants(page = 1, pageSize = 500): Promise<PagedGrants> {
-  const res = await fetch(`${BASE}/api/grants?page=${page}&pageSize=${pageSize}`, { credentials: "include" });
+export interface FetchGrantsOptions {
+  includeForecast?: boolean;
+}
+
+export async function fetchGrants(page = 1, pageSize = 500, options: FetchGrantsOptions = {}): Promise<PagedGrants> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (options.includeForecast) params.set("includeForecast", "true");
+  const res = await fetch(`${BASE}/api/grants?${params}`, { credentials: "include" });
   return handleResponse<PagedGrants>(res);
 }
 

@@ -1,0 +1,51 @@
+name: Grants.gov XML Extract sync
+
+on:
+  schedule:
+    # 07:00 UTC daily — before the profile_matcher worker's 08:00 UTC scoring run
+    # (workers/profile_matcher_wrangler.toml), so notifications reflect same-day data.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Extract date (YYYYMMDD). Leave blank for today (UTC)."
+        required: false
+
+jobs:
+  sync:
+    name: Fetch, score, and import the Grants.gov XML Extract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Node dependencies (for wrangler)
+        run: npm ci
+
+      - name: Fetch XML extract
+        run: |
+          python fetch_xml_extract.py \
+            --output data/csvs/grants_gov_extract.csv \
+            ${{ github.event.inputs.date && format('--date {0}', github.event.inputs.date) || '' }}
+
+      - name: Wrangle
+        run: python scripts/wrangle_grants.py --input data/csvs --out out/master.csv --print-summary
+
+      - name: Score
+        run: python program_scoring.py out/master.csv --out out/scored.csv
+
+      - name: Import into D1
+        run: python import_to_d1.py out/scored.csv --env remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -8,54 +8,118 @@ Usage:
   python import_to_d1.py scored.csv --env remote --wrangler /path/to/wrangler
 
 The script:
-  1. Reads the CSV and normalises column name aliases.
-  2. Validates that the Name primary-key column is present.
-  3. Drops columns not in the D1 schema (e.g. StackAlignment, CadenceRecency).
-  4. Generates idempotent INSERT OR REPLACE SQL in batches of 50.
-  5. Executes via `wrangler d1 execute` (or prints SQL with --dry-run).
-  6. Never overwrites the "Notes / Actions" column — that column is user-owned
-     in D1 and is excluded from the upsert.
+  1. Reads the CSV and resolves human-readable headers ("Source URL", "Award
+     Ceiling", ...) to the real snake_case D1 column names, mirroring the alias
+     table worker.js's admin CSV-upload endpoint uses (CSV_COLUMN_ALIASES).
+  2. Validates that the "name" column is present.
+  3. Generates idempotent UPSERT SQL in batches of 50, matching each row against
+     an existing D1 row by opportunity_id first (Grants.gov's stable ID, when
+     present), falling back to name — so rows from the XML extract, the Simpler
+     Grants.gov API sync, and legacy name-only CSVs can all coexist and update
+     the same table without duplicating or orphaning each other.
+  4. Never overwrites notes / ai_score / ai_summary / ai_tier / ai_scored_at /
+     pdf_url — those columns are user- or AI-scoring-owned in D1 and must
+     survive a pipeline re-import untouched.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
+import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
 # Import column normalisation from program_scoring to avoid duplication.
 from program_scoring import _normalize_columns
 
-# Canonical D1 column order, matching migrations/0001_create_programs.sql.
-# "Notes / Actions" is intentionally excluded — it is user-owned in D1 and
-# must not be overwritten by a pipeline re-import.
-D1_COLUMNS: List[str] = [
-    "Type",
-    "Name",
-    "Sponsor",
-    "Source URL",
-    "Region / Eligibility",
-    "Deadline / Next Cohort",
-    "Cadence",
-    "Benefits",
-    "Eligibility (key conditions)",
-    "Stage",
-    "Non-dilutive?",
-    "Stack Required?",
-    "Relevance",
-    "Fit",
-    "Ease",
-    "Weighted Score",
-]
+# snake_case D1 columns this script can write, and how to coerce a raw CSV
+# string into a SQL literal for each. Deliberately excludes columns this
+# script must never touch: id (surrogate PK), notes, pdf_url, ai_score,
+# ai_summary, ai_tier, ai_scored_at (owned by the user / AI scoring pass).
+D1_COLUMN_TYPES: Dict[str, str] = {
+    "type": "TEXT",
+    "name": "TEXT",
+    "sponsor": "TEXT",
+    "source_url": "TEXT",
+    "region_eligibility": "TEXT",
+    "deadline": "TEXT",
+    "cadence": "TEXT",
+    "benefits": "TEXT",
+    "eligibility_conditions": "TEXT",
+    "stage": "TEXT",
+    "non_dilutive": "BOOL",
+    "stack_required": "BOOL",
+    "relevance": "REAL",
+    "fit": "REAL",
+    "ease": "REAL",
+    "weighted_score": "REAL",
+    "opportunity_id": "NULLABLE_TEXT",  # blank must be SQL NULL, not '' — see idx_programs_opportunity_id
+    "opportunity_number": "TEXT",
+    "cfda_numbers": "TEXT",
+    "eligible_applicants": "TEXT",
+    "award_ceiling": "REAL",
+    "award_floor": "REAL",
+    "is_forecast": "BOOL",
+    "estimated_post_date": "TEXT",
+    "source_channel": "TEXT",
+}
+
+# Columns that are pipeline metadata, not sourced from the CSV — stamped on every import.
+METADATA_COLUMNS = ["last_synced_at"]
+
+# User-/AI-owned columns: read-modify preserved, never written by this script.
+PRESERVED_COLUMNS = ["notes", "pdf_url", "ai_score", "ai_summary", "ai_tier", "ai_scored_at"]
+
+# Maps normalized (lowercased, whitespace-stripped) human-readable CSV headers to
+# real D1 column names. Kept in sync with CSV_COLUMN_ALIASES in worker.js so the
+# JS admin-CSV-upload path and this Python pipeline path resolve headers identically.
+CSV_COLUMN_ALIASES: Dict[str, str] = {
+    "grantname": "name",
+    "easeofuse": "ease",
+    "link": "source_url",
+    "sourceurl": "source_url",  # pre-existing gap fixed in worker.js's CSV_COLUMN_ALIASES too
+    "matchreq%": "weighted_score",
+    "match%": "weighted_score",
+    "region/eligibility": "region_eligibility",
+    "deadline/nextcohort": "deadline",
+    "notes/actions": "notes",
+    "eligibility(keyconditions)": "eligibility_conditions",
+    "non-dilutive?": "non_dilutive",
+    "stackrequired?": "stack_required",
+    "weightedscore": "weighted_score",
+    # Grants.gov extract fields (fetch_xml_extract.py) / Simpler Grants.gov sync
+    "opportunityid": "opportunity_id",
+    "opportunitynumber": "opportunity_number",
+    "cfdanumbers": "cfda_numbers",
+    "eligibleapplicants": "eligible_applicants",
+    "awardceiling": "award_ceiling",
+    "awardfloor": "award_floor",
+    "isforecast": "is_forecast",
+    "estimatedpostdate": "estimated_post_date",
+    "sourcechannel": "source_channel",
+}
 
 D1_DATABASE = "GRANT_MANAGER_DB"
 BATCH_SIZE = 50
+
+
+def _normalize_header(h: str) -> str:
+    """Mirrors normalizeHeader() in worker.js: strip BOM/whitespace, lowercase,
+    collapse internal whitespace (preserves slashes/dashes/punctuation)."""
+    h = str(h or "").lstrip("﻿").strip().lower()
+    return re.sub(r"\s+", "", h)
+
+
+def resolve_header(h: str) -> str:
+    norm = _normalize_header(h)
+    return CSV_COLUMN_ALIASES.get(norm, norm)
 
 
 def _escape(value: str) -> str:
@@ -63,23 +127,78 @@ def _escape(value: str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def build_sql(rows: List[dict]) -> str:
-    """Return a SQL string of INSERT OR REPLACE statements, batched by BATCH_SIZE."""
+def _sql_value(col: str, raw: object) -> str:
+    """Coerce a raw CSV string into a SQL literal appropriate for D1_COLUMN_TYPES[col]."""
+    kind = D1_COLUMN_TYPES.get(col, "TEXT")
+    s = "" if raw is None else str(raw).strip()
+
+    if kind == "REAL":
+        if s == "":
+            return "NULL"
+        try:
+            return repr(float(s))
+        except ValueError:
+            return "NULL"
+
+    if kind == "BOOL":
+        low = s.lower()
+        if low in ("yes", "true", "1"):
+            return "1"
+        if low in ("no", "false", "0"):
+            return "0"
+        return "NULL"
+
+    if kind == "NULLABLE_TEXT":
+        return "NULL" if s == "" else _escape(s)
+
+    # TEXT — blank stays '' (matches existing free-text column behavior).
+    return _escape(s)
+
+
+def resolve_columns(df: pd.DataFrame) -> Dict[str, str]:
+    """Map each DataFrame column to a resolved D1 column name, keeping only
+    columns import_to_d1 is allowed to write (D1_COLUMN_TYPES). Returns
+    {source_df_column: resolved_d1_column}."""
+    resolved: Dict[str, str] = {}
+    for col in df.columns:
+        target = resolve_header(col)
+        if target in D1_COLUMN_TYPES and target not in resolved.values():
+            resolved[col] = target
+    return resolved
+
+
+def build_sql(rows: List[Dict[str, str]], columns: List[str], synced_at: str) -> str:
+    """Return a SQL string of upsert statements, batched by BATCH_SIZE.
+
+    Matches on opportunity_id first (Grants.gov's stable ID — the partial unique
+    index only covers non-null values, so rows without one never spuriously
+    conflict here), falling back to the name UNIQUE constraint. Both branches
+    update the same column set, excluding PRESERVED_COLUMNS.
+    """
     if not rows:
         return ""
 
-    cols_sql = ", ".join(f'"{c}"' for c in D1_COLUMNS)
-    statements: List[str] = []
+    all_cols = columns + METADATA_COLUMNS
+    cols_sql = ", ".join(all_cols)
+    # excluded.<col> is only valid for columns present in this INSERT's column
+    # list, so the SET clause must be built from exactly all_cols (both conflict
+    # branches update every inserted column, including the one that matched).
+    set_sql = ", ".join(f"{c}=excluded.{c}" for c in all_cols)
 
+    statements: List[str] = []
     for i in range(0, len(rows), BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         value_groups = []
         for row in batch:
-            vals = ", ".join(_escape(row.get(c, "")) for c in D1_COLUMNS)
-            value_groups.append(f"  ({vals})")
+            vals = [_sql_value(c, row.get(c, "")) for c in columns]
+            vals.append(_escape(synced_at))  # last_synced_at
+            value_groups.append(f"  ({', '.join(vals)})")
         values_sql = ",\n".join(value_groups)
         statements.append(
-            f"INSERT OR REPLACE INTO programs ({cols_sql})\nVALUES\n{values_sql};"
+            f"INSERT INTO programs ({cols_sql})\n"
+            f"VALUES\n{values_sql}\n"
+            f"ON CONFLICT(opportunity_id) WHERE opportunity_id IS NOT NULL DO UPDATE SET {set_sql}\n"
+            f"ON CONFLICT(name) DO UPDATE SET {set_sql};"
         )
 
     return "\n\n".join(statements) + "\n"
@@ -87,17 +206,20 @@ def build_sql(rows: List[dict]) -> str:
 
 def load_and_validate(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
-    df = _normalize_columns(df)
+    df = _normalize_columns(df)  # program_scoring's alias pass (Stack Required?, etc.)
 
-    if "Name" not in df.columns:
-        print("ERROR: CSV is missing the 'Name' column (required as D1 primary key).")
+    header_map = resolve_columns(df)
+    if "name" not in header_map.values():
+        print("ERROR: CSV is missing a 'Name'/'name' column (required to identify each program).")
         print(f"  Found columns: {list(df.columns)}")
         sys.exit(1)
 
-    blank_names = df["Name"].str.strip() == ""
-    n_blank = blank_names.sum()
+    df = df.rename(columns=header_map)[list(dict.fromkeys(header_map.values()))]
+
+    blank_names = df["name"].str.strip() == ""
+    n_blank = int(blank_names.sum())
     if n_blank:
-        print(f"WARNING: Skipping {n_blank} row(s) with blank Name.")
+        print(f"WARNING: Skipping {n_blank} row(s) with blank name.")
         df = df[~blank_names]
 
     if df.empty:
@@ -107,12 +229,8 @@ def load_and_validate(csv_path: str) -> pd.DataFrame:
     return df
 
 
-def prepare_rows(df: pd.DataFrame) -> List[dict]:
-    """Project df to D1 columns, filling missing columns with empty string."""
-    rows = []
-    for _, row in df.iterrows():
-        rows.append({col: row.get(col, "") for col in D1_COLUMNS})
-    return rows
+def prepare_rows(df: pd.DataFrame) -> List[Dict[str, str]]:
+    return [{col: row.get(col, "") for col in df.columns} for _, row in df.iterrows()]
 
 
 def run_wrangler(sql_file: str, env: str, wrangler: str) -> int:
@@ -154,15 +272,13 @@ def main() -> None:
 
     print(f"INFO: Loading {csv_path}")
     df = load_and_validate(csv_path)
+    columns = list(df.columns)
     rows = prepare_rows(df)
 
-    dropped = [c for c in df.columns if c not in D1_COLUMNS and c != "Notes / Actions"]
-    if dropped:
-        print(f"INFO: Dropping {len(dropped)} non-schema column(s): {dropped}")
+    synced_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    print(f"INFO: {len(rows)} row(s) ready for import into {D1_DATABASE} ({args.env}); columns: {columns}")
 
-    print(f"INFO: {len(rows)} row(s) ready for import into {D1_DATABASE} ({args.env})")
-
-    sql = build_sql(rows)
+    sql = build_sql(rows, columns, synced_at)
 
     if args.dry_run:
         print("\n--- DRY RUN SQL (not executed) ---\n")
@@ -170,7 +286,6 @@ def main() -> None:
         print(f"--- {len(rows)} row(s), {len(sql)} bytes ---")
         return
 
-    # Write SQL to a temp file and execute via wrangler
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".sql", delete=False, encoding="utf-8"
     ) as tmp:
@@ -178,7 +293,6 @@ def main() -> None:
         tmp_path = tmp.name
 
     try:
-        # wrangler may be "npx wrangler" (two tokens) — split for subprocess
         wrangler_cmd = args.wrangler.split()
         cmd = wrangler_cmd + ["d1", "execute", D1_DATABASE, "--file", tmp_path]
         if args.env == "local":

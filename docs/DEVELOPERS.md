@@ -88,24 +88,46 @@ Legacy SHA-256 hashes (64-char hex) are still accepted and will be auto-upgraded
 Wrangler loads `.dev.vars` automatically during `wrangler dev`.
 
 ### Running the data pipeline
+
+Two acquisition paths feed the same `data/csvs/` directory that `wrangle_grants.py` merges:
+
+- **Keyword search** (`search_grants.py`) — targeted, requires a query, only returns matches.
+- **XML Extract** (`fetch_xml_extract.py`) — the full daily Grants.gov catalog (every posted
+  *and* forecasted opportunity), no query or API key required. See
+  [grants.gov/help/xml-extract](https://www.grants.gov/xml-extract) for the upstream format.
+  Downloads `https://www.grants.gov/extract/GrantsDBExtract<YYYYMMDD>v2.zip`, stepping back a
+  day at a time (`--max-lookback`, default 5) if today's extract isn't published yet.
+
 ```bash
-# Acquire
+# Acquire — either or both:
 python search_grants.py "workforce development" --filter "opportunityStatuses=posted"
+python fetch_xml_extract.py --output data/csvs/grants_gov_extract.csv
 
 # Normalize
-python wrangle_grants.py --input data/ --out master.csv --print-summary
+python scripts/wrangle_grants.py --input data/csvs --out out/master.csv --print-summary
 
 # Score
-python program_scoring.py master.csv --out scored.csv
+python program_scoring.py out/master.csv --out out/scored.csv
 
-# Import into D1  (one command runs wrangle → score → import)
+# Import into D1  (one command runs extract → wrangle → score → import)
 make import          # → remote D1 (production)
 make import-local    # → local D1 preview (requires: npx wrangler d1 migrations apply GRANT_MANAGER_DB --local)
 ```
 
-`import_to_d1.py` validates the CSV, maps column aliases, drops pipeline-only columns
-(`StackAlignment`, `CadenceRecency`), and upserts rows via `INSERT OR REPLACE` so
-re-runs are safe. User-owned `Notes / Actions` data is never overwritten.
+`import_to_d1.py` validates the CSV, resolves human-readable headers to the real snake_case
+D1 columns (`Source URL` → `source_url`, `Award Ceiling` → `award_ceiling`, etc. — see
+`CSV_COLUMN_ALIASES`), and upserts rows via a chained `ON CONFLICT` — matching on
+`opportunity_id` first (Grants.gov's stable ID, when present), falling back to `name` for
+manually-curated or legacy rows. This lets XML-extract rows, Simpler Grants.gov API syncs, and
+hand-edited CSVs coexist in the same table without duplicating or orphaning each other. Notes,
+AI scoring fields (`ai_score`, `ai_summary`, `ai_tier`, `ai_scored_at`), and `pdf_url` are
+user-/AI-owned and are never overwritten by a pipeline re-import.
+
+The Grants.gov sync runs automatically once a day via
+[`.github/workflows/grants-gov-sync.yml`](../.github/workflows/grants-gov-sync.yml) (cron
+`0 7 * * *`), and the in-Worker Simpler Grants.gov API sync (`syncGrantsWithD1`) runs on its
+own daily cron (`[triggers]` in `wrangler.toml`, `0 7 * * *`) ahead of the profile-matcher
+worker's `0 8 * * *` scoring run.
 
 For a quick sanity check before importing live data:
 ```bash
