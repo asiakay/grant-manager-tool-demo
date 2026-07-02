@@ -26,7 +26,7 @@ jobs:
         run: npm ci
 
       - name: Install Python dependencies
-        run: pip install pandas freezegun pytest
+        run: pip install -r requirements.txt
 
       - name: Run scoring unit tests (pytest)
         run: python -m pytest tests/ -v
