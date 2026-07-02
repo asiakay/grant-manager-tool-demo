@@ -59,6 +59,29 @@ function DeadlineCell({ value }: { value: string | number }) {
   return <DeadlineBadge value={value} />;
 }
 
+const compactCurrency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+
+function AwardCell({ grant }: { grant: Grant }) {
+  const ceiling = grant["Award Ceiling"];
+  const floor = grant["Award Floor"];
+  if (ceiling == null && floor == null) return <span className="text-gray-500 text-xs" aria-label="No award amount">—</span>;
+  const label = ceiling != null && floor != null && floor !== ceiling
+    ? `${compactCurrency.format(floor)}–${compactCurrency.format(ceiling)}`
+    : compactCurrency.format(ceiling ?? floor ?? 0);
+  return <span className="text-gray-300 text-xs whitespace-nowrap">{label}</span>;
+}
+
+function ForecastBadge() {
+  return (
+    <span
+      className="badge bg-purple-900/40 text-purple-300 border border-purple-700/40 text-[10px] px-1.5 py-0.5 shrink-0"
+      title="Forecasted — announced by the agency but not yet formally posted"
+    >
+      🔭 Forecasted
+    </span>
+  );
+}
+
 interface CardProps {
   grant: Grant;
   isCandidate: boolean;
@@ -88,6 +111,7 @@ function GrantCard({ grant, isCandidate, isWatchlisted, onRowClick, onToggleCand
           {grant.source === "live" && (
             <span className="badge bg-green-900/40 text-green-400 border border-green-800/50 text-[10px] px-1.5 py-0.5 shrink-0 mt-0.5">live</span>
           )}
+          {grant["Is Forecast"] && <ForecastBadge />}
         </p>
         <div className="flex items-center shrink-0 -mt-0.5 -mr-1" onClick={(e) => e.stopPropagation()}>
           <button
@@ -120,6 +144,7 @@ function GrantCard({ grant, isCandidate, isWatchlisted, onRowClick, onToggleCand
           <span className="badge bg-gray-800 text-gray-300 text-xs whitespace-nowrap">{grant.Type}</span>
         )}
         <DeadlineBadge value={grant["Deadline/Next Cohort"]} />
+        <AwardCell grant={grant} />
         <span className="ml-auto flex items-center gap-1 text-xs text-gray-400 shrink-0">
           Match:&nbsp;<ScoreCell value={grant.score ?? grant["Weighted Score"] ?? 0} max={10} />
         </span>
@@ -160,6 +185,14 @@ export default function GrantTable({
         const cutoff = new Date(filters.deadlineBefore);
         if (isNaN(deadline.getTime()) || deadline > cutoff) return false;
       }
+      if (filters.minAward) {
+        const ceiling = g["Award Ceiling"];
+        if (ceiling == null || Number(ceiling) < parseFloat(filters.minAward)) return false;
+      }
+      if (filters.maxAward) {
+        const floor = g["Award Floor"] ?? g["Award Ceiling"];
+        if (floor == null || Number(floor) > parseFloat(filters.maxAward)) return false;
+      }
       if (filters.search) {
         const q = filters.search.toLowerCase();
         return (
@@ -182,6 +215,7 @@ export default function GrantTable({
             {info.row.original.source === "live" && (
               <span className="badge bg-green-900/40 text-green-400 border border-green-800/50 text-[10px] px-1.5 py-0.5 shrink-0 mt-0.5">live</span>
             )}
+            {info.row.original["Is Forecast"] && <ForecastBadge />}
           </span>
         ),
         size: 200,
@@ -229,6 +263,17 @@ export default function GrantTable({
         cell: (info) => <BoolCell value={info.getValue()} />,
         size: 100,
         meta: { className: "hidden xl:table-cell" },
+      }),
+      columnHelper.accessor("Award Ceiling", {
+        header: "Award",
+        cell: (info) => <AwardCell grant={info.row.original} />,
+        size: 90,
+        sortingFn: (a, b) => {
+          const va = a.original["Award Ceiling"] ?? a.original["Award Floor"] ?? -Infinity;
+          const vb = b.original["Award Ceiling"] ?? b.original["Award Floor"] ?? -Infinity;
+          return Number(va) - Number(vb);
+        },
+        meta: { className: "hidden lg:table-cell" },
       }),
       columnHelper.accessor("Relevance", {
         header: "Rel",

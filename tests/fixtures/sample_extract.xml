@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Grants xmlns="http://apply.grants.gov/system/OpportunityDetail-V1.0">
+  <OpportunitySynopsisDetail_1_0>
+    <OpportunityID>123456</OpportunityID>
+    <OpportunityTitle>Rural Broadband Infrastructure Grants</OpportunityTitle>
+    <OpportunityNumber>USDA-RUS-2026-01</OpportunityNumber>
+    <OpportunityCategory>D</OpportunityCategory>
+    <FundingInstrumentType>G</FundingInstrumentType>
+    <CategoryOfFundingActivity>RD</CategoryOfFundingActivity>
+    <CFDANumbers>10.855</CFDANumbers>
+    <EligibleApplicants>25</EligibleApplicants>
+    <EligibleApplicants>21</EligibleApplicants>
+    <AgencyCode>USDA-RUS</AgencyCode>
+    <AgencyName>Rural Utilities Service</AgencyName>
+    <PostDate>06/01/2026</PostDate>
+    <CloseDate>09/15/2026</CloseDate>
+    <LastUpdatedDate>06/01/2026</LastUpdatedDate>
+    <AwardCeiling>5000000</AwardCeiling>
+    <AwardFloor>100000</AwardFloor>
+    <EstimatedTotalProgramFunding>50000000</EstimatedTotalProgramFunding>
+    <ExpectedNumberOfAwards>15</ExpectedNumberOfAwards>
+    <Description>Funding for rural broadband infrastructure and community connectivity projects.</Description>
+    <Version>Synopsis 1</Version>
+    <CostSharingOrMatchingRequirement>N</CostSharingOrMatchingRequirement>
+  </OpportunitySynopsisDetail_1_0>
+  <OpportunitySynopsisDetail_1_0>
+    <OpportunityID>123457</OpportunityID>
+    <OpportunityTitle>Community Health Worker Training Program</OpportunityTitle>
+    <OpportunityNumber>HRSA-2026-CHW</OpportunityNumber>
+    <FundingInstrumentType>CA</FundingInstrumentType>
+    <CFDANumbers>93.129</CFDANumbers>
+    <EligibleApplicants>06</EligibleApplicants>
+    <AgencyCode>HRSA</AgencyCode>
+    <AgencyName>Health Resources and Services Administration</AgencyName>
+    <PostDate>05/20/2026</PostDate>
+    <CloseDate>08/01/2026</CloseDate>
+    <LastUpdatedDate>05/20/2026</LastUpdatedDate>
+    <AwardCeiling>750000</AwardCeiling>
+    <AwardFloor></AwardFloor>
+    <Description>Training grants for community health worker programs serving underserved populations.</Description>
+    <Version>Synopsis 1</Version>
+    <CostSharingOrMatchingRequirement>Y</CostSharingOrMatchingRequirement>
+  </OpportunitySynopsisDetail_1_0>
+  <OpportunityForecastDetail_1_0>
+    <OpportunityID>223456</OpportunityID>
+    <OpportunityTitle>Clean Energy Community Resilience Program (Forecast)</OpportunityTitle>
+    <OpportunityNumber>DOE-2026-CECR-FORECAST</OpportunityNumber>
+    <FundingInstrumentType>G</FundingInstrumentType>
+    <CFDANumbers>81.086</CFDANumbers>
+    <EligibleApplicants>25</EligibleApplicants>
+    <AgencyCode>DOE</AgencyCode>
+    <AgencyName>Department of Energy</AgencyName>
+    <PostDate>06/10/2026</PostDate>
+    <EstimatedSynopsisPostDate>10/01/2026</EstimatedSynopsisPostDate>
+    <FiscalYear>2027</FiscalYear>
+    <EstimatedSynopsisCloseDate>12/01/2026</EstimatedSynopsisCloseDate>
+    <AwardCeiling>2000000</AwardCeiling>
+    <AwardFloor>250000</AwardFloor>
+    <Description>Forecasted funding for community-scale clean energy resilience projects.</Description>
+    <Version>Forecast 1</Version>
+  </OpportunityForecastDetail_1_0>
+</Grants>

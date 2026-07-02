@@ -43,13 +43,14 @@ Every grant in the dataset is non-dilutive. No equity. No repayment. No strings 
 Each user configures scoring weights across five dimensions: **Relevance**, **Fit**, **Ease**, **Stack Alignment**, and **Deadline Urgency**. The platform ranks all 603 opportunities against that profile on every load. No two users see the same ranked list.
 
 ### AI-Assisted Research
-The built-in AI assistant analyzes patterns across the full dataset — surfacing non-obvious matches, identifying duplicate opportunities across cohort years, and answering natural language questions about eligibility and fit.
+The built-in AI assistant analyzes patterns across the full dataset — surfacing non-obvious matches, answering natural language questions about eligibility and fit. Cohort-year duplicates (the same underlying program reposted across years) are now collapsed deterministically by CFDA/Assistance Listing Number rather than relying on the AI to spot them.
 
 ### Grant Discovery Pipeline
-A full data pipeline runs from Grants.gov API search through normalization, scoring, and import into the live dashboard. The pipeline is documented, repeatable, and extensible.
+A full data pipeline runs daily from the Grants.gov XML Extract (full catalog + forecasted opportunities) and the Simpler Grants.gov API, through normalization, scoring, and import into the live dashboard. The pipeline is documented, repeatable, and extensible.
 
 ### Workflow Tools
-- Live keyword and filter search across all 603 programs
+- Live keyword and filter search across all programs, including an award-size range filter (exact `AwardCeiling`/`AwardFloor` from Grants.gov, not text-parsed)
+- A "Forecasted (coming soon)" view for opportunities Grants.gov has announced but not yet formally posted — earlier visibility than the live-posted-only view
 - Save, hide, and annotate individual opportunities per user
 - Export to CSV for grant writing and reporting workflows
 - Role-based auth with per-user scoring profiles
@@ -77,16 +78,27 @@ A full data pipeline runs from Grants.gov API search through normalization, scor
 ## Architecture
 
 ```
-Grants.gov API → Python pipeline (search · wrangle · score) → D1 Database → Cloudflare Worker (Dashboard + API)
+Grants.gov XML Extract (full daily catalog) ─┐
+Grants.gov keyword search (search_grants.py) ─┼→ Python pipeline (wrangle · score) → D1 Database → Cloudflare Worker (Dashboard + API)
+Simpler Grants.gov API (in-Worker daily sync)─┘
 ```
 Weights are configurable per user. The scoring profile is stored in KV and applied at query time — not baked into the dataset.
 
+Grants.gov data reaches the `programs` table through two independent, complementary channels:
+the [XML Extract](https://www.grants.gov/xml-extract) (`fetch_xml_extract.py`) — the full daily
+catalog including forecasted opportunities, structured award/eligibility/CFDA fields, no API
+key required — feeding the Python pipeline on a daily GitHub Actions cron; and the Simpler
+Grants.gov JSON API (`syncGrantsWithD1` in `worker.js`) — already-authenticated, now paginated
+across the full catalog on its own daily Worker cron. Both upsert into the same table, matched
+by Grants.gov's stable `opportunity_id` where available, so records from either source update
+in place instead of duplicating.
+
 ### Stack
 - **Runtime:** Cloudflare Workers (edge, zero cold starts)
-- **Database:** D1 SQLite — programs schema, 17 columns
+- **Database:** D1 SQLite — programs schema, 27+ columns (including structured Grants.gov fields: `opportunity_id`, `cfda_numbers`, `eligible_applicants`, `award_ceiling`/`award_floor`, `is_forecast`)
 - **Storage:** KV (user profiles, session state) · R2 (PDF documents)
 - **AI:** Cloudflare Workers AI — Llama-3-8B via `/api/chat`
-- **Data pipeline:** Python 3.9+ (search, wrangle, score, summarize)
+- **Data pipeline:** Python 3.9+ (search, XML extract, wrangle, score, summarize)
 - **Auth:** PBKDF2-HMAC-SHA256 (600 000 iterations, random salt) via [WebCrypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/) · session cookies · login attempt lockout · lazy hash upgrade (SHA-256 legacy hashes are re-hashed on next successful login)
 
 ---
@@ -97,25 +109,30 @@ Weights are configurable per user. The scoring profile is stored in KV and appli
 Primary production deployment. Handles authentication, dashboard rendering, user profile management, and grant scoring. Full endpoint reference in [DEVELOPERS.md](docs/DEVELOPERS.md).
 
 ### Python Pipeline
-Four production-ready CLI tools for data acquisition, normalization, scoring, and PDF summarization. The full pipeline documentation is in [DEVELOPERS.md](docs/DEVELOPERS.md).
+Five production-ready CLI tools for data acquisition, normalization, scoring, and PDF summarization. The full pipeline documentation is in [DEVELOPERS.md](docs/DEVELOPERS.md).
 
 ```bash
-# Search Grants.gov
+# Acquire — full daily catalog (no query, includes forecasted opportunities)
+python fetch_xml_extract.py --output data/csvs/grants_gov_extract.csv
+
+# Acquire — targeted keyword search
 python search_grants.py "workforce development" --filter "opportunityStatuses=posted"
 
 # Normalize and merge datasets
-python wrangle_grants.py --input data/ --out master.csv --print-summary
+python scripts/wrangle_grants.py --input data/csvs --out out/master.csv --print-summary
 
 # Score opportunities
-python program_scoring.py master.csv --out scored.csv
+python program_scoring.py out/master.csv --out out/scored.csv
 
-# Load into D1 (one command runs the full pipeline: wrangle → score → import)
+# Load into D1 (one command runs the full pipeline: extract → wrangle → score → import)
 make import          # load to remote D1
 make import-local    # load to local D1 preview
 
 # Summarize grant PDFs
 grant-summarizer --pdf grant.pdf --format all --outdir ./dist
 ```
+
+The XML Extract sync runs daily via [`.github/workflows/grants-gov-sync.yml`](.github/workflows/grants-gov-sync.yml).
 
 ### Scoring Algorithm
 ```
@@ -185,6 +202,7 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 ## Roadmap
 
 - **PDF processing pipeline** — A Queue-based worker ([`drafts/pdf_worker.ts`](drafts/pdf_worker.ts)) ingests grant PDFs from R2 via `grant_summarizer` and imports scored rows into D1. Prototyped; pending hosted `GRANT_SUMMARIZER_URL` and Cloudflare Queue provisioning.
+- ~~**Grants.gov XML Extract ingestion**~~ — Shipped: `fetch_xml_extract.py` pulls the full daily catalog (including forecasted opportunities) into the same pipeline that already scores and imports keyword-search results, with structured award/eligibility/CFDA fields now surfaced in the UI.
 
 ---
 

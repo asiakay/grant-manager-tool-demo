@@ -1,13 +1,16 @@
+extract:
+	python fetch_xml_extract.py --output data/csvs/grants_gov_extract.csv
+
 wrangle:
 	python scripts/wrangle_grants.py --input data/csvs --out out/master.csv
 
 score: wrangle
 	python program_scoring.py out/master.csv --out out/scored.csv
 
-import: score
+import: extract score
 	python import_to_d1.py out/scored.csv --env remote
 
-import-local: score
+import-local: extract score
 	python import_to_d1.py out/scored.csv --env local
 
 visualize:
@@ -22,4 +25,4 @@ deploy: build-ui
 dev-ui:
 	cd ui && npm install && npm run dev
 
-.PHONY: wrangle score import import-local visualize build-ui deploy dev-ui
+.PHONY: extract wrangle score import import-local visualize build-ui deploy dev-ui

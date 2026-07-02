@@ -1,5 +1,5 @@
 import { env, createExecutionContext, waitOnExecutionContext, reset } from "cloudflare:test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import worker from "../worker.js";
 
 // ---------------------------------------------------------------------------
@@ -93,6 +93,10 @@ async function seedPrograms() {
 async function createSchema() {
   const db = env.GRANT_MANAGER_DB;
   await db.batch([
+    // Mirrors PROGRAMS_SCHEMA in worker.js (post migration 0009) — keep in sync
+    // whenever a new `programs` column ships, or code paths that read/write it
+    // will silently no-op here (SELECT * just omits missing columns) or throw
+    // "no such column" on INSERT (as syncGrantsWithD1's fuller column list does).
     db.prepare(`CREATE TABLE IF NOT EXISTS programs (
       id                   INTEGER PRIMARY KEY AUTOINCREMENT,
       type                 TEXT,
@@ -111,8 +115,25 @@ async function createSchema() {
       fit                  REAL,
       ease                 REAL,
       weighted_score       REAL,
-      notes                TEXT
+      notes                TEXT,
+      pdf_url              TEXT,
+      ai_score             REAL,
+      ai_summary           TEXT,
+      ai_tier              TEXT,
+      ai_scored_at         TEXT,
+      opportunity_id       TEXT,
+      opportunity_number   TEXT,
+      cfda_numbers         TEXT,
+      eligible_applicants  TEXT,
+      award_ceiling        REAL,
+      award_floor          REAL,
+      is_forecast          INTEGER DEFAULT 0,
+      estimated_post_date  TEXT,
+      source_channel       TEXT,
+      last_synced_at       TEXT
     )`),
+    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_programs_opportunity_id
+      ON programs (opportunity_id) WHERE opportunity_id IS NOT NULL`),
     db.prepare(`CREATE TABLE IF NOT EXISTS users (
       username      TEXT PRIMARY KEY,
       password_hash TEXT NOT NULL,
@@ -558,6 +579,95 @@ describe("GET /api/grants — scoring", () => {
     const { data: grants } = await res.json();
     const past = grants.find((g) => g.Name === "Grant Past");
     expect(past.score).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/grants — Grants.gov structured field filters (award range, forecast,
+// CFDA dedupe)
+// ---------------------------------------------------------------------------
+
+describe("GET /api/grants — Grants.gov filters", () => {
+  async function seedGrantsGovRows() {
+    await env.GRANT_MANAGER_DB.batch([
+      env.GRANT_MANAGER_DB.prepare(`
+        INSERT INTO programs (name, sponsor, relevance, fit, ease, opportunity_id, award_ceiling, award_floor, cfda_numbers, deadline, is_forecast)
+        VALUES ('Small Posted Grant', 'Sponsor A', 1, 1, 1, '1', 50000, 10000, '10.001', '2026-08-01', 0)
+      `),
+      env.GRANT_MANAGER_DB.prepare(`
+        INSERT INTO programs (name, sponsor, relevance, fit, ease, opportunity_id, award_ceiling, award_floor, cfda_numbers, deadline, is_forecast)
+        VALUES ('Large Posted Grant', 'Sponsor B', 1, 1, 1, '2', 5000000, 100000, '10.002', '2026-09-01', 0)
+      `),
+      env.GRANT_MANAGER_DB.prepare(`
+        INSERT INTO programs (name, sponsor, relevance, fit, ease, opportunity_id, award_ceiling, award_floor, cfda_numbers, estimated_post_date, is_forecast)
+        VALUES ('Forecasted Grant', 'Sponsor C', 1, 1, 1, '3', 2000000, 200000, '10.003', '2026-12-01', 1)
+      `),
+      // Two cohort-year variants of the same underlying program (shared CFDA), different deadlines.
+      env.GRANT_MANAGER_DB.prepare(`
+        INSERT INTO programs (name, sponsor, relevance, fit, ease, opportunity_id, award_ceiling, cfda_numbers, deadline, is_forecast)
+        VALUES ('Annual Program 2025', 'Sponsor D', 1, 1, 1, '4', 100000, '10.004', '2025-06-01', 0)
+      `),
+      env.GRANT_MANAGER_DB.prepare(`
+        INSERT INTO programs (name, sponsor, relevance, fit, ease, opportunity_id, award_ceiling, cfda_numbers, deadline, is_forecast)
+        VALUES ('Annual Program 2026', 'Sponsor D', 1, 1, 1, '5', 100000, '10.004', '2026-06-01', 0)
+      `),
+    ]);
+  }
+  beforeEach(seedGrantsGovRows);
+
+  it("excludes forecasted opportunities by default", async () => {
+    const { token } = await createAndLoginUser("gg1@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants", token)).json();
+    expect(data.some((g) => g.Name === "Forecasted Grant")).toBe(false);
+  });
+
+  it("includes forecasted opportunities when includeForecast=true", async () => {
+    const { token } = await createAndLoginUser("gg2@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants?includeForecast=true", token)).json();
+    const forecasted = data.find((g) => g.Name === "Forecasted Grant");
+    expect(forecasted).toBeTruthy();
+    expect(forecasted["Is Forecast"]).toBe(true);
+    expect(forecasted["Estimated Post Date"]).toBe("2026-12-01");
+  });
+
+  it("minAward filters out grants whose ceiling is below the threshold", async () => {
+    const { token } = await createAndLoginUser("gg3@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants?minAward=1000000", token)).json();
+    const names = data.map((g) => g.Name);
+    expect(names).toContain("Large Posted Grant");
+    expect(names).not.toContain("Small Posted Grant");
+  });
+
+  it("maxAward filters out grants whose floor exceeds the cap", async () => {
+    const { token } = await createAndLoginUser("gg4@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants?maxAward=20000", token)).json();
+    const names = data.map((g) => g.Name);
+    expect(names).toContain("Small Posted Grant");
+    expect(names).not.toContain("Large Posted Grant");
+  });
+
+  it("exposes Award Ceiling/Floor and CFDA Numbers on each row", async () => {
+    const { token } = await createAndLoginUser("gg5@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants", token)).json();
+    const small = data.find((g) => g.Name === "Small Posted Grant");
+    expect(small["Award Ceiling"]).toBe(50000);
+    expect(small["Award Floor"]).toBe(10000);
+    expect(small["CFDA Numbers"]).toBe("10.001");
+  });
+
+  it("dedupeByCfda (default) collapses cohort-year duplicates, keeping the latest deadline", async () => {
+    const { token } = await createAndLoginUser("gg6@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants", token)).json();
+    const variants = data.filter((g) => g["CFDA Numbers"] === "10.004");
+    expect(variants.length).toBe(1);
+    expect(variants[0].Name).toBe("Annual Program 2026");
+  });
+
+  it("dedupeByCfda=false returns every cohort-year variant", async () => {
+    const { token } = await createAndLoginUser("gg7@test.example", "password1x");
+    const { data } = await (await authedGet("/api/grants?dedupeByCfda=false", token)).json();
+    const variants = data.filter((g) => g["CFDA Numbers"] === "10.004");
+    expect(variants.length).toBe(2);
   });
 });
 
@@ -1208,6 +1318,135 @@ describe("GET /api/live-search", () => {
     const { token } = await createAndLoginUser("ls2@test.example", "password1x");
     const res = await authedGet("/api/live-search?q=", token);
     expect([200, 503]).toContain(res.status);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sync — syncGrantsWithD1 (Simpler Grants.gov full-catalog pagination)
+// ---------------------------------------------------------------------------
+
+describe("GET /api/sync", () => {
+  afterEach(() => {
+    delete env.SIMPLER_GRANTS_API_KEY;
+    vi.unstubAllGlobals();
+  });
+
+  function opp(i, overrides = {}) {
+    return {
+      opportunity_id: 1000 + i,
+      opportunity_title: `Synced Grant ${i}`,
+      agency_name: "Test Agency",
+      funding_instrument: "grant",
+      close_date: "2099-01-01",
+      award_floor: 10000,
+      award_ceiling: 500000 + i,
+      applicant_types: ["nonprofit"],
+      cfda_numbers: [`10.${i}`],
+      opportunity_status: "posted",
+      ...overrides,
+    };
+  }
+
+  // First page full (100 items) so the pagination loop requests a second page;
+  // second page short (10 items) so it stops there. 110 total across 2 pages.
+  function mockPaginatedApi() {
+    return vi.fn().mockImplementation(async (url, init) => {
+      const body = JSON.parse(init.body);
+      const page = body.pagination.page_offset;
+      const items = page === 1
+        ? Array.from({ length: 100 }, (_, i) => opp(i))
+        : page === 2
+          ? Array.from({ length: 10 }, (_, i) => opp(100 + i))
+          : [];
+      return new Response(JSON.stringify({ data: items }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+  }
+
+  it("rejects unauthenticated requests with 401", async () => {
+    const res = await fetch(new Request("http://localhost/api/sync"));
+    expect(res.status).toBe(401);
+  });
+
+  it("walks every page and inserts every opportunity, not just the first 25", async () => {
+    env.SIMPLER_GRANTS_API_KEY = "test-key";
+    const mockFetch = mockPaginatedApi();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { token } = await createAndLoginUser("sync1@test.example", "password1x");
+    const res = await authedGet("/api/sync", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.inserted).toBe(110);
+
+    // Third call would have been made if the loop didn't stop after a short page.
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    const { results } = await env.GRANT_MANAGER_DB.prepare("SELECT count(*) as cnt FROM programs").all();
+    expect(results[0].cnt).toBe(110);
+  });
+
+  it("maps opportunity_id, award range, and CFDA numbers into the new columns", async () => {
+    env.SIMPLER_GRANTS_API_KEY = "test-key";
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ data: [opp(0)] }), { status: 200, headers: { "content-type": "application/json" } })
+    ));
+
+    const { token } = await createAndLoginUser("sync2@test.example", "password1x");
+    await authedGet("/api/sync", token);
+
+    const row = await env.GRANT_MANAGER_DB.prepare(
+      "SELECT * FROM programs WHERE opportunity_id = '1000'"
+    ).first();
+    expect(row).toBeTruthy();
+    expect(row.name).toBe("Synced Grant 0");
+    expect(row.award_floor).toBe(10000);
+    expect(row.award_ceiling).toBe(500000);
+    expect(row.cfda_numbers).toBe("10.0");
+    expect(row.source_channel).toBe("simpler_api");
+    expect(row.last_synced_at).toBeTruthy();
+  });
+
+  it("re-syncing the same opportunity_id updates the row instead of duplicating it", async () => {
+    env.SIMPLER_GRANTS_API_KEY = "test-key";
+    const respond = (items) => new Response(JSON.stringify({ data: items }), { status: 200, headers: { "content-type": "application/json" } });
+
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => respond([opp(0)])));
+    const { token } = await createAndLoginUser("sync3@test.example", "password1x");
+    await authedGet("/api/sync", token);
+
+    // Second sync: same opportunity_id, updated title/award — should update in place.
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () =>
+      respond([opp(0, { opportunity_title: "Synced Grant 0 (renamed)", award_ceiling: 999999 })])
+    ));
+    await authedGet("/api/sync", token);
+
+    const { results } = await env.GRANT_MANAGER_DB.prepare(
+      "SELECT * FROM programs WHERE opportunity_id = '1000'"
+    ).all();
+    expect(results.length).toBe(1);
+    expect(results[0].name).toBe("Synced Grant 0 (renamed)");
+    expect(results[0].award_ceiling).toBe(999999);
+  });
+
+  it("does not overwrite manually-edited notes on re-sync", async () => {
+    env.SIMPLER_GRANTS_API_KEY = "test-key";
+    const respond = (items) => new Response(JSON.stringify({ data: items }), { status: 200, headers: { "content-type": "application/json" } });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => respond([opp(0)])));
+
+    const { token } = await createAndLoginUser("sync4@test.example", "password1x");
+    await authedGet("/api/sync", token);
+    await env.GRANT_MANAGER_DB.prepare("UPDATE programs SET notes = ? WHERE opportunity_id = '1000'")
+      .bind("my manual note").run();
+
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => respond([opp(0)])));
+    await authedGet("/api/sync", token);
+
+    const row = await env.GRANT_MANAGER_DB.prepare("SELECT notes FROM programs WHERE opportunity_id = '1000'").first();
+    expect(row.notes).toBe("my manual note");
   });
 });
 
