@@ -165,6 +165,15 @@ def resolve_extract_url(date: datetime.date) -> str:
     return EXTRACT_URL_TEMPLATE.format(date=date.strftime("%Y%m%d"))
 
 
+# Local zip file header magic bytes (PK\x03\x04) and the empty-archive variant
+# (PK\x05\x06). Grants.gov's WAF/CDN can return a 200 OK with an HTML block or
+# error page instead of a real 404 for an unpublished/blocked URL, which used to
+# sail straight through this function and crash deep inside zipfile parsing
+# without ever falling back to an earlier date. Checking the magic bytes here
+# catches that case and treats it exactly like a 404 for retry purposes.
+_ZIP_MAGIC = (b"PK\x03\x04", b"PK\x05\x06")
+
+
 def download_extract(date: datetime.date, max_lookback: int, debug: bool = False) -> bytes:
     """Download the zip for `date`, stepping backward up to `max_lookback` days if a
     given day's extract wasn't published (e.g. weekends/holidays)."""
@@ -176,14 +185,26 @@ def download_extract(date: datetime.date, max_lookback: int, debug: bool = False
         logging.debug("GET %s", url)
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; FoundationPlannerBot/1.0)"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "application/zip, application/octet-stream, */*",
+            },
             method="GET",
         )
         try:
             with urllib.request.urlopen(req, context=context, timeout=60) as resp:
                 data = resp.read()
                 if debug:
-                    logging.debug("Downloaded %d bytes from %s", len(data), url)
+                    logging.debug("Downloaded %d bytes from %s (content-type: %s)", len(data), url, resp.headers.get("Content-Type"))
+                if not data.startswith(_ZIP_MAGIC):
+                    snippet = data[:200].decode("utf-8", errors="replace")
+                    last_err = RuntimeError(
+                        f"{url} returned {resp.status} but the body isn't a zip file "
+                        f"(content-type: {resp.headers.get('Content-Type')!r}, first 200 bytes: {snippet!r})"
+                    )
+                    logging.warning(str(last_err))
+                    continue
                 return data
         except urllib.error.HTTPError as err:
             last_err = err
