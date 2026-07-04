@@ -169,12 +169,9 @@ export default function ChatPanel({ open, onClose, onGrantLink }: Props) {
       );
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
+      const status = (err as Error & { status?: number }).status;
       const msg = err instanceof Error ? err.message : String(err);
-      if (
-        msg.toLowerCase().includes("ai") ||
-        msg.toLowerCase().includes("binding") ||
-        msg.toLowerCase().includes("not configured")
-      ) {
+      if (status === 503) {
         setAiUnavailable(true);
         setMessages((prev) => prev.slice(0, -1)); // remove empty assistant msg
       } else {
