@@ -51,6 +51,28 @@ def test_resolve_extract_url_format():
     assert url == "https://www.grants.gov/extract/GrantsDBExtract20260702v2.zip"
 
 
+class _FakeResponse:
+    """Minimal stand-in for http.client.HTTPResponse covering what
+    download_extract() reads: .read(), .status, .headers.get(...)."""
+
+    def __init__(self, data: bytes, status: int = 200, content_type: str = "application/zip"):
+        self._data = data
+        self.status = status
+        self.headers = {"Content-Type": content_type}
+
+    def read(self):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+_REAL_ZIP_BYTES = b"PK\x03\x04zip-bytes-for-earlier-day"
+
+
 def test_download_extract_falls_back_on_404(monkeypatch):
     """Simulates today's extract 404ing (not yet published) and yesterday's succeeding."""
     import urllib.error
@@ -58,28 +80,15 @@ def test_download_extract_falls_back_on_404(monkeypatch):
 
     calls = []
 
-    class FakeResponse:
-        def __init__(self, data):
-            self._data = data
-
-        def read(self):
-            return self._data
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
     def fake_urlopen(req, context=None, timeout=None):
         calls.append(req.full_url)
         if req.full_url.endswith("20260702v2.zip"):
             raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
-        return FakeResponse(b"zip-bytes-for-earlier-day")
+        return _FakeResponse(_REAL_ZIP_BYTES)
 
     monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
     data = download_extract(datetime.date(2026, 7, 2), max_lookback=3)
-    assert data == b"zip-bytes-for-earlier-day"
+    assert data == _REAL_ZIP_BYTES
     assert len(calls) == 2
     assert calls[0].endswith("20260702v2.zip")
     assert calls[1].endswith("20260701v2.zip")
@@ -95,6 +104,39 @@ def test_download_extract_raises_after_exhausting_lookback(monkeypatch):
     monkeypatch.setattr(mod.urllib.request, "urlopen", always_404)
     with pytest.raises(RuntimeError, match="Could not download"):
         download_extract(datetime.date(2026, 7, 2), max_lookback=2)
+
+
+def test_download_extract_falls_back_when_response_is_not_actually_a_zip(monkeypatch):
+    """Regression test: grants.gov's WAF/CDN can return 200 OK with an HTML block
+    page instead of a real 404 for a blocked/unpublished URL. That used to sail
+    through as a "successful" download and crash later inside zipfile.ZipFile
+    with BadZipFile, without ever trying an earlier date. It must now be treated
+    like a 404 and retried."""
+    import fetch_xml_extract as mod
+
+    calls = []
+
+    def fake_urlopen(req, context=None, timeout=None):
+        calls.append(req.full_url)
+        if req.full_url.endswith("20260702v2.zip"):
+            return _FakeResponse(b"<html><body>Access Denied</body></html>", content_type="text/html")
+        return _FakeResponse(_REAL_ZIP_BYTES)
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+    data = download_extract(datetime.date(2026, 7, 2), max_lookback=3)
+    assert data == _REAL_ZIP_BYTES
+    assert len(calls) == 2
+
+
+def test_download_extract_raises_with_diagnostic_info_when_every_attempt_is_blocked(monkeypatch):
+    import fetch_xml_extract as mod
+
+    def always_blocked(req, context=None, timeout=None):
+        return _FakeResponse(b"<html>blocked</html>", content_type="text/html")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", always_blocked)
+    with pytest.raises(RuntimeError, match="isn't a zip file"):
+        download_extract(datetime.date(2026, 7, 2), max_lookback=1)
 
 
 # ---------------------------------------------------------------------------
