@@ -1884,6 +1884,13 @@ ${grantCards}
         log("error", "chat_grant_context_failed", { ...reqCtx, error: String(e) });
       }
 
+      // Truncate grant context to ~4000 chars to stay within the model's context window.
+      // llama-3.1-8b-instruct has an 8192-token limit; 30 untruncated grants can exceed it.
+      const MAX_CONTEXT_CHARS = 4000;
+      const truncatedContext = grantContext.length > MAX_CONTEXT_CHARS
+        ? grantContext.slice(0, MAX_CONTEXT_CHARS) + "\n[...context truncated]"
+        : grantContext;
+
       const systemPrompt =
         `You are a grant research assistant. The user has a database of ${totalCount} grant opportunities. ` +
         `Answer questions using the grant data below. Reference grants by name, compare opportunities, ` +
@@ -1891,20 +1898,28 @@ ${grantCards}
         `Every time you mention a grant, format its name as a markdown link to its page in this app ` +
         `using the exact Link URL provided for that grant, e.g. [Grant Name](https://app/?grant=...). ` +
         `Never invent URLs — only use the Link values from the grant data.\n\n` +
-        (grantContext ? `GRANTS FROM DATABASE:\n${grantContext}` : "Could not load grant data.");
+        (truncatedContext ? `GRANTS FROM DATABASE:\n${truncatedContext}` : "Could not load grant data.");
 
       const aiMessages = [{ role: "system", content: systemPrompt }, ...chatMessages];
 
-      // Try native AI binding first, then fall back to REST API
+      // Try native AI binding first, then fall back to REST API.
+      // Each path has its own inner try/catch so a binding failure doesn't suppress the
+      // REST fallback — previously a thrown error from env.AI.run() skipped the REST path
+      // entirely and returned 502 immediately.
       try {
-        if (env.AI) {
-          const aiStart = Date.now();
-          const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-            messages: aiMessages,
-            stream: false,
-          });
-          log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.1-8b-instruct", contextGrants: totalCount, durationMs: Date.now() - aiStart });
-          return jsonResponse(JSON.stringify({ response: result.response ?? "" }));
+        if (env.AI && typeof env.AI.run === "function") {
+          try {
+            const aiStart = Date.now();
+            const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+              messages: aiMessages,
+              stream: false,
+            });
+            log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.1-8b-instruct", contextGrants: totalCount, durationMs: Date.now() - aiStart });
+            return jsonResponse(JSON.stringify({ response: result.response ?? "" }));
+          } catch (bindingErr) {
+            log("warn", "ai_binding_failed_trying_rest", { ...reqCtx, error: String(bindingErr) });
+            // fall through to REST API if configured
+          }
         }
 
         if (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN) {
@@ -1921,8 +1936,8 @@ ${grantCards}
           );
           if (!aiRes.ok) {
             const errText = await aiRes.text().catch(() => "");
-            log("error", "ai_rest_failed", { ...reqCtx, status: aiRes.status, error: errText });
-            return jsonResponse(JSON.stringify({ error: `The assistant is temporarily unavailable (${aiRes.status}). Please try again.` }), { status: 502 });
+            log("error", "ai_rest_failed", { ...reqCtx, status: aiRes.status, error: errText.slice(0, 300) });
+            return jsonResponse(JSON.stringify({ error: `AI request failed (${aiRes.status}): ${errText.slice(0, 200)}` }), { status: 502 });
           }
           const data = await aiRes.json();
           const text = data.result?.response ?? "";
