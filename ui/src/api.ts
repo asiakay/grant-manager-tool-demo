@@ -127,7 +127,9 @@ export async function sendChat(
       const data = JSON.parse(text);
       if (data.error) msg = data.error;
     } catch { /* not JSON, use raw text */ }
-    throw new Error(msg);
+    const err = new Error(msg) as Error & { status: number };
+    err.status = res.status;
+    throw err;
   }
 
   const contentType = res.headers.get("content-type") || "";

@@ -1922,7 +1922,7 @@ ${grantCards}
           if (!aiRes.ok) {
             const errText = await aiRes.text().catch(() => "");
             log("error", "ai_rest_failed", { ...reqCtx, status: aiRes.status, error: errText });
-            return jsonResponse(JSON.stringify({ error: `AI request failed (${aiRes.status})` }), { status: 502 });
+            return jsonResponse(JSON.stringify({ error: `The assistant is temporarily unavailable (${aiRes.status}). Please try again.` }), { status: 502 });
           }
           const data = await aiRes.json();
           const text = data.result?.response ?? "";
