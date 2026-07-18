@@ -30,6 +30,7 @@ interface Props {
   onLogout: () => void;
   onBackToProfile?: () => void;
   onGoToAdmin?: () => void;
+  onGoToCompliance?: () => void;
 }
 
 const INITIAL_FILTERS: FilterState = {
@@ -43,7 +44,7 @@ const INITIAL_FILTERS: FilterState = {
   maxAward: "",
 };
 
-export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Props) {
+export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance }: Props) {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [grantsTotal, setGrantsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -215,6 +216,19 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
             </button>
           )}
 
+          {onGoToCompliance && (
+            <button
+              onClick={onGoToCompliance}
+              className="btn-outline gap-1.5 hidden sm:flex border-blue-700 text-blue-300 hover:bg-blue-900/30"
+              aria-label="Compliance dashboard"
+            >
+              <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              Compliance
+            </button>
+          )}
+
           {isAdmin && onGoToAdmin && (
             <button
               onClick={onGoToAdmin}
@@ -281,6 +295,18 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin }: Pr
                       </svg>
                       {profile ? "My Profile" : "Set profile"}
                       {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400 ml-auto shrink-0" />}
+                    </button>
+                  )}
+                  {onGoToCompliance && (
+                    <button
+                      role="menuitem"
+                      onClick={() => { onGoToCompliance(); setMobileMenuOpen(false); }}
+                      className="w-full text-left px-4 py-3 text-sm text-blue-300 hover:bg-gray-700 flex items-center gap-3 transition-colors border-t border-gray-700/50"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      Compliance
                     </button>
                   )}
                   {isAdmin && onGoToAdmin && (

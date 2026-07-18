@@ -2283,6 +2283,156 @@ ${grantCards}
       );
     }
 
+    // ── Compliance & Audit Trail ─────────────────────────────────────────────
+
+    // GET /api/compliance/grants — list all compliance grants for the authed user's org
+    if (url.pathname === "/api/compliance/grants" && request.method === "GET") {
+      const rows = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT cg.*,
+          (SELECT COUNT(*) FROM budget_lines bl WHERE bl.compliance_grant_id = cg.id) AS budget_line_count,
+          (SELECT COUNT(*) FROM compliance_checklist cc WHERE cc.compliance_grant_id = cg.id AND cc.status = 'fail') AS checklist_failures
+         FROM compliance_grants cg ORDER BY cg.updated_at DESC`
+      ).all();
+      return jsonResponse(JSON.stringify(rows.results ?? []));
+    }
+
+    // POST /api/compliance/grants — create a new compliance-tracked grant
+    if (url.pathname === "/api/compliance/grants" && request.method === "POST") {
+      if (!username) return new Response("Unauthorized", { status: 401 });
+      const body = await request.json();
+      const { grant_name, funder, total_awarded, period_start, period_end, program_id } = body;
+      if (!grant_name) return new Response("grant_name required", { status: 400 });
+      const result = await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO compliance_grants (program_id, grant_name, funder, total_awarded, period_start, period_end, status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?) RETURNING id`
+      ).bind(program_id ?? null, grant_name, funder ?? null, total_awarded ?? null, period_start ?? null, period_end ?? null, username).first();
+      const id = result?.id;
+      await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO audit_log (compliance_grant_id, event_type, actor, description) VALUES (?, 'status_change', ?, ?)`
+      ).bind(id, username, `Grant "${grant_name}" added to compliance tracking`).run();
+      return jsonResponse(JSON.stringify({ id }), { status: 201 });
+    }
+
+    // GET /api/compliance/grants/:id — full detail: grant + budget lines + checklist + audit log
+    const complianceDetailMatch = url.pathname.match(/^\/api\/compliance\/grants\/(\d+)$/);
+    if (complianceDetailMatch && request.method === "GET") {
+      const id = parseInt(complianceDetailMatch[1], 10);
+      const [grant, budgetLines, checklist, auditLog] = await Promise.all([
+        env.GRANT_MANAGER_DB.prepare(`SELECT * FROM compliance_grants WHERE id = ?`).bind(id).first(),
+        env.GRANT_MANAGER_DB.prepare(`SELECT * FROM budget_lines WHERE compliance_grant_id = ? ORDER BY category`).bind(id).all(),
+        env.GRANT_MANAGER_DB.prepare(`SELECT * FROM compliance_checklist WHERE compliance_grant_id = ? ORDER BY created_at`).bind(id).all(),
+        env.GRANT_MANAGER_DB.prepare(`SELECT * FROM audit_log WHERE compliance_grant_id = ? ORDER BY created_at DESC`).bind(id).all(),
+      ]);
+      if (!grant) return new Response("Not found", { status: 404 });
+      return jsonResponse(JSON.stringify({ grant, budgetLines: budgetLines.results, checklist: checklist.results, auditLog: auditLog.results }));
+    }
+
+    // PATCH /api/compliance/grants/:id — update status or metadata
+    const compliancePatchMatch = url.pathname.match(/^\/api\/compliance\/grants\/(\d+)$/);
+    if (compliancePatchMatch && request.method === "PATCH") {
+      if (!username) return new Response("Unauthorized", { status: 401 });
+      const id = parseInt(compliancePatchMatch[1], 10);
+      const body = await request.json();
+      const prev = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM compliance_grants WHERE id = ?`).bind(id).first();
+      if (!prev) return new Response("Not found", { status: 404 });
+      const newStatus = body.status ?? prev.status;
+      const newFunder = body.funder ?? prev.funder;
+      const newTotal = body.total_awarded ?? prev.total_awarded;
+      const newStart = body.period_start ?? prev.period_start;
+      const newEnd = body.period_end ?? prev.period_end;
+      await env.GRANT_MANAGER_DB.prepare(
+        `UPDATE compliance_grants SET status=?, funder=?, total_awarded=?, period_start=?, period_end=?, updated_at=datetime('now') WHERE id=?`
+      ).bind(newStatus, newFunder, newTotal, newStart, newEnd, id).run();
+      if (body.status && body.status !== prev.status) {
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT INTO audit_log (compliance_grant_id, event_type, actor, description, before_value, after_value) VALUES (?, 'status_change', ?, ?, ?, ?)`
+        ).bind(id, username, `Status changed from "${prev.status}" to "${body.status}"`, prev.status, body.status).run();
+      }
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // POST /api/compliance/grants/:id/budget — upsert a budget line
+    const budgetMatch = url.pathname.match(/^\/api\/compliance\/grants\/(\d+)\/budget$/);
+    if (budgetMatch && request.method === "POST") {
+      if (!username) return new Response("Unauthorized", { status: 401 });
+      const id = parseInt(budgetMatch[1], 10);
+      const body = await request.json();
+      const { category, allocated, spent, notes } = body;
+      if (!category) return new Response("category required", { status: 400 });
+      const existing = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT * FROM budget_lines WHERE compliance_grant_id = ? AND category = ?`
+      ).bind(id, category).first();
+      if (existing) {
+        await env.GRANT_MANAGER_DB.prepare(
+          `UPDATE budget_lines SET allocated=?, spent=?, notes=?, updated_by=?, updated_at=datetime('now') WHERE id=?`
+        ).bind(allocated ?? existing.allocated, spent ?? existing.spent, notes ?? existing.notes, username, existing.id).run();
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT INTO audit_log (compliance_grant_id, event_type, actor, description, before_value, after_value) VALUES (?, 'budget_change', ?, ?, ?, ?)`
+        ).bind(id, username, `Budget line "${category}" updated`,
+          JSON.stringify({ allocated: existing.allocated, spent: existing.spent }),
+          JSON.stringify({ allocated: allocated ?? existing.allocated, spent: spent ?? existing.spent })
+        ).run();
+      } else {
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT INTO budget_lines (compliance_grant_id, category, allocated, spent, notes, updated_by) VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(id, category, allocated ?? 0, spent ?? 0, notes ?? null, username).run();
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT INTO audit_log (compliance_grant_id, event_type, actor, description) VALUES (?, 'budget_change', ?, ?)`
+        ).bind(id, username, `Budget line "${category}" added`).run();
+      }
+      await env.GRANT_MANAGER_DB.prepare(`UPDATE compliance_grants SET updated_at=datetime('now') WHERE id=?`).bind(id).run();
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // POST /api/compliance/grants/:id/checklist — add a checklist item
+    const checklistAddMatch = url.pathname.match(/^\/api\/compliance\/grants\/(\d+)\/checklist$/);
+    if (checklistAddMatch && request.method === "POST") {
+      if (!username) return new Response("Unauthorized", { status: 401 });
+      const id = parseInt(checklistAddMatch[1], 10);
+      const body = await request.json();
+      const { item } = body;
+      if (!item) return new Response("item required", { status: 400 });
+      await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO compliance_checklist (compliance_grant_id, item) VALUES (?, ?)`
+      ).bind(id, item).run();
+      return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
+    }
+
+    // PATCH /api/compliance/checklist/:id — update checklist item status
+    const checklistPatchMatch = url.pathname.match(/^\/api\/compliance\/checklist\/(\d+)$/);
+    if (checklistPatchMatch && request.method === "PATCH") {
+      if (!username) return new Response("Unauthorized", { status: 401 });
+      const itemId = parseInt(checklistPatchMatch[1], 10);
+      const body = await request.json();
+      const { status: itemStatus } = body;
+      const existing = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM compliance_checklist WHERE id=?`).bind(itemId).first();
+      if (!existing) return new Response("Not found", { status: 404 });
+      await env.GRANT_MANAGER_DB.prepare(
+        `UPDATE compliance_checklist SET status=?, checked_by=?, checked_at=datetime('now') WHERE id=?`
+      ).bind(itemStatus, username, itemId).run();
+      await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO audit_log (compliance_grant_id, event_type, actor, description, before_value, after_value) VALUES (?, 'checklist_update', ?, ?, ?, ?)`
+      ).bind(existing.compliance_grant_id, username, `Checklist item "${existing.item}" marked "${itemStatus}"`, existing.status, itemStatus).run();
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // POST /api/compliance/grants/:id/note — add a remediation note to the audit log
+    const noteMatch = url.pathname.match(/^\/api\/compliance\/grants\/(\d+)\/note$/);
+    if (noteMatch && request.method === "POST") {
+      if (!username) return new Response("Unauthorized", { status: 401 });
+      const id = parseInt(noteMatch[1], 10);
+      const body = await request.json();
+      const { note } = body;
+      if (!note) return new Response("note required", { status: 400 });
+      await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO audit_log (compliance_grant_id, event_type, actor, description) VALUES (?, 'note_added', ?, ?)`
+      ).bind(id, username, note).run();
+      await env.GRANT_MANAGER_DB.prepare(`UPDATE compliance_grants SET updated_at=datetime('now') WHERE id=?`).bind(id).run();
+      return jsonResponse(JSON.stringify({ ok: true }), { status: 201 });
+    }
+
+    // ── End Compliance ────────────────────────────────────────────────────────
+
     if (url.pathname === "/logout") {
       const match = cookie.match(/session=([^;]+)/);
       if (match && env.USER_PROFILES) {
