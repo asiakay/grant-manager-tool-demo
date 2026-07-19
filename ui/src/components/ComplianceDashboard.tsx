@@ -75,6 +75,251 @@ function InlineError({ msg, onDismiss }: { msg: string; onDismiss: () => void })
   );
 }
 
+// ── Chart palette tokens (dark surface #030712 → validated above) ────────────
+const C_BLUE    = "#3987e5";  // time elapsed / primary sequential
+const C_GREEN   = "#008300";  // on-pace spending
+const C_AMBER   = "#c98500";  // caution (within 30% remaining time)
+const C_RED     = "#d03b3b";  // critical / over-budget
+const C_TRACK   = "#2c2c2a";  // unfilled ring / bar track
+const C_SURFACE = "#0d0d0f";  // ring gap / spacer
+
+/** Two-ring donut: outer = time elapsed, inner = budget spent.
+ *  Center label conveys whether spending pace aligns with time consumed. */
+function SpendingPaceDonut({
+  periodStart, periodEnd, totalAllocated, totalSpent,
+}: {
+  periodStart: string | null;
+  periodEnd: string | null;
+  totalAllocated: number;
+  totalSpent: number;
+}) {
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+
+  const hasTime = !!(periodStart && periodEnd);
+  const hasSpend = totalAllocated > 0;
+  if (!hasTime && !hasSpend) return null;
+
+  const nowMs = Date.now();
+  const startMs = hasTime ? Date.parse(periodStart!) : 0;
+  const endMs   = hasTime ? Date.parse(periodEnd!)   : 0;
+  const totalMs = endMs - startMs;
+
+  const timePct  = hasTime && totalMs > 0
+    ? Math.max(0, Math.min(((nowMs - startMs) / totalMs) * 100, 100))
+    : 0;
+  const spendPct = hasSpend
+    ? Math.min((totalSpent / totalAllocated) * 100, 100)
+    : 0;
+  const isExpired   = hasTime && nowMs > endMs;
+  const isOverBudget = hasSpend && totalSpent > totalAllocated;
+  const gap = spendPct - timePct;
+
+  let paceLabel: string;
+  let paceColor: string;
+  if (isOverBudget)             { paceLabel = "Over budget"; paceColor = C_RED; }
+  else if (!hasTime)            { paceLabel = `${Math.round(spendPct)}% spent`; paceColor = C_GREEN; }
+  else if (isExpired)           { paceLabel = spendPct >= 100 ? "Fully spent" : "Period ended"; paceColor = spendPct >= 95 ? C_GREEN : C_RED; }
+  else if (gap > 10)            { paceLabel = "Ahead of pace"; paceColor = C_AMBER; }
+  else if (gap < -15)           { paceLabel = "Behind pace"; paceColor = C_AMBER; }
+  else                          { paceLabel = "On pace"; paceColor = C_GREEN; }
+
+  // SVG donut geometry
+  const SIZE = 160;
+  const CX = SIZE / 2, CY = SIZE / 2;
+  const R_OUTER = 60, R_INNER = 40;
+  const SW_OUTER = 14, SW_INNER = 12;
+  const outerCirc = 2 * Math.PI * R_OUTER;
+  const innerCirc = 2 * Math.PI * R_INNER;
+  // Start from top (12 o'clock): rotate -90deg via transform
+  const outerFilled = (timePct / 100) * outerCirc;
+  const innerFilled = (spendPct / 100) * innerCirc;
+
+  const outerColor = isExpired ? C_AMBER : C_BLUE;
+  const innerColor = isOverBudget ? C_RED : gap > 10 ? C_AMBER : C_GREEN;
+
+  const daysLeft = hasTime ? Math.ceil((endMs - nowMs) / 86_400_000) : null;
+  const daysLeftLabel = daysLeft == null ? null
+    : isExpired ? "Ended"
+    : daysLeft === 0 ? "Ends today"
+    : `${daysLeft}d left`;
+
+  return (
+    <div className="relative flex flex-col items-center" onMouseLeave={() => setTooltip(null)}>
+      <svg
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        width={SIZE}
+        height={SIZE}
+        role="img"
+        aria-label={`Spending pace: ${paceLabel}. Time elapsed: ${Math.round(timePct)}%. Budget spent: ${Math.round(spendPct)}%.`}
+      >
+        {/* Outer track (time remaining) */}
+        <circle cx={CX} cy={CY} r={R_OUTER} fill="none" stroke={C_TRACK} strokeWidth={SW_OUTER} />
+        {/* Outer fill (time elapsed) */}
+        {timePct > 0 && (
+          <circle
+            cx={CX} cy={CY} r={R_OUTER} fill="none"
+            stroke={outerColor} strokeWidth={SW_OUTER}
+            strokeDasharray={`${outerFilled} ${outerCirc}`}
+            strokeDashoffset={outerCirc * 0.25}
+            strokeLinecap="round"
+            style={{ cursor: "pointer" }}
+            onMouseMove={(e) => setTooltip({ x: e.clientX, y: e.clientY, text: `Time elapsed: ${Math.round(timePct)}%${daysLeftLabel ? ` · ${daysLeftLabel}` : ""}` })}
+          />
+        )}
+        {/* Gap ring between outer and inner (surface color) */}
+        <circle cx={CX} cy={CY} r={(R_OUTER + R_INNER) / 2} fill="none" stroke={C_SURFACE} strokeWidth={R_OUTER - R_INNER - SW_OUTER / 2 - SW_INNER / 2 + 4} />
+        {/* Inner track (budget remaining) */}
+        <circle cx={CX} cy={CY} r={R_INNER} fill="none" stroke={C_TRACK} strokeWidth={SW_INNER} />
+        {/* Inner fill (budget spent) */}
+        {spendPct > 0 && (
+          <circle
+            cx={CX} cy={CY} r={R_INNER} fill="none"
+            stroke={innerColor} strokeWidth={SW_INNER}
+            strokeDasharray={`${innerFilled} ${innerCirc}`}
+            strokeDashoffset={innerCirc * 0.25}
+            strokeLinecap="round"
+            style={{ cursor: "pointer" }}
+            onMouseMove={(e) => setTooltip({ x: e.clientX, y: e.clientY, text: `Budget spent: ${Math.round(spendPct)}% · ${fmt(totalSpent)} of ${fmt(totalAllocated)}` })}
+          />
+        )}
+        {/* Center label */}
+        <text x={CX} y={CY - 7} textAnchor="middle" fontSize="11" fontWeight="600" fill={paceColor} fontFamily="system-ui,sans-serif">
+          {paceLabel}
+        </text>
+        {hasTime && (
+          <text x={CX} y={CY + 9} textAnchor="middle" fontSize="9.5" fill="#898781" fontFamily="system-ui,sans-serif">
+            {Math.round(timePct)}% time · {Math.round(spendPct)}% spent
+          </text>
+        )}
+      </svg>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-xs text-gray-500 -mt-1">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: outerColor }} />
+          Time elapsed
+        </span>
+        {hasSpend && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: innerColor }} />
+            Budget spent
+          </span>
+        )}
+      </div>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="fixed z-50 pointer-events-none px-2.5 py-1.5 rounded-lg text-xs text-white shadow-xl border border-gray-700"
+          style={{ left: tooltip.x + 12, top: tooltip.y - 36, background: "#1a1a19" }}
+        >
+          {tooltip.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Horizontal bar chart: one row per budget category, allocated = full track, spent = fill. */
+function CategoryBarChart({ lines }: { lines: BudgetLine[] }) {
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  if (lines.length === 0) return null;
+
+  const ROW_H   = 28;
+  const BAR_H   = 14;
+  const LABEL_W = 90;
+  const VALUE_W = 68;
+  const BAR_W   = 200;
+  const PAD_Y   = 6;
+  const svgH    = lines.length * ROW_H + PAD_Y * 2;
+  const svgW    = LABEL_W + BAR_W + VALUE_W + 8;
+
+  return (
+    <div className="relative" onMouseLeave={() => setTooltip(null)}>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Budget by category</p>
+      <svg
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        width="100%"
+        style={{ maxWidth: svgW }}
+        role="img"
+        aria-label="Budget spend per category"
+      >
+        {lines.map((line, i) => {
+          const y = PAD_Y + i * ROW_H;
+          const barY = y + (ROW_H - BAR_H) / 2;
+          const trackW = BAR_W;
+          const spentPct = line.allocated > 0 ? line.spent / line.allocated : (line.spent > 0 ? 1 : 0);
+          const fillW = Math.min(spentPct, 1) * trackW;
+          const over = line.spent > line.allocated && line.allocated > 0;
+          const caution = !over && spentPct > 0.8;
+          const fillColor = over ? C_RED : caution ? C_AMBER : C_GREEN;
+          const label = line.category.length > 12 ? line.category.slice(0, 11) + "…" : line.category;
+          const valueLabel = `${fmt(line.spent)} / ${fmt(line.allocated)}`;
+
+          return (
+            <g key={line.id}>
+              {/* Category label */}
+              <text
+                x={LABEL_W - 8} y={barY + BAR_H * 0.72}
+                textAnchor="end" fontSize="10.5" fill="#898781"
+                fontFamily="system-ui,sans-serif"
+              >
+                {label}
+              </text>
+              {/* Track */}
+              <rect
+                x={LABEL_W} y={barY} width={trackW} height={BAR_H}
+                rx={4} fill={C_TRACK}
+              />
+              {/* Spent fill */}
+              {fillW > 0 && (
+                <rect
+                  x={LABEL_W} y={barY} width={fillW} height={BAR_H}
+                  rx={4} fill={fillColor}
+                  style={{ cursor: "pointer" }}
+                  onMouseMove={(e) => setTooltip({ x: e.clientX, y: e.clientY, text: `${line.category}: ${fmt(line.spent)} of ${fmt(line.allocated)} (${Math.round(spentPct * 100)}%)${over ? " — OVER BUDGET" : ""}` })}
+                />
+              )}
+              {/* 2px surface spacer gap on right edge of fill (marks-and-anatomy spec) */}
+              {fillW > 2 && fillW < trackW && (
+                <rect x={LABEL_W + fillW - 1} y={barY} width={2} height={BAR_H} fill={C_SURFACE} />
+              )}
+              {/* Value label */}
+              <text
+                x={LABEL_W + trackW + 8} y={barY + BAR_H * 0.72}
+                fontSize="9.5" fill={over ? C_RED : "#898781"}
+                fontFamily="system-ui,sans-serif" fontWeight={over ? "600" : "400"}
+              >
+                {valueLabel}
+              </text>
+              {over && (
+                <text
+                  x={LABEL_W + trackW + 8} y={barY + BAR_H * 0.72}
+                  fontSize="9" fill={C_RED} fontFamily="system-ui,sans-serif"
+                  dx={valueLabel.length * 5.4}
+                >
+                  {" ⚠"}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {/* Baseline */}
+        <line x1={LABEL_W} y1={PAD_Y} x2={LABEL_W} y2={svgH - PAD_Y} stroke="#2c2c2a" strokeWidth={1} />
+      </svg>
+
+      {tooltip && (
+        <div
+          className="fixed z-50 pointer-events-none px-2.5 py-1.5 rounded-lg text-xs text-white shadow-xl border border-gray-700"
+          style={{ left: tooltip.x + 12, top: tooltip.y - 36, background: "#1a1a19" }}
+        >
+          {tooltip.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SidebarTimeline({ start, end }: { start: string | null; end: string | null }) {
   if (!start || !end) return null;
   const startMs = Date.parse(start);
@@ -696,6 +941,28 @@ export default function ComplianceDashboard({ onBack }: Props) {
                   )}
                 </div>
               </div>
+
+              {/* ── Charts ───────────────────────────────────────────────── */}
+              {(selected.grant.period_start || selected.grant.period_end || selected.budgetLines.length > 0) && (
+                <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 flex flex-col sm:flex-row gap-6 items-start">
+                  {(selected.grant.period_start || selected.grant.period_end) && (
+                    <div className="flex flex-col items-center gap-1 min-w-[160px]">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Spend pace</p>
+                      <SpendingPaceDonut
+                        periodStart={selected.grant.period_start}
+                        periodEnd={selected.grant.period_end}
+                        totalAllocated={totalAllocated}
+                        totalSpent={totalSpent}
+                      />
+                    </div>
+                  )}
+                  {selected.budgetLines.length > 0 && (
+                    <div className="flex-1 min-w-0">
+                      <CategoryBarChart lines={selected.budgetLines} />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── Tabs ────────────────────────────────────────────────── */}
               <div className="flex border-b border-gray-800 mb-6" role="tablist">
