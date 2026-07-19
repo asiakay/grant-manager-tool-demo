@@ -460,3 +460,152 @@ export async function checkAuth(): Promise<boolean> {
     return false;
   }
 }
+
+// ── Compliance & Audit Trail ──────────────────────────────────────────────────
+
+export interface ComplianceGrant {
+  id: number;
+  program_id: number | null;
+  grant_name: string;
+  funder: string | null;
+  total_awarded: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  status: "active" | "flagged" | "under_audit" | "resolved";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  budget_line_count?: number;
+  checklist_failures?: number;
+}
+
+export interface BudgetLine {
+  id: number;
+  compliance_grant_id: number;
+  category: string;
+  allocated: number;
+  spent: number;
+  notes: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface AuditEvent {
+  id: number;
+  compliance_grant_id: number;
+  event_type: "budget_change" | "status_change" | "note_added" | "flag_raised" | "checklist_update";
+  actor: string;
+  description: string;
+  before_value: string | null;
+  after_value: string | null;
+  created_at: string;
+}
+
+export interface ChecklistItem {
+  id: number;
+  compliance_grant_id: number;
+  item: string;
+  status: "pending" | "pass" | "fail" | "na";
+  checked_by: string | null;
+  checked_at: string | null;
+  created_at: string;
+}
+
+export interface ComplianceDetail {
+  grant: ComplianceGrant;
+  budgetLines: BudgetLine[];
+  checklist: ChecklistItem[];
+  auditLog: AuditEvent[];
+}
+
+/** Returns all compliance grants for the current user, ordered by most-recently updated first. */
+export async function fetchComplianceGrants(): Promise<ComplianceGrant[]> {
+  const res = await fetch(`${BASE}/api/compliance/grants`, { credentials: "include" });
+  return handleResponse<ComplianceGrant[]>(res);
+}
+
+/** Creates a new compliance grant record. Returns the auto-assigned database id. */
+export async function createComplianceGrant(data: {
+  grant_name: string;
+  funder?: string;
+  total_awarded?: number;
+  period_start?: string;
+  period_end?: string;
+  program_id?: number;
+}): Promise<{ id: number }> {
+  const res = await fetch(`${BASE}/api/compliance/grants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ id: number }>(res);
+}
+
+/** Fetches full compliance detail for a single grant: grant metadata, budget lines, checklist items, and audit log. */
+export async function fetchComplianceDetail(id: number): Promise<ComplianceDetail> {
+  const res = await fetch(`${BASE}/api/compliance/grants/${id}`, { credentials: "include" });
+  return handleResponse<ComplianceDetail>(res);
+}
+
+/**
+ * Updates a compliance grant's status or metadata. Status transitions write an audit event
+ * with before/after values; metadata-only changes do not.
+ */
+export async function updateComplianceGrant(id: number, data: Partial<Pick<ComplianceGrant, "status" | "funder" | "total_awarded" | "period_start" | "period_end">>): Promise<void> {
+  const res = await fetch(`${BASE}/api/compliance/grants/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+/**
+ * Creates or updates a budget line for the given grant. Category matching is case-insensitive,
+ * so "Programming" and "programming" resolve to the same row. Writes an audit event with
+ * before/after JSON on every update.
+ */
+export async function upsertBudgetLine(grantId: number, data: { category: string; allocated?: number; spent?: number; notes?: string }): Promise<void> {
+  const res = await fetch(`${BASE}/api/compliance/grants/${grantId}/budget`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+/** Adds a funder requirement to the compliance checklist. New items start with status "pending". */
+export async function addChecklistItem(grantId: number, item: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/compliance/grants/${grantId}/checklist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ item }),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+/** Updates the status of a compliance checklist item. Writes an audit event with before/after values. */
+export async function updateChecklistItem(itemId: number, status: ChecklistItem["status"]): Promise<void> {
+  const res = await fetch(`${BASE}/api/compliance/checklist/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ status }),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+/** Appends a remediation note to the grant's audit log as a "note_added" event. Notes cannot be edited or deleted. */
+export async function addRemediationNote(grantId: number, note: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/compliance/grants/${grantId}/note`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ note }),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
