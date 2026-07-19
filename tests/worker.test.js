@@ -158,6 +158,49 @@ async function createSchema() {
       email         TEXT NOT NULL UNIQUE,
       subscribed_at TEXT NOT NULL
     )`),
+    // Compliance tables (migration 0010)
+    db.prepare(`CREATE TABLE IF NOT EXISTS compliance_grants (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      program_id    INTEGER,
+      grant_name    TEXT NOT NULL,
+      funder        TEXT,
+      total_awarded REAL,
+      period_start  TEXT,
+      period_end    TEXT,
+      status        TEXT NOT NULL DEFAULT 'active',
+      created_by    TEXT NOT NULL,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS budget_lines (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      compliance_grant_id  INTEGER NOT NULL,
+      category             TEXT NOT NULL,
+      allocated            REAL NOT NULL DEFAULT 0,
+      spent                REAL NOT NULL DEFAULT 0,
+      notes                TEXT,
+      updated_by           TEXT,
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS audit_log (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      compliance_grant_id  INTEGER NOT NULL,
+      event_type           TEXT NOT NULL,
+      actor                TEXT NOT NULL,
+      description          TEXT NOT NULL,
+      before_value         TEXT,
+      after_value          TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS compliance_checklist (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      compliance_grant_id  INTEGER NOT NULL,
+      item                 TEXT NOT NULL,
+      status               TEXT NOT NULL DEFAULT 'pending',
+      checked_by           TEXT,
+      checked_at           TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
   ]);
 }
 

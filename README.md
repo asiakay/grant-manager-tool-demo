@@ -218,6 +218,82 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 ---
 
+## Compliance & Audit Trail
+
+FoundationPlanner includes a built-in compliance module purpose-built for nonprofits that manage restricted funding — grants that may only be spent in specific categories (programming, staffing, equipment) defined by the funder agreement. Misuse of restricted funds is a leading cause of nonprofit audits; this module makes those obligations visible, trackable, and auditable before problems escalate.
+
+### How it works
+
+1. A staff member or admin creates a **Compliance Grant** record for any awarded grant under monitoring. Each record tracks grant name, funder, total award amount, and grant period.
+
+2. **Budget Lines** define the funder-approved spending categories (e.g., "Programming," "Staffing," "Equipment") with allocated and actual-spent amounts. The dashboard visualizes each line with a color-coded spend bar: green when within budget, amber above 80%, red when over 100%. Any over-budget line is surfaced with a warning badge on the grant card.
+
+3. **Compliance Checklist** captures funder requirements — IRS filings, narrative reports, invoices, site visits — as individual line items. Each item can be marked `pending`, `pass`, `fail`, or `n/a`. The checklist tab badge shows the count of failing items at a glance.
+
+4. **Audit Log** records every material change with actor, timestamp, and before/after values. Budget updates, status changes, checklist transitions, and remediation notes all write append-only entries to `audit_log`. The log cannot be edited or deleted — it is a permanent record.
+
+5. Grant **status** moves through a defined lifecycle: `active` → `flagged` → `under_audit` → `resolved`. Each transition writes a timestamped audit event.
+
+6. **Remediation Notes** are free-form annotations attached to a grant (stored as `note_added` audit events). Use them to document corrective actions, funder communications, or board decisions.
+
+### Deployment
+
+The compliance module requires applying migration `0010_compliance.sql` to your D1 database:
+
+```bash
+# Apply compliance tables (safe to run on an existing database — uses CREATE TABLE IF NOT EXISTS)
+wrangler d1 migrations apply GRANT_MANAGER_DB --remote
+```
+
+For local development:
+```bash
+wrangler d1 migrations apply GRANT_MANAGER_DB --local
+```
+
+### Database schema
+
+| Table | Purpose |
+|---|---|
+| `compliance_grants` | One row per grant under compliance monitoring |
+| `budget_lines` | Per-category allocated vs. spent amounts, upserted by category name |
+| `compliance_checklist` | Funder requirements with `pending`/`pass`/`fail`/`na` status |
+| `audit_log` | Append-only event trail — never updated, only inserted |
+
+### Security
+
+All write endpoints (`POST`/`PATCH`) require:
+- A valid session cookie (401 if absent)
+- The `X-CSRF-Token` header matching the session's stored token (403 if absent or mismatched)
+
+Read endpoints (`GET`) require a valid session but no CSRF token.
+
+### API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/compliance/grants` | List all grants with budget_line_count and checklist_failures |
+| `POST` | `/api/compliance/grants` | Create a new compliance grant |
+| `GET` | `/api/compliance/grants/:id` | Full detail: grant + budget lines + checklist + audit log |
+| `PATCH` | `/api/compliance/grants/:id` | Update status or grant metadata |
+| `POST` | `/api/compliance/grants/:id/budget` | Upsert a budget line by category (case-insensitive) |
+| `POST` | `/api/compliance/grants/:id/checklist` | Add a checklist requirement item |
+| `PATCH` | `/api/compliance/checklist/:id` | Update a checklist item's status |
+| `POST` | `/api/compliance/grants/:id/note` | Add a remediation note to the audit log |
+
+### Tests
+
+Worker-level compliance tests live in `tests/compliance.test.js` and run with `npm run test:worker`. The suite covers:
+- Authentication gates (every endpoint)
+- CSRF gates (every mutating endpoint)
+- Grant CRUD and lifecycle status transitions
+- Budget line creation, upsert deduplication, and over-budget detection
+- Checklist item management and status validation
+- Remediation note creation
+- Audit trail completeness (before/after values, actor recording, ordering)
+- Full end-to-end lifecycle: create → over-budget → flag → under_audit → resolve
+
+---
+
 ## Anonymous Feedback (GitHub Issues)
 
 A persistent feedback widget — available on every page without requiring a GitHub account — that files user reports directly as GitHub issues, with optional screenshot attachments.
