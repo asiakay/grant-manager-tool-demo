@@ -75,6 +75,121 @@ function InlineError({ msg, onDismiss }: { msg: string; onDismiss: () => void })
   );
 }
 
+function SidebarTimeline({ start, end }: { start: string | null; end: string | null }) {
+  if (!start || !end) return null;
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  const nowMs = Date.now();
+  if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) return null;
+
+  const pct = Math.max(0, Math.min(((nowMs - startMs) / (endMs - startMs)) * 100, 100));
+  const daysLeft = Math.ceil((endMs - nowMs) / 86_400_000);
+  const isExpired = nowMs > endMs;
+  const remainingPct = 100 - pct;
+
+  const barColor = isExpired || remainingPct <= 10
+    ? "bg-red-500"
+    : remainingPct <= 30
+    ? "bg-amber-500"
+    : "bg-emerald-500";
+
+  const labelColor = isExpired || remainingPct <= 10
+    ? "text-red-400"
+    : remainingPct <= 30
+    ? "text-amber-400"
+    : "text-gray-500";
+
+  const label = isExpired
+    ? "expired"
+    : daysLeft === 0
+    ? "ends today"
+    : daysLeft === 1
+    ? "1 day left"
+    : `${daysLeft}d left`;
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex-1 h-1 rounded-full bg-gray-700 overflow-hidden mr-2">
+          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={`text-xs ${labelColor} flex-shrink-0`}>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function GrantPeriodTimeline({ start, end }: { start: string | null; end: string | null }) {
+  if (!start || !end) return null;
+
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  const nowMs = Date.now();
+
+  if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) return null;
+
+  const totalMs = endMs - startMs;
+  const elapsedMs = Math.max(0, Math.min(nowMs - startMs, totalMs));
+  const pct = (elapsedMs / totalMs) * 100;
+  const daysLeft = Math.ceil((endMs - nowMs) / 86_400_000);
+  const isExpired = nowMs > endMs;
+  const remainingPct = 100 - pct;
+
+  const barColor = isExpired
+    ? "bg-red-600"
+    : remainingPct <= 10
+    ? "bg-red-500"
+    : remainingPct <= 30
+    ? "bg-amber-500"
+    : "bg-emerald-500";
+
+  const label = isExpired
+    ? "Period ended"
+    : daysLeft === 0
+    ? "Ends today"
+    : daysLeft === 1
+    ? "1 day left"
+    : `${daysLeft} days left`;
+
+  const labelColor = isExpired || remainingPct <= 10
+    ? "text-red-400"
+    : remainingPct <= 30
+    ? "text-amber-400"
+    : "text-emerald-400";
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  return (
+    <div className="mb-5 bg-gray-900 border border-gray-800 rounded-xl px-4 pt-3 pb-3.5">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Grant Period</span>
+        <span className={`text-xs font-semibold ${labelColor}`}>{label}</span>
+      </div>
+      {/* Track */}
+      <div className="relative h-2.5 rounded-full bg-gray-700 overflow-hidden">
+        {/* Elapsed fill */}
+        <div
+          className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+        {/* Today marker */}
+        {!isExpired && pct > 0 && pct < 100 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-white/70"
+            style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
+          />
+        )}
+      </div>
+      {/* Date labels */}
+      <div className="flex justify-between mt-1.5">
+        <span className="text-xs text-gray-600">{fmtDate(start)}</span>
+        <span className="text-xs text-gray-600">{fmtDate(end)}</span>
+      </div>
+    </div>
+  );
+}
+
 function BudgetBar({ allocated, spent }: { allocated: number; spent: number }) {
   const pct = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
   const over = allocated > 0 && spent > allocated;
@@ -474,6 +589,7 @@ export default function ComplianceDashboard({ onBack }: Props) {
                         <span className="text-red-400 font-medium">⚠ {g.checklist_failures} failing</span>
                       )}
                     </div>
+                    <SidebarTimeline start={g.period_start ?? null} end={g.period_end ?? null} />
                   </button>
                 </li>
               ))}
@@ -533,6 +649,12 @@ export default function ComplianceDashboard({ onBack }: Props) {
                   </div>
                 </div>
               </div>
+
+              {/* ── Period timeline ──────────────────────────────────────── */}
+              <GrantPeriodTimeline
+                start={selected.grant.period_start}
+                end={selected.grant.period_end}
+              />
 
               {/* ── Summary cards ────────────────────────────────────────── */}
               <div className="grid grid-cols-3 gap-3 mb-6">
