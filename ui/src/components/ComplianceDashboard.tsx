@@ -895,12 +895,6 @@ export default function ComplianceDashboard({ onBack }: Props) {
                 </div>
               </div>
 
-              {/* ── Period timeline ──────────────────────────────────────── */}
-              <GrantPeriodTimeline
-                start={selected.grant.period_start}
-                end={selected.grant.period_end}
-              />
-
               {/* ── Summary cards ────────────────────────────────────────── */}
               <div className="grid grid-cols-3 gap-3 mb-6">
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-3.5">
@@ -941,6 +935,12 @@ export default function ComplianceDashboard({ onBack }: Props) {
                   )}
                 </div>
               </div>
+
+              {/* ── Period timeline bar ──────────────────────────────────── */}
+              <GrantPeriodTimeline
+                start={selected.grant.period_start}
+                end={selected.grant.period_end}
+              />
 
               {/* ── Charts ───────────────────────────────────────────────── */}
               {(selected.grant.period_start || selected.grant.period_end || selected.budgetLines.length > 0) && (
