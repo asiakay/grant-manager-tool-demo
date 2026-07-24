@@ -410,6 +410,48 @@ export async function liveSearch(q: string, page = 1, pageSize = 25): Promise<Pa
   return handleResponse<PagedGrants & { configured: boolean }>(res);
 }
 
+export async function ngoSearch(q: string, page = 1, pageSize = 25): Promise<PagedGrants> {
+  const params = new URLSearchParams({ q, page: String(page), pageSize: String(pageSize) });
+  const res = await fetch(`${BASE}/api/ngo-search?${params}`, { credentials: "include" });
+  return handleResponse<PagedGrants>(res);
+}
+
+export type SearchSource = "all" | "federal" | "ngo";
+
+export async function mergedSearch(
+  q: string,
+  source: SearchSource,
+  page: number,
+  pageSize: number
+): Promise<PagedGrants & { configured: boolean; federalTotal: number; ngoTotal: number }> {
+  if (source === "federal") {
+    const res = await liveSearch(q, page, pageSize);
+    return { ...res, federalTotal: res.total, ngoTotal: 0 };
+  }
+  if (source === "ngo") {
+    const res = await ngoSearch(q, page, pageSize);
+    return { ...res, configured: true, federalTotal: 0, ngoTotal: res.total };
+  }
+  // "all" — run both in parallel, merge client-side on page 1; subsequent pages split
+  const [fed, ngo] = await Promise.all([
+    liveSearch(q, 1, Math.ceil(pageSize / 2)).catch(() => ({ data: [], total: 0, page: 1, pageSize, configured: false })),
+    ngoSearch(q, 1, Math.floor(pageSize / 2)).catch(() => ({ data: [], total: 0, page: 1, pageSize })),
+  ]);
+  const data = [
+    ...fed.data.map((g) => ({ ...g, "Source Channel": "federal" })),
+    ...ngo.data.map((g) => ({ ...g, "Source Channel": g["Source Channel"] || "foundation" })),
+  ];
+  return {
+    data,
+    total: fed.total + ngo.total,
+    page,
+    pageSize,
+    configured: fed.configured,
+    federalTotal: fed.total,
+    ngoTotal: ngo.total,
+  };
+}
+
 const FOCUS_AREA_QUERIES: Record<string, string> = {
   "Health & Medicine":         "health medicine clinical",
   "Education & Workforce":     "education workforce training",

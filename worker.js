@@ -1378,6 +1378,74 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       return jsonResponse(JSON.stringify({ configured: !!env.SIMPLER_GRANTS_API_KEY }));
     }
 
+    // ── NGO / Foundation search — queries D1 for curated non-federal grants ────
+    if (url.pathname === "/api/ngo-search" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+
+      const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+      const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+      const pageSize = Math.min(50, Math.max(1, parseInt(url.searchParams.get("pageSize") || "25", 10)));
+      const offset = (page - 1) * pageSize;
+
+      const NGO_CHANNELS = ["'foundation'", "'corporate'", "'community_foundation'"];
+      const channelClause = `source_channel IN (${NGO_CHANNELS.join(",")})`;
+
+      let rows, total;
+      if (!q) {
+        const countRow = await env.GRANT_MANAGER_DB
+          .prepare(`SELECT COUNT(*) as n FROM programs WHERE ${channelClause}`)
+          .first();
+        total = countRow?.n ?? 0;
+        const res = await env.GRANT_MANAGER_DB
+          .prepare(`SELECT * FROM programs WHERE ${channelClause} ORDER BY weighted_score DESC LIMIT ? OFFSET ?`)
+          .bind(pageSize, offset).all();
+        rows = res.results;
+      } else {
+        const like = `%${q}%`;
+        const countRow = await env.GRANT_MANAGER_DB
+          .prepare(`SELECT COUNT(*) as n FROM programs WHERE ${channelClause}
+            AND (LOWER(name) LIKE ? OR LOWER(sponsor) LIKE ? OR LOWER(benefits) LIKE ?
+              OR LOWER(eligibility_conditions) LIKE ? OR LOWER(type) LIKE ?)`)
+          .bind(like, like, like, like, like).first();
+        total = countRow?.n ?? 0;
+        const res = await env.GRANT_MANAGER_DB
+          .prepare(`SELECT * FROM programs WHERE ${channelClause}
+            AND (LOWER(name) LIKE ? OR LOWER(sponsor) LIKE ? OR LOWER(benefits) LIKE ?
+              OR LOWER(eligibility_conditions) LIKE ? OR LOWER(type) LIKE ?)
+            ORDER BY weighted_score DESC LIMIT ? OFFSET ?`)
+          .bind(like, like, like, like, like, pageSize, offset).all();
+        rows = res.results;
+      }
+
+      const hasNewSchema = rows.length === 0 || "source_url" in rows[0];
+      const data = rows.map((r) => ({
+        "Type": r.type ?? "",
+        "Name": r.name ?? "",
+        "Sponsor": r.sponsor ?? "",
+        "Source URL": hasNewSchema ? (r.source_url ?? "") : (r.sourceUrl ?? ""),
+        "Region/Eligibility": r.region_eligibility ?? "",
+        "Deadline/Next Cohort": r.deadline ?? "",
+        "Cadence": r.cadence ?? "",
+        "Benefits": r.benefits ?? "",
+        "Eligibility (key conditions)": r.eligibility_conditions ?? "",
+        "Stage": r.stage ?? "",
+        "Non-dilutive?": r.non_dilutive ? "Yes" : "No",
+        "Stack Required?": r.stack_required ? "Yes" : "No",
+        "Relevance": r.relevance ?? 0,
+        "Fit": r.fit ?? 0,
+        "Ease": r.ease ?? 0,
+        "Weighted Score": r.weighted_score ?? 0,
+        "Notes/Actions": r.notes ?? "",
+        "Award Ceiling": r.award_ceiling ?? null,
+        "Award Floor": r.award_floor ?? null,
+        "Source Channel": r.source_channel ?? "",
+        "Opportunity ID": r.opportunity_id ?? "",
+        source: "db",
+      }));
+
+      return jsonResponse(JSON.stringify({ data, total, page, pageSize }));
+    }
+
     if (url.pathname === "/api/health") {
       return jsonResponse(JSON.stringify({ ok: true }));
     }
