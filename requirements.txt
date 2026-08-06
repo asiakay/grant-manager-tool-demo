@@ -6,3 +6,5 @@ pyyaml
 certifi
 pytest
 freezegun
+requests
+beautifulsoup4

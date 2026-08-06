@@ -1,0 +1,48 @@
+name: State Funding Sources Sync
+
+on:
+  schedule:
+    # Weekly Monday 09:00 UTC — one hour after the daily grants-gov-sync (07:00 UTC)
+    # so the profile matcher's 08:00 UTC run sees same-day Grants.gov data first.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  scrape-and-import:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to commit scrape_runs.json back to the branch
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Scrape state sources
+        run: python scripts/scrape_sources.py --all --out out/state_sources.csv
+
+      - name: Import to D1 (remote)
+        run: python import_to_d1.py out/state_sources.csv --env remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Commit scrape run log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/scrape_runs.json
+          git diff --staged --quiet || git commit -m "chore: update scrape run log [skip ci]"
+          git push
