@@ -8,6 +8,7 @@ import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../ranki
 const FOCUS_AREAS = [
   "Health & Medicine",
   "Education & Workforce",
+  "Youth Development",
   "Technology & Innovation",
   "Housing & Community",
   "Environment & Climate",
