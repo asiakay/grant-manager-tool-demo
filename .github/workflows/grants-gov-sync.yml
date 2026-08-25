@@ -38,6 +38,15 @@ jobs:
             --output data/csvs/grants_gov_extract.csv \
             ${{ github.event.inputs.date && format('--date {0}', github.event.inputs.date) || '' }}
 
+      - name: Fetch API extract (Simpler Grants.gov)
+        continue-on-error: true
+        run: |
+          python fetch_grants_api.py \
+            --output data/csvs/grants_gov_api.csv \
+            --status both
+        env:
+          SIMPLER_GRANTS_API_KEY: ${{ secrets.SIMPLER_GRANTS_API_KEY }}
+
       - name: Wrangle
         run: python scripts/wrangle_grants.py --input data/csvs --out out/master.csv --print-summary
 

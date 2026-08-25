@@ -480,7 +480,28 @@ async function checkRateLimit(kv, key) {
   return { blocked: false, rec };
 }
 
-async function fetchFromSimplerGrants(env, query, page = 1, pageSize = 25) {
+const DEFAULT_SIMPLER_FILTERS = {
+  opportunity_status: { one_of: ["posted", "forecasted"] },
+  funding_instrument: { one_of: ["grant", "cooperative_agreement"] },
+};
+
+function buildSimplerGrantsFilters({ agency, minAward, maxAward, deadlineBefore, status }) {
+  const filters = {
+    opportunity_status: { one_of: ["posted", "forecasted"] },
+    funding_instrument: { one_of: ["grant", "cooperative_agreement"] },
+  };
+  if (status === "posted")      filters.opportunity_status = { one_of: ["posted"] };
+  else if (status === "forecasted") filters.opportunity_status = { one_of: ["forecasted"] };
+  if (agency) filters.agency = { one_of: [agency] };
+  // award_ceiling.min: ceiling can reach minAward (mirrors /api/grants filter semantics)
+  if (minAward !== null && !Number.isNaN(minAward)) filters.award_ceiling = { min: minAward };
+  // award_floor.max: floor doesn't exceed maxAward cap
+  if (maxAward !== null && !Number.isNaN(maxAward)) filters.award_floor = { max: maxAward };
+  if (deadlineBefore) filters.close_date = { end_date: deadlineBefore };
+  return filters;
+}
+
+async function fetchFromSimplerGrants(env, query, page = 1, pageSize = 25, filters = null) {
   if (!env.SIMPLER_GRANTS_API_KEY) {
     throw new Error("Missing required credential binding: SIMPLER_GRANTS_API_KEY.");
   }
@@ -492,10 +513,7 @@ async function fetchFromSimplerGrants(env, query, page = 1, pageSize = 25) {
     },
     body: JSON.stringify({
       query,
-      filters: {
-        opportunity_status: { one_of: ["posted", "forecasted"] },
-        funding_instrument: { one_of: ["grant", "cooperative_agreement"] },
-      },
+      filters: filters ?? DEFAULT_SIMPLER_FILTERS,
       pagination: {
         page_offset: page,
         page_size: pageSize,
@@ -518,10 +536,10 @@ const SYNC_PAGE_SIZE = 100;
 // Walks every page of the Simpler Grants.gov search API for `query` (an empty
 // query returns the full catalog matching the filters), stopping when a page
 // comes back short (last page) or SYNC_MAX_OPPORTUNITIES is reached.
-async function fetchAllFromSimplerGrants(env, query) {
+async function fetchAllFromSimplerGrants(env, query, filters = null) {
   const all = [];
   for (let page = 1; all.length < SYNC_MAX_OPPORTUNITIES; page++) {
-    const apiData = await fetchFromSimplerGrants(env, query, page, SYNC_PAGE_SIZE);
+    const apiData = await fetchFromSimplerGrants(env, query, page, SYNC_PAGE_SIZE, filters);
     const opportunities = apiData?.data || apiData?.data?.oppHits || apiData?.items || [];
     all.push(...opportunities);
     if (opportunities.length < SYNC_PAGE_SIZE) break;
@@ -541,37 +559,32 @@ function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ") : "";
 }
 
-async function syncGrantsWithD1(env, query) {
+// Fields that are safe to refresh on every sync (descriptive/structural data
+// from Grants.gov). relevance/fit/ease/weighted_score/non_dilutive/stack_required
+// are deliberately left alone on conflict — they may have been hand-tuned or
+// set by the AI scoring pass, and a resync shouldn't clobber that.
+const REFRESHABLE_SET = `
+    name = excluded.name,
+    type = excluded.type,
+    sponsor = excluded.sponsor,
+    source_url = excluded.source_url,
+    deadline = excluded.deadline,
+    benefits = excluded.benefits,
+    eligibility_conditions = excluded.eligibility_conditions,
+    stage = excluded.stage,
+    cfda_numbers = excluded.cfda_numbers,
+    eligible_applicants = excluded.eligible_applicants,
+    award_ceiling = excluded.award_ceiling,
+    award_floor = excluded.award_floor,
+    source_channel = excluded.source_channel,
+    last_synced_at = excluded.last_synced_at
+`;
+
+async function upsertOpportunitiesToD1(env, opportunities) {
   if (!env.GRANT_MANAGER_DB) {
     throw new Error("D1 binding (GRANT_MANAGER_DB) is missing.");
   }
-  const opportunities = await fetchAllFromSimplerGrants(env, query);
-  if (opportunities.length === 0) {
-    return { success: true, inserted: 0, message: "Sync complete. No records returned from server filters." };
-  }
-
   await env.GRANT_MANAGER_DB.prepare(PROGRAMS_SCHEMA).run();
-
-  // Fields that are safe to refresh on every sync (descriptive/structural data
-  // from Grants.gov). relevance/fit/ease/weighted_score/non_dilutive/stack_required
-  // are deliberately left alone on conflict — they may have been hand-tuned or
-  // set by the AI scoring pass, and a resync shouldn't clobber that.
-  const REFRESHABLE_SET = `
-      name = excluded.name,
-      type = excluded.type,
-      sponsor = excluded.sponsor,
-      source_url = excluded.source_url,
-      deadline = excluded.deadline,
-      benefits = excluded.benefits,
-      eligibility_conditions = excluded.eligibility_conditions,
-      stage = excluded.stage,
-      cfda_numbers = excluded.cfda_numbers,
-      eligible_applicants = excluded.eligible_applicants,
-      award_ceiling = excluded.award_ceiling,
-      award_floor = excluded.award_floor,
-      source_channel = excluded.source_channel,
-      last_synced_at = excluded.last_synced_at
-  `;
 
   const insertStmt = env.GRANT_MANAGER_DB.prepare(`
     INSERT INTO programs (
@@ -631,6 +644,14 @@ async function syncGrantsWithD1(env, query) {
     await env.GRANT_MANAGER_DB.batch(statements.slice(i, i + 50));
   }
   return { success: true, inserted: opportunities.length, message: `Successfully loaded ${opportunities.length} active opportunities to local storage.` };
+}
+
+async function syncGrantsWithD1(env, query) {
+  const opportunities = await fetchAllFromSimplerGrants(env, query);
+  if (opportunities.length === 0) {
+    return { success: true, inserted: 0, message: "Sync complete. No records returned from server filters." };
+  }
+  return upsertOpportunitiesToD1(env, opportunities);
 }
 
 // ===== Anonymous Feedback (GitHub Issues) =====
@@ -1371,6 +1392,107 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
         log("error", "database_sync_route_failed", { ...reqCtx, error: String(err) });
         return jsonResponse(JSON.stringify({ success: false, error: err.message }), { status: 500 });
       }
+    }
+
+    if (url.pathname === "/api/scan" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });
+      if (!env.SIMPLER_GRANTS_API_KEY) {
+        return jsonResponse(JSON.stringify({ error: "Live scan is not configured. Set the SIMPLER_GRANTS_API_KEY secret." }), { status: 503 });
+      }
+      if (!env.GRANT_MANAGER_DB) {
+        return jsonResponse(JSON.stringify({ error: "Database not configured." }), { status: 503 });
+      }
+
+      const agencyParam     = url.searchParams.get("agency") || null;
+      const minAwardRaw     = url.searchParams.get("minAward");
+      const maxAwardRaw     = url.searchParams.get("maxAward");
+      const minAward        = minAwardRaw !== null && minAwardRaw !== "" ? Number(minAwardRaw) : null;
+      const maxAward        = maxAwardRaw !== null && maxAwardRaw !== "" ? Number(maxAwardRaw) : null;
+      const deadlineBefore  = url.searchParams.get("deadlineBefore") || null;
+      const statusParam     = url.searchParams.get("status") || "both";
+      const doSync          = url.searchParams.get("sync") === "true";
+
+      if (!["posted", "forecasted", "both"].includes(statusParam)) {
+        return jsonResponse(JSON.stringify({ error: "status must be posted, forecasted, or both" }), { status: 400 });
+      }
+
+      const appliedFilters = { agency: agencyParam, minAward, maxAward, deadlineBefore, status: statusParam };
+      const apiFilters = buildSimplerGrantsFilters(appliedFilters);
+
+      const scanStart = Date.now();
+      let opportunities;
+      try {
+        opportunities = await fetchAllFromSimplerGrants(env, "", apiFilters);
+      } catch (err) {
+        log("error", "scan_fetch_failed", { ...reqCtx, error: String(err) });
+        return jsonResponse(JSON.stringify({ error: err.message || "Failed to reach Simpler Grants API." }), { status: 502 });
+      }
+
+      // Load user profile for heuristic scoring (same as /api/live-search)
+      let scanProfile = {};
+      if (env.USER_PROFILES) {
+        const rawProfile = await env.USER_PROFILES.get(`profile:${username}`);
+        if (rawProfile) { try { scanProfile = JSON.parse(rawProfile); } catch { scanProfile = {}; } }
+      }
+
+      const results = opportunities.map((opp) => {
+        const summary = opp.summary || opp;
+        const opportunityId = opp.opportunity_id != null ? String(opp.opportunity_id) : "";
+        const name = opp.opportunity_title || summary.opportunity_title || "";
+        const sponsor = opp.agency_name || summary.agency_name || opp.agency_code || "";
+        const awardFloor = opp.award_floor ?? summary.award_floor ?? null;
+        const awardCeiling = opp.award_ceiling ?? summary.award_ceiling ?? null;
+        const applicantTypes = Array.isArray(opp.applicant_types)
+          ? opp.applicant_types
+          : Array.isArray(summary.applicant_types) ? summary.applicant_types : [];
+        const eligibility = applicantTypes.map(capitalize).join(", ");
+        const cfdaList = Array.isArray(opp.cfda_numbers)
+          ? opp.cfda_numbers
+          : Array.isArray(opp.assistance_listing_numbers)
+            ? opp.assistance_listing_numbers
+            : Array.isArray(summary.assistance_listing_numbers)
+              ? summary.assistance_listing_numbers : [];
+        const grant = {
+          "Type":                     capitalize(opp.funding_instrument || summary.funding_instruments?.[0] || "grant"),
+          "Name":                     name,
+          "Sponsor":                  sponsor,
+          "Source URL":               opportunityId ? `https://simpler.grants.gov/opportunity/${opportunityId}` : "",
+          "Region / Eligibility":     eligibility,
+          "Deadline / Next Cohort":   opp.close_date || summary.close_date || "",
+          "Cadence":                  "",
+          "Benefits":                 fmtAward(awardFloor, awardCeiling),
+          "Eligibility (key conditions)": eligibility,
+          "Stage":                    capitalize(opp.opportunity_status || ""),
+          "Non-dilutive?":            "Yes",
+          "Stack Required?":          "No",
+          "Opportunity ID":           opportunityId,
+          "Opportunity Number":       opp.opportunity_number || "",
+          "CFDA Numbers":             cfdaList.join(", "),
+          "Award Ceiling":            awardCeiling,
+          "Award Floor":              awardFloor,
+          "Is Forecast":              (opp.opportunity_status || "").toLowerCase() === "forecasted",
+          "Source Channel":           "simpler_api",
+        };
+        const heuristic = computeLiveHeuristicScores(grant, scanProfile);
+        return { ...grant, Relevance: heuristic.Relevance, Fit: heuristic.Fit, Ease: heuristic.Ease };
+      });
+
+      let syncResult = null;
+      if (doSync) {
+        try {
+          syncResult = await upsertOpportunitiesToD1(env, opportunities);
+        } catch (err) {
+          log("error", "scan_sync_failed", { ...reqCtx, error: String(err) });
+          syncResult = { success: false, error: String(err) };
+        }
+      }
+
+      log("info", "scan_completed", { ...reqCtx, total: results.length, filters: appliedFilters, synced: doSync, durationMs: Date.now() - scanStart });
+
+      const scanBody = { results, total: results.length, filters: appliedFilters };
+      if (syncResult !== null) scanBody.sync = syncResult;
+      return jsonResponse(JSON.stringify(scanBody));
     }
 
     if (url.pathname === "/api/live-search-status") {
