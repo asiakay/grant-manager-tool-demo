@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Grant } from "../types";
 import type { UserProfile } from "../api";
-import { updateNotes } from "../api";
+import { updateNotes, summarizeGrant, type GrantSummary } from "../api";
 import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
 import EligibilitySimulator from "./EligibilitySimulator";
 
@@ -209,6 +209,9 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [liveSummary, setLiveSummary] = useState<GrantSummary | null>(null);
+  const [summarizeError, setSummarizeError] = useState("");
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -217,10 +220,27 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
       setNotes(String(grant["Notes/Actions"] || ""));
       setSaved(false);
       setSaveError("");
+      setLiveSummary(null);
+      setSummarizeError("");
       // Move focus into the drawer when it opens
       setTimeout(() => closeBtnRef.current?.focus(), 50);
     }
   }, [grant]);
+
+  async function handleSummarize() {
+    if (!grant || !grant["Source URL"]) return;
+    setSummarizing(true);
+    setSummarizeError("");
+    setLiveSummary(null);
+    try {
+      const result = await summarizeGrant(String(grant["Source URL"]));
+      setLiveSummary(result);
+    } catch (err) {
+      setSummarizeError(err instanceof Error ? err.message : "Summarization failed");
+    } finally {
+      setSummarizing(false);
+    }
+  }
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -328,9 +348,9 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Source URL */}
+              {/* Source URL + Summarize */}
               {grant["Source URL"] && (
-                <div>
+                <div className="flex items-center gap-3 flex-wrap">
                   <a
                     href={String(grant["Source URL"])}
                     target="_blank"
@@ -342,6 +362,52 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                     </svg>
                     View Source
                   </a>
+                  <button
+                    type="button"
+                    onClick={handleSummarize}
+                    disabled={summarizing}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Summarize this grant using AI"
+                  >
+                    {summarizing ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                        Summarizing…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Summarize
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Live summary result */}
+              {(liveSummary || summarizeError) && (
+                <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
+                  <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">AI Summary</p>
+                  {summarizeError && (
+                    <p className="text-red-400 text-sm">{summarizeError}</p>
+                  )}
+                  {liveSummary && (
+                    <>
+                      <p className="text-gray-300 text-sm leading-snug">{liveSummary.summary}</p>
+                      {liveSummary.bullets.length > 0 && (
+                        <ul className="space-y-1 pt-1">
+                          {liveSummary.bullets.map((b: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
+                              <span className="text-brand-400 shrink-0 mt-0.5" aria-hidden="true">•</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
