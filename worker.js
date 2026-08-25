@@ -2214,7 +2214,7 @@ ${grantCards}
 
         if (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN) {
           const aiRes = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
             {
               method: "POST",
               headers: {
