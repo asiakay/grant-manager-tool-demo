@@ -1071,11 +1071,11 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       let text = "";
       try {
         if (env.AI) {
-          const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages, stream: false });
+          const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, stream: false });
           text = result.response || "";
         } else {
           const res = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
             { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
           );
           const data = await res.json();
@@ -1180,11 +1180,11 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       let aiText = "";
       try {
         if (env.AI) {
-          const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages, stream: false });
+          const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, stream: false });
           aiText = result.response || "";
         } else {
           const res = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
             { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
           );
           const data = await res.json();
@@ -1867,11 +1867,11 @@ Respond with ONLY a JSON object, no explanation. Example: {"relevance":2,"fit":1
         const messages = [{ role: "user", content: prompt }];
         let text = "";
         if (env.AI) {
-          const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages, stream: false });
+          const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, stream: false });
           text = result.response || "";
         } else {
           const res = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
             { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
           );
           const data = await res.json();
@@ -1978,11 +1978,11 @@ Respond with ONLY a JSON object. Example: {"relevance":2,"fit":2,"ease":3,"summa
           const messages = [{ role: "user", content: prompt }];
           let text = "";
           if (env.AI) {
-            const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages, stream: false });
+            const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, stream: false });
             text = result.response || "";
           } else {
             const res = await fetch(
-              `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
+              `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
               { method: "POST", headers: { Authorization: `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
             );
             const data = await res.json();
@@ -2200,11 +2200,11 @@ ${grantCards}
         if (env.AI && typeof env.AI.run === "function") {
           try {
             const aiStart = Date.now();
-            const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+            const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
               messages: aiMessages,
               stream: false,
             });
-            log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", contextGrants: totalCount, durationMs: Date.now() - aiStart });
+            log("info", "ai_chat_response", { ...reqCtx, model: "@cf/meta/llama-3.2-3b-instruct", contextGrants: totalCount, durationMs: Date.now() - aiStart });
             return jsonResponse(JSON.stringify({ response: result.response ?? "" }));
           } catch (bindingErr) {
             log("warn", "ai_binding_failed_trying_rest", { ...reqCtx, error: String(bindingErr) });
@@ -2214,7 +2214,7 @@ ${grantCards}
 
         if (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN) {
           const aiRes = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
             {
               method: "POST",
               headers: {
