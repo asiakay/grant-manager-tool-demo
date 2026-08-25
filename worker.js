@@ -1196,12 +1196,16 @@ Respond with JSON only — no markdown, no explanation, no extra text:
         return jsonResponse(JSON.stringify({ error: `AI summarization failed: ${detail}` }), { status: 502 });
       }
 
-      const jsonMatch = aiText.match(/\{[\s\S]*?\}/);
-      if (!jsonMatch) return jsonResponse(JSON.stringify({ error: "Could not parse AI response" }), { status: 502 });
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return jsonResponse(JSON.stringify({ error: "Could not parse AI response", raw: aiText.slice(0, 200) }), { status: 502 });
 
       let parsed;
       try { parsed = JSON.parse(jsonMatch[0]); } catch {
-        return jsonResponse(JSON.stringify({ error: "Invalid AI JSON" }), { status: 502 });
+        return jsonResponse(JSON.stringify({ error: "Invalid AI JSON", raw: jsonMatch[0].slice(0, 200) }), { status: 502 });
+      }
+
+      if (!parsed || typeof parsed !== "object") {
+        return jsonResponse(JSON.stringify({ error: "AI returned unexpected value", raw: String(parsed) }), { status: 502 });
       }
 
       const summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
