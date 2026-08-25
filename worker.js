@@ -1113,6 +1113,80 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       return jsonResponse(JSON.stringify({ configured, provider }));
     }
 
+    if (url.pathname === "/api/summarize" && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+
+      const sourceUrl = (url.searchParams.get("url") || "").trim();
+      if (!sourceUrl) return jsonResponse(JSON.stringify({ error: "url param required" }), { status: 400 });
+
+      let hostname;
+      try { hostname = new URL(sourceUrl).hostname; } catch {
+        return jsonResponse(JSON.stringify({ error: "Invalid url" }), { status: 400 });
+      }
+      const ALLOWED_HOSTS = [
+        "grants.gov", "simpler.grants.gov", "sam.gov", "beta.sam.gov",
+        "grantsolutions.gov", "nih.gov", "nsf.gov", "sba.gov", "hud.gov",
+        "usda.gov", "ed.gov", "dot.gov", "epa.gov", "energy.gov",
+        "commerce.gov", "treasury.gov", "state.gov", "defense.gov",
+      ];
+      const allowed = ALLOWED_HOSTS.some(h => hostname === h || hostname.endsWith("." + h));
+      if (!allowed) {
+        return jsonResponse(JSON.stringify({ error: "URL domain not allowed for summarization" }), { status: 403 });
+      }
+
+      const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
+      if (!hasAI) return jsonResponse(JSON.stringify({ error: "AI not configured" }), { status: 503 });
+
+      const pageText = await fetchPageText(sourceUrl);
+      if (!pageText) return jsonResponse(JSON.stringify({ error: "Could not fetch grant page" }), { status: 502 });
+
+      const prompt = `You are a grant research assistant. Summarize the following grant opportunity for a nonprofit or small business applicant.
+
+Grant page content:
+${pageText}
+
+Respond with JSON only — no markdown, no explanation, no extra text:
+{
+  "summary": "<2-3 sentence plain-language summary of what this grant funds, who can apply, and how much is available>",
+  "bullets": ["<key fact 1>", "<key fact 2>", "<key fact 3>", "<key fact 4>", "<key fact 5>"]
+}`;
+
+      const messages = [{ role: "user", content: prompt }];
+      let aiText = "";
+      try {
+        if (env.AI) {
+          const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages, stream: false });
+          aiText = result.response || "";
+        } else {
+          const res = await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+            { method: "POST", headers: { "Authorization": `Bearer ${env.CF_AI_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messages }) }
+          );
+          const data = await res.json();
+          aiText = data.result?.response ?? "";
+        }
+      } catch (err) {
+        log("error", "summarize_ai_error", { ...reqCtx, error: String(err) });
+        return jsonResponse(JSON.stringify({ error: "AI summarization failed" }), { status: 502 });
+      }
+
+      const jsonMatch = aiText.match(/\{[\s\S]*?\}/);
+      if (!jsonMatch) return jsonResponse(JSON.stringify({ error: "Could not parse AI response" }), { status: 502 });
+
+      let parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch {
+        return jsonResponse(JSON.stringify({ error: "Invalid AI JSON" }), { status: 502 });
+      }
+
+      const summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
+      const bullets = Array.isArray(parsed.bullets)
+        ? parsed.bullets.filter(b => typeof b === "string").slice(0, 5).map(b => String(b).slice(0, 120))
+        : [];
+
+      log("info", "grant_summarized", { ...reqCtx, hostname });
+      return jsonResponse(JSON.stringify({ summary, bullets }));
+    }
+
     if (url.pathname === "/api/grants") {
       if (!loggedIn) {
         return new Response("Unauthorized", { status: 401 });

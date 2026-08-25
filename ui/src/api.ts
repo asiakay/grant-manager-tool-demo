@@ -651,3 +651,14 @@ export async function addRemediationNote(grantId: number, note: string): Promise
   });
   await handleResponse<{ ok: boolean }>(res);
 }
+
+export interface GrantSummary {
+  summary: string;
+  bullets: string[];
+}
+
+export async function summarizeGrant(sourceUrl: string): Promise<GrantSummary> {
+  const params = new URLSearchParams({ url: sourceUrl });
+  const res = await fetch(`${BASE}/api/summarize?${params}`, { credentials: "include" });
+  return handleResponse<GrantSummary>(res);
+}
