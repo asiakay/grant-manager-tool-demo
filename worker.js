@@ -761,7 +761,7 @@ async function fetchPageText(pageUrl) {
     }
     if (!res.ok) return "";
     const html = await res.text();
-    return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000);
+    return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1200);
   } catch {
     return "";
   }
@@ -1191,8 +1191,9 @@ Respond with JSON only — no markdown, no explanation, no extra text:
           aiText = data.result?.response ?? "";
         }
       } catch (err) {
-        log("error", "summarize_ai_error", { ...reqCtx, error: String(err) });
-        return jsonResponse(JSON.stringify({ error: "AI summarization failed" }), { status: 502 });
+        const detail = String(err);
+        log("error", "summarize_ai_error", { ...reqCtx, error: detail });
+        return jsonResponse(JSON.stringify({ error: `AI summarization failed: ${detail}` }), { status: 502 });
       }
 
       const jsonMatch = aiText.match(/\{[\s\S]*?\}/);
