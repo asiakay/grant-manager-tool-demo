@@ -123,3 +123,42 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+      - name: Create pdf-ingest queue (idempotent)
+        run: npx wrangler queues create pdf-ingest || echo "Queue already exists — continuing"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Create foundationplanner-pdfs R2 bucket (idempotent)
+        run: npx wrangler r2 bucket create foundationplanner-pdfs || echo "Bucket already exists — continuing"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy pdf processor worker
+        # Skipped until GRANT_SUMMARIZER_URL is set as a repo secret.
+        # See grant_summarizer/server.py and workers/pdf_wrangler.toml for setup.
+        run: |
+          if [ -z "$GRANT_SUMMARIZER_URL" ]; then
+            echo "GRANT_SUMMARIZER_URL not set — skipping pdf-worker deploy" >&2
+            exit 0
+          fi
+          npx wrangler deploy -c workers/pdf_wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GRANT_SUMMARIZER_URL: ${{ secrets.GRANT_SUMMARIZER_URL }}
+
+      - name: Set pdf worker secrets
+        run: |
+          if [ -z "$GRANT_SUMMARIZER_URL" ]; then
+            echo "GRANT_SUMMARIZER_URL not set — pdf worker secrets skipped" >&2
+            exit 0
+          fi
+          jq -n --arg url "$GRANT_SUMMARIZER_URL" '{"GRANT_SUMMARIZER_URL": $url}' \
+            | npx wrangler secret bulk -c workers/pdf_wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GRANT_SUMMARIZER_URL: ${{ secrets.GRANT_SUMMARIZER_URL }}
