@@ -1,0 +1,30 @@
+name = "grant-pdf-processor"
+main = "../drafts/pdf_worker.ts"
+compatibility_date = "2024-05-29"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "PDF_BUCKET"
+bucket_name = "foundationplanner-pdfs"
+
+[[queues.consumers]]
+queue = "pdf-ingest"
+max_batch_size = 10
+max_batch_timeout = 30
+
+# Uncomment to forward scored CSV keys to a downstream scoring queue:
+# [[queues.producers]]
+# binding = "SCORE_QUEUE"
+# queue = "grant-score-queue"
+
+# ── Secrets (set before deploying) ──────────────────────────────────────────
+#
+#   wrangler secret put GRANT_SUMMARIZER_URL -c workers/pdf_wrangler.toml
+#
+# Point this at your deployed grant_summarizer/server.py instance.
+# Free hosting options: Render, Railway, Hugging Face Spaces, fly.io.
+#
+# To run locally for testing:
+#   pip install -e "grant_summarizer[server]"
+#   uvicorn grant_summarizer.server:app --port 8000
+# then set GRANT_SUMMARIZER_URL = "http://localhost:8000/summarize"

@@ -201,8 +201,58 @@ Full setup documentation: [DEVELOPERS.md](docs/DEVELOPERS.md)
 
 ## Roadmap
 
-- **PDF processing pipeline** — A Queue-based worker ([`drafts/pdf_worker.ts`](drafts/pdf_worker.ts)) ingests grant PDFs from R2 via `grant_summarizer` and imports scored rows into D1. Prototyped; pending hosted `GRANT_SUMMARIZER_URL` and Cloudflare Queue provisioning.
+- **PDF processing pipeline** — Implemented. The [`grant_summarizer/server.py`](grant_summarizer/server.py) FastAPI service wraps the existing extraction + normalization package into a single `POST /summarize` endpoint. [`workers/pdf_wrangler.toml`](workers/pdf_wrangler.toml) deploys the Queue consumer ([`drafts/pdf_worker.ts`](drafts/pdf_worker.ts)) that picks up R2-uploaded PDFs, calls the service, and writes CSV + Markdown back to R2. CI provisions the `pdf-ingest` queue and `foundationplanner-pdfs` bucket on every deploy. **Remaining step:** host the FastAPI service and add `GRANT_SUMMARIZER_URL` as a repo secret — see [PDF Pipeline setup](#pdf-pipeline) below.
 - ~~**Grants.gov XML Extract ingestion**~~ — Shipped: `fetch_xml_extract.py` pulls the full daily catalog (including forecasted opportunities) into the same pipeline that already scores and imports keyword-search results, with structured award/eligibility/CFDA fields now surfaced in the UI.
+
+---
+
+## PDF Pipeline
+
+The pipeline goes: **R2 PDF upload → `pdf-ingest` queue message → `grant-pdf-processor` Worker → `grant_summarizer/server.py` → CSV + Markdown written back to R2**.
+
+### 1. Host the summarizer service
+
+`grant_summarizer/server.py` is a FastAPI app that accepts raw PDF bytes and returns structured data. Host it anywhere Python runs — Render, Railway, fly.io, or Hugging Face Spaces all work.
+
+```bash
+# Install with server extras
+pip install -e "grant_summarizer[server]"
+
+# Run locally (for testing)
+uvicorn grant_summarizer.server:app --port 8000
+# POST http://localhost:8000/summarize  ← GRANT_SUMMARIZER_URL
+
+# Health check
+curl http://localhost:8000/health
+```
+
+The endpoint accepts raw PDF bytes (`Content-Type: application/pdf`) and returns:
+```json
+{ "csv": "<header row>\n<data row>\n", "markdown": "# Grant Name\n..." }
+```
+
+### 2. Set the repo secret
+
+Once the service is hosted, add `GRANT_SUMMARIZER_URL` (pointing to the `/summarize` path) as a GitHub Actions repo secret. The next push to `main` will deploy the `grant-pdf-processor` Worker and wire the secret in.
+
+```bash
+# Or set it directly via wrangler:
+wrangler secret put GRANT_SUMMARIZER_URL -c workers/pdf_wrangler.toml
+```
+
+### 3. Enqueue a PDF
+
+Upload a PDF to the `foundationplanner-pdfs` R2 bucket and send its key as a queue message:
+
+```bash
+# Upload
+wrangler r2 object put foundationplanner-pdfs/mygrant.pdf --file mygrant.pdf
+
+# Enqueue (the Worker picks it up within seconds)
+wrangler queues send pdf-ingest '{"key":"mygrant.pdf"}'
+```
+
+The Worker writes `mygrant.csv` and `mygrant.md` back to the same bucket.
 
 ---
 
