@@ -1,7 +1,39 @@
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import type { Grant } from "../types";
 import type { UserProfile } from "../api";
 import { updateNotes, summarizeGrant, type GrantSummary } from "../api";
+
+class DrawerErrorBoundary extends Component<{ children: ReactNode }, { caught: boolean; message: string }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { caught: false, message: "" };
+  }
+  static getDerivedStateFromError(err: unknown) {
+    return { caught: true, message: err instanceof Error ? err.message : "An unexpected error occurred." };
+  }
+  componentDidCatch(_err: unknown, _info: ErrorInfo) {
+    // Intentionally silent — the fallback UI below is the user-facing signal.
+  }
+  render() {
+    if (this.state.caught) {
+      return (
+        <div className="p-5 text-center space-y-3">
+          <p className="text-red-400 text-sm font-medium">Something went wrong displaying this grant.</p>
+          <p className="text-gray-500 text-xs">{this.state.message}</p>
+          <button
+            type="button"
+            className="btn-ghost text-xs px-3 py-1.5"
+            onClick={() => this.setState({ caught: false, message: "" })}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
 import EligibilitySimulator from "./EligibilitySimulator";
 
@@ -348,6 +380,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              <DrawerErrorBoundary>
               {/* Source URL + Summarize */}
               {grant["Source URL"] && (
                 <div className="flex items-center gap-3 flex-wrap">
@@ -525,6 +558,7 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   <p className="text-red-400 text-xs mt-1">{saveError}</p>
                 )}
               </div>
+              </DrawerErrorBoundary>
             </div>
 
             {/* Footer */}
