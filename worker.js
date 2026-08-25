@@ -753,7 +753,7 @@ async function fetchPageText(pageUrl) {
     let res;
     try {
       res = await fetch(pageUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; GrantManagerBot/1.0)" },
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" },
         signal: controller.signal,
       });
     } finally {
@@ -1119,6 +1119,14 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const sourceUrl = (url.searchParams.get("url") || "").trim();
       if (!sourceUrl) return jsonResponse(JSON.stringify({ error: "url param required" }), { status: 400 });
 
+      // Pre-check for bracketed IPv6 private addresses before URL parsing.
+      // workerd will attempt to open a socket when new URL() is called with certain
+      // IPv6 literals, crashing before our post-parse SSRF check can fire.
+      const BLOCKED_IPV6_RAW = /\[(::1|::ffff:|fc[0-9a-f]{2}|fd[0-9a-f]|fe80:)/i;
+      if (BLOCKED_IPV6_RAW.test(sourceUrl)) {
+        return jsonResponse(JSON.stringify({ error: "Private addresses not allowed" }), { status: 400 });
+      }
+
       let parsedUrl;
       try { parsedUrl = new URL(sourceUrl); } catch {
         return jsonResponse(JSON.stringify({ error: "Invalid url" }), { status: 400 });
@@ -1127,7 +1135,7 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
         return jsonResponse(JSON.stringify({ error: "Only http/https URLs allowed" }), { status: 400 });
       }
       const hostname = parsedUrl.hostname;
-      const BLOCKED = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|fc00:|fd)/i;
+      const BLOCKED = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|fc[0-9a-f]{2}:|fd[0-9a-f])/i;
       if (BLOCKED.test(hostname)) {
         return jsonResponse(JSON.stringify({ error: "Private addresses not allowed" }), { status: 400 });
       }

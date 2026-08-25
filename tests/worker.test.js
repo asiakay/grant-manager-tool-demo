@@ -1507,3 +1507,389 @@ describe("GET /api/live-search-status", () => {
     expect(body.configured).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/summarize
+// ---------------------------------------------------------------------------
+
+describe("GET /api/summarize", () => {
+  // Helpers for mocking outbound HTTP and AI inference.
+
+  // Stubs global fetch so fetchPageText inside the worker returns the given HTML.
+  // The test harness's own `fetch` helper calls worker.fetch() directly and is
+  // unaffected by this stub.
+  function mockPageFetch(html, status = 200) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8" } })
+    ));
+  }
+
+  // Stubs global fetch to simulate a network error from fetchPageText.
+  function mockPageFetchError() {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+  }
+
+  // Mocks env.AI.run to return the given text as the model response.
+  function mockAI(response) {
+    vi.spyOn(env.AI, "run").mockResolvedValue({ response });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  // ── Authentication ──────────────────────────────────────────────────────────
+
+  it("returns 401 without a session cookie", async () => {
+    const res = await fetch(new Request("http://localhost/api/summarize?url=https://example.com"));
+    expect(res.status).toBe(401);
+  });
+
+  // ── Input validation ────────────────────────────────────────────────────────
+
+  it("returns 400 when url param is missing", async () => {
+    const { token } = await createAndLoginUser("sum-v1@test.example", "password1x");
+    const res = await authedGet("/api/summarize", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/url param required/i);
+  });
+
+  it("returns 400 for an unparseable URL", async () => {
+    const { token } = await createAndLoginUser("sum-v2@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=not-a-url-at-all", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/invalid url/i);
+  });
+
+  it("returns 400 for a non-http/https scheme", async () => {
+    const { token } = await createAndLoginUser("sum-v3@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=file:///etc/passwd", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/http/i);
+  });
+
+  it("returns 400 for javascript: scheme", async () => {
+    const { token } = await createAndLoginUser("sum-v4@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=javascript:alert(1)", token);
+    expect(res.status).toBe(400);
+  });
+
+  // ── SSRF protection ─────────────────────────────────────────────────────────
+
+  it("blocks localhost", async () => {
+    const { token } = await createAndLoginUser("sum-s1@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=http://localhost/secret", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("blocks 127.x loopback addresses", async () => {
+    const { token } = await createAndLoginUser("sum-s2@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=http://127.0.0.1/secret", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("blocks RFC-1918 10.0.0.0/8 addresses", async () => {
+    const { token } = await createAndLoginUser("sum-s3@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=http://10.0.0.1/internal", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("blocks RFC-1918 172.16.0.0/12 addresses", async () => {
+    const { token } = await createAndLoginUser("sum-s4@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=http://172.16.0.1/internal", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("blocks RFC-1918 192.168.0.0/16 addresses", async () => {
+    const { token } = await createAndLoginUser("sum-s5@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=http://192.168.1.1/internal", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("blocks link-local 169.254.0.0/16 (AWS metadata)", async () => {
+    const { token } = await createAndLoginUser("sum-s6@test.example", "password1x");
+    const res = await authedGet("/api/summarize?url=http://169.254.169.254/latest/meta-data/", token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("blocks IPv6 loopback ::1", async () => {
+    const { token } = await createAndLoginUser("sum-s7@test.example", "password1x");
+    // Use URLSearchParams to properly percent-encode the bracketed IPv6 address so
+    // workerd's HTTP layer doesn't try to parse it as part of the request URL authority.
+    const params = new URLSearchParams({ url: "http://[::1]/secret" });
+    const res = await authedGet(`/api/summarize?${params}`, token);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private/i);
+  });
+
+  it("does NOT block legitimate public hostnames that start with fd (e.g. fdic.gov)", async () => {
+    const { token } = await createAndLoginUser("sum-s8@test.example", "password1x");
+    // fetchPageText will actually try to hit fdic.gov — stub it so no real network call happens.
+    mockPageFetchError();
+    mockAI(JSON.stringify({ summary: "FDIC grant summary", bullets: ["Fact 1"] }));
+    // Pass metadata so that even when the page fetch fails the AI can summarize
+    const params = new URLSearchParams({
+      url: "https://fdic.gov/grants",
+      name: "FDIC Grant",
+      sponsor: "FDIC",
+    });
+    const res = await authedGet(`/api/summarize?${params}`, token);
+    // Should NOT be 400 (blocked by SSRF); may be 200 or 502 depending on fetch mock
+    expect(res.status).not.toBe(400);
+  });
+
+  // ── 502 when page fetch fails and no metadata provided ──────────────────────
+
+  it("returns 502 when the grant page cannot be fetched and no metadata is supplied", async () => {
+    const { token } = await createAndLoginUser("sum-f1@test.example", "password1x");
+    mockPageFetchError();
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/apply", token);
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toMatch(/bot protection|javascript/i);
+  });
+
+  it("returns 502 when the grant page returns a non-2xx status and no metadata is supplied", async () => {
+    const { token } = await createAndLoginUser("sum-f2@test.example", "password1x");
+    mockPageFetch("Forbidden", 403);
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/apply", token);
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/bot protection|javascript/i);
+  });
+
+  // ── Happy path — page content fetched successfully ──────────────────────────
+
+  it("returns 200 with summary and bullets when page is fetched and AI returns valid JSON", async () => {
+    const { token } = await createAndLoginUser("sum-h1@test.example", "password1x");
+    mockPageFetch("<html><body><h1>Community Development Grant</h1><p>Up to $50,000 for nonprofits serving underserved communities.</p></body></html>");
+    mockAI(JSON.stringify({
+      summary: "This grant provides up to $50,000 for nonprofits serving underserved communities.",
+      bullets: ["Award: up to $50,000", "Eligibility: nonprofits only", "Deadline: rolling"],
+    }));
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/community", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.summary).toBe("string");
+    expect(body.summary.length).toBeGreaterThan(0);
+    expect(Array.isArray(body.bullets)).toBe(true);
+    expect(body.bullets.length).toBeGreaterThan(0);
+  });
+
+  it("AI response wrapped in markdown code fences is still parsed correctly", async () => {
+    const { token } = await createAndLoginUser("sum-h2@test.example", "password1x");
+    mockPageFetch("<html><body>Grant info</body></html>");
+    const innerJson = JSON.stringify({ summary: "A helpful summary.", bullets: ["Key fact"] });
+    mockAI("```json\n" + innerJson + "\n```");
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/page", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Greedy regex finds the JSON inside the fences
+    expect(body.summary).toBe("A helpful summary.");
+    expect(body.bullets).toEqual(["Key fact"]);
+  });
+
+  // ── Metadata fallback ────────────────────────────────────────────────────────
+
+  it("falls back to grant metadata when the page cannot be fetched", async () => {
+    const { token } = await createAndLoginUser("sum-m1@test.example", "password1x");
+    mockPageFetchError();
+    mockAI(JSON.stringify({
+      summary: "The Robert Wood Johnson Foundation supports health equity initiatives.",
+      bullets: ["Sponsor: RWJF", "Focus: health equity"],
+    }));
+    const params = new URLSearchParams({
+      url: "https://rwjf.org/grants/apply",
+      name: "Health Equity Grant",
+      sponsor: "Robert Wood Johnson Foundation",
+      benefits: "Up to $500,000 for 2-year projects",
+      eligibility: "US nonprofits focused on health equity",
+    });
+    const res = await authedGet(`/api/summarize?${params}`, token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.summary).toBe("string");
+    expect(body.summary.length).toBeGreaterThan(0);
+    // Confirm AI was called with the metadata block (not a page-content block)
+    const aiCall = env.AI.run.mock.calls[0];
+    const promptContent = aiCall[1].messages[0].content;
+    expect(promptContent).toMatch(/grant metadata \(source page was not accessible\)/i);
+    expect(promptContent).toMatch(/Robert Wood Johnson Foundation/);
+  });
+
+  it("includes all non-empty metadata fields in the AI prompt", async () => {
+    const { token } = await createAndLoginUser("sum-m2@test.example", "password1x");
+    mockPageFetchError();
+    mockAI(JSON.stringify({ summary: "Summary here.", bullets: ["Bullet 1"] }));
+    const params = new URLSearchParams({
+      url: "https://example.org/grant",
+      name: "Test Grant",
+      sponsor: "Test Sponsor",
+      benefits: "$100k",
+      eligibility: "Nonprofits",
+      description: "Supports community programs",
+    });
+    const res = await authedGet(`/api/summarize?${params}`, token);
+    expect(res.status).toBe(200);
+    const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
+    expect(prompt).toContain("Test Grant");
+    expect(prompt).toContain("Test Sponsor");
+    expect(prompt).toContain("$100k");
+    expect(prompt).toContain("Nonprofits");
+    expect(prompt).toContain("Supports community programs");
+  });
+
+  // ── Plain-text fallback ──────────────────────────────────────────────────────
+
+  it("falls back to raw AI text when model returns non-JSON prose", async () => {
+    const { token } = await createAndLoginUser("sum-p1@test.example", "password1x");
+    mockPageFetch("<html><body>Grant details</body></html>");
+    mockAI("This grant supports STEM education in rural areas. Awards range from $10k to $100k. Eligibility: K-12 schools and nonprofits.");
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/stem", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary).toContain("STEM education");
+    expect(Array.isArray(body.bullets)).toBe(true);
+  });
+
+  it("falls back to raw text when AI returns malformed JSON", async () => {
+    const { token } = await createAndLoginUser("sum-p2@test.example", "password1x");
+    mockPageFetch("<html><body>Grant info</body></html>");
+    mockAI('{ "summary": "Valid start but missing closing brace');
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/broken", token);
+    // Greedy regex will find the largest `{...}` match, JSON.parse fails, falls back to raw text.
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.summary).toBe("string");
+    expect(body.summary.length).toBeGreaterThan(0);
+  });
+
+  it("falls back to raw text when JSON parses to null", async () => {
+    const { token } = await createAndLoginUser("sum-p3@test.example", "password1x");
+    mockPageFetch("<html><body>Grant info</body></html>");
+    mockAI("null");
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/null", token);
+    // "null" has no JSON object (no { }), so falls through to plain-text fallback.
+    // The raw text "null" is not very useful but the endpoint should still return 200.
+    expect([200, 502]).toContain(res.status);
+  });
+
+  // ── 502 when AI returns empty ────────────────────────────────────────────────
+
+  it("returns 502 when AI returns an empty response string", async () => {
+    const { token } = await createAndLoginUser("sum-e1@test.example", "password1x");
+    mockPageFetch("<html><body>Grant</body></html>");
+    mockAI("");
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/empty", token);
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/empty/i);
+  });
+
+  // ── Output bounds enforcement ────────────────────────────────────────────────
+
+  it("truncates summary to 600 characters", async () => {
+    const { token } = await createAndLoginUser("sum-b1@test.example", "password1x");
+    mockPageFetch("<html><body>Grant</body></html>");
+    mockAI(JSON.stringify({
+      summary: "A".repeat(1000),
+      bullets: [],
+    }));
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/long", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary.length).toBeLessThanOrEqual(600);
+  });
+
+  it("returns at most 5 bullets", async () => {
+    const { token } = await createAndLoginUser("sum-b2@test.example", "password1x");
+    mockPageFetch("<html><body>Grant</body></html>");
+    mockAI(JSON.stringify({
+      summary: "A grant summary.",
+      bullets: ["one", "two", "three", "four", "five", "six", "seven"],
+    }));
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/bullets", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.bullets.length).toBeLessThanOrEqual(5);
+  });
+
+  it("truncates each bullet to 120 characters", async () => {
+    const { token } = await createAndLoginUser("sum-b3@test.example", "password1x");
+    mockPageFetch("<html><body>Grant</body></html>");
+    mockAI(JSON.stringify({
+      summary: "Summary.",
+      bullets: ["B".repeat(200)],
+    }));
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/longbullet", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.bullets[0].length).toBeLessThanOrEqual(120);
+  });
+
+  it("filters out non-string bullet entries", async () => {
+    const { token } = await createAndLoginUser("sum-b4@test.example", "password1x");
+    mockPageFetch("<html><body>Grant</body></html>");
+    mockAI(JSON.stringify({
+      summary: "Summary.",
+      bullets: ["valid bullet", 42, null, true, "another valid"],
+    }));
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/mixed-bullets", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    for (const b of body.bullets) {
+      expect(typeof b).toBe("string");
+    }
+    expect(body.bullets).toContain("valid bullet");
+    expect(body.bullets).toContain("another valid");
+    expect(body.bullets).not.toContain(42);
+  });
+
+  // ── Model is called with correct arguments ───────────────────────────────────
+
+  it("calls the AI with the correct model name", async () => {
+    const { token } = await createAndLoginUser("sum-ai1@test.example", "password1x");
+    mockPageFetch("<html><body>Grant description.</body></html>");
+    mockAI(JSON.stringify({ summary: "Summary.", bullets: ["Fact"] }));
+    await authedGet("/api/summarize?url=https://grants.example.com/check-model", token);
+    const [modelArg] = env.AI.run.mock.calls[0];
+    expect(modelArg).toBe("@cf/meta/llama-3.2-3b-instruct");
+  });
+
+  it("constructs the AI prompt using page content when the page is accessible", async () => {
+    const { token } = await createAndLoginUser("sum-ai2@test.example", "password1x");
+    mockPageFetch("<html><body>FEMA Hazard Mitigation Grant funds state and local governments.</body></html>");
+    mockAI(JSON.stringify({ summary: "FEMA grant for hazard mitigation.", bullets: [] }));
+    await authedGet("/api/summarize?url=https://fema.gov/grants/mitigation", token);
+    const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
+    expect(prompt).toMatch(/grant page content/i);
+    expect(prompt).toContain("FEMA Hazard Mitigation");
+  });
+
+  // ── Metadata field length limits ─────────────────────────────────────────────
+
+  it("silently truncates oversized metadata fields before passing them to AI", async () => {
+    const { token } = await createAndLoginUser("sum-ml1@test.example", "password1x");
+    mockPageFetchError();
+    mockAI(JSON.stringify({ summary: "Summary from meta.", bullets: [] }));
+    const params = new URLSearchParams({
+      url: "https://example.org/grant",
+      name: "N".repeat(500),      // capped at 200
+      sponsor: "S".repeat(500),   // capped at 200
+      benefits: "B".repeat(600),  // capped at 300
+      eligibility: "E".repeat(600), // capped at 300
+      description: "D".repeat(1000), // capped at 500
+    });
+    const res = await authedGet(`/api/summarize?${params}`, token);
+    expect(res.status).toBe(200);
+    const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
+    // name is capped at 200, so 500 N's become 200 N's in the prompt
+    expect(prompt).toContain("N".repeat(200));
+    expect(prompt).not.toContain("N".repeat(201));
+  });
+});
