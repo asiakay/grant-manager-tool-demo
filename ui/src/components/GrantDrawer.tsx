@@ -2,7 +2,7 @@ import { Component, useEffect, useRef, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import type { Grant } from "../types";
 import type { UserProfile } from "../api";
-import { updateNotes, summarizeGrant, type GrantSummary } from "../api";
+import { updateNotes, summarizeGrant, type GrantSummary, type GrantMeta } from "../api";
 
 class DrawerErrorBoundary extends Component<{ children: ReactNode }, { caught: boolean; message: string }> {
   constructor(props: { children: ReactNode }) {
@@ -265,7 +265,14 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
     setSummarizeError("");
     setLiveSummary(null);
     try {
-      const result = await summarizeGrant(String(grant["Source URL"]));
+      const meta: GrantMeta = {
+        name:        String(grant.Name || ""),
+        sponsor:     String(grant.Sponsor || ""),
+        benefits:    String(grant.Benefits || ""),
+        eligibility: String(grant["Eligibility (key conditions)"] || ""),
+        description: String(grant["Notes/Actions"] || ""),
+      };
+      const result = await summarizeGrant(String(grant["Source URL"]), meta);
       setLiveSummary(result);
     } catch (err) {
       setSummarizeError(err instanceof Error ? err.message : "Summarization failed");

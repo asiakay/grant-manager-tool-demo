@@ -1135,13 +1135,40 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
       if (!hasAI) return jsonResponse(JSON.stringify({ error: "AI not configured" }), { status: 503 });
 
+      // Fallback metadata fields passed by the frontend when page content may be unavailable
+      const metaName        = (url.searchParams.get("name")        || "").trim().slice(0, 200);
+      const metaSponsor     = (url.searchParams.get("sponsor")     || "").trim().slice(0, 200);
+      const metaBenefits    = (url.searchParams.get("benefits")    || "").trim().slice(0, 300);
+      const metaEligibility = (url.searchParams.get("eligibility") || "").trim().slice(0, 300);
+      const metaDescription = (url.searchParams.get("description") || "").trim().slice(0, 500);
+
       const pageText = await fetchPageText(sourceUrl);
-      if (!pageText) return jsonResponse(JSON.stringify({ error: "Could not fetch grant page" }), { status: 502 });
+      const hasMeta = metaName || metaSponsor || metaBenefits || metaEligibility || metaDescription;
+
+      if (!pageText && !hasMeta) {
+        return jsonResponse(JSON.stringify({
+          error: "Could not fetch grant page — the site may use bot protection or require JavaScript. Try opening the source link directly.",
+        }), { status: 502 });
+      }
+
+      let inputBlock;
+      if (pageText) {
+        inputBlock = `Grant page content:\n${pageText}`;
+      } else {
+        const lines = [
+          metaName        && `Grant name: ${metaName}`,
+          metaSponsor     && `Sponsor: ${metaSponsor}`,
+          metaBenefits    && `Benefits/Funding: ${metaBenefits}`,
+          metaEligibility && `Eligibility: ${metaEligibility}`,
+          metaDescription && `Description: ${metaDescription}`,
+          `Source URL: ${sourceUrl}`,
+        ].filter(Boolean);
+        inputBlock = `Grant metadata (source page was not accessible):\n${lines.join("\n")}`;
+      }
 
       const prompt = `You are a grant research assistant. Summarize the following grant opportunity for a nonprofit or small business applicant.
 
-Grant page content:
-${pageText}
+${inputBlock}
 
 Respond with JSON only — no markdown, no explanation, no extra text:
 {
