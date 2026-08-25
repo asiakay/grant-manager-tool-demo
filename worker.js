@@ -761,7 +761,10 @@ async function fetchPageText(pageUrl) {
     }
     if (!res.ok) return "";
     const html = await res.text();
-    return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1200);
+    // Pre-slice before regex to avoid CPU timeout on large pages (grants.gov ~200KB+).
+    // 20 000 chars is enough context for the AI prompt; regex on the full body would
+    // exhaust the Workers CPU budget and return a hard 500 rather than our 502.
+    return html.slice(0, 20_000).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1200);
   } catch {
     return "";
   }

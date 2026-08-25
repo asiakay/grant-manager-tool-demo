@@ -1892,4 +1892,33 @@ describe("GET /api/summarize", () => {
     expect(prompt).toContain("N".repeat(200));
     expect(prompt).not.toContain("N".repeat(201));
   });
+
+  // ── Large page defense ───────────────────────────────────────────────────────
+
+  it("handles very large HTML pages without crashing (pre-slices before regex)", async () => {
+    // grants.gov pages can be 200KB+. Without the pre-slice, the tag-strip regex
+    // runs on the full string and can exhaust the Workers CPU budget.
+    // With the fix the worker must still return a valid response.
+    const { token } = await createAndLoginUser("sum-lg1@test.example", "password1x");
+    // Build a 250KB HTML string — well beyond the 20 000-char pre-slice limit.
+    const bigHtml =
+      "<html><body>" +
+      "<p>Community Infrastructure Grant — up to $250,000 for qualifying municipalities.</p>" +
+      "<p>" + "x".repeat(250_000) + "</p>" +
+      "</body></html>";
+    mockPageFetch(bigHtml);
+    mockAI(JSON.stringify({
+      summary: "Community infrastructure grant for municipalities.",
+      bullets: ["Award: up to $250,000", "Eligible: municipalities"],
+    }));
+    const res = await authedGet("/api/summarize?url=https://grants.example.com/large-page", token);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.summary).toBe("string");
+    expect(body.summary.length).toBeGreaterThan(0);
+    // The AI prompt must NOT contain more than 1200 chars of extracted page text
+    // (the worker caps it) — confirm the full 250KB never reached the model.
+    const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
+    expect(prompt.length).toBeLessThan(5000); // well under 250KB
+  });
 });
