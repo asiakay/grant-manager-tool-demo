@@ -1195,7 +1195,6 @@ Respond with JSON only — no markdown, no explanation, no extra text:
         return jsonResponse(JSON.stringify({ error: `AI summarization failed: ${detail}` }), { status: 502 });
       }
 
-      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       let summary = "";
       let bullets = [];
 
