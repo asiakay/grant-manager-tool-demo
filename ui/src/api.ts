@@ -657,8 +657,21 @@ export interface GrantSummary {
   bullets: string[];
 }
 
-export async function summarizeGrant(sourceUrl: string): Promise<GrantSummary> {
+export interface GrantMeta {
+  name?: string;
+  sponsor?: string;
+  benefits?: string;
+  eligibility?: string;
+  description?: string;
+}
+
+export async function summarizeGrant(sourceUrl: string, meta?: GrantMeta): Promise<GrantSummary> {
   const params = new URLSearchParams({ url: sourceUrl });
+  if (meta?.name)        params.set("name",        meta.name);
+  if (meta?.sponsor)     params.set("sponsor",     meta.sponsor);
+  if (meta?.benefits)    params.set("benefits",    meta.benefits);
+  if (meta?.eligibility) params.set("eligibility", meta.eligibility);
+  if (meta?.description) params.set("description", meta.description);
   const res = await fetch(`${BASE}/api/summarize?${params}`, { credentials: "include" });
   return handleResponse<GrantSummary>(res);
 }
