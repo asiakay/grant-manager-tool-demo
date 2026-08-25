@@ -1195,22 +1195,28 @@ Respond with JSON only — no markdown, no explanation, no extra text:
         return jsonResponse(JSON.stringify({ error: `AI summarization failed: ${detail}` }), { status: 502 });
       }
 
+      let summary = "";
+      let bullets = [];
+
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return jsonResponse(JSON.stringify({ error: "Could not parse AI response", raw: aiText.slice(0, 200) }), { status: 502 });
-
-      let parsed;
-      try { parsed = JSON.parse(jsonMatch[0]); } catch {
-        return jsonResponse(JSON.stringify({ error: "Invalid AI JSON", raw: jsonMatch[0].slice(0, 200) }), { status: 502 });
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed && typeof parsed === "object") {
+            summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
+            bullets = Array.isArray(parsed.bullets)
+              ? parsed.bullets.filter(b => typeof b === "string").slice(0, 5).map(b => String(b).slice(0, 120))
+              : [];
+          }
+        } catch { /* fall through to plain-text fallback */ }
       }
 
-      if (!parsed || typeof parsed !== "object") {
-        return jsonResponse(JSON.stringify({ error: "AI returned unexpected value", raw: String(parsed) }), { status: 502 });
+      // Plain-text fallback: if JSON parsing failed or produced empty summary, use raw response
+      if (!summary && aiText) {
+        summary = aiText.replace(/```json[\s\S]*?```/g, "").trim().slice(0, 600);
       }
 
-      const summary = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
-      const bullets = Array.isArray(parsed.bullets)
-        ? parsed.bullets.filter(b => typeof b === "string").slice(0, 5).map(b => String(b).slice(0, 120))
-        : [];
+      if (!summary) return jsonResponse(JSON.stringify({ error: "AI returned an empty response" }), { status: 502 });
 
       log("info", "grant_summarized", { ...reqCtx, hostname });
       return jsonResponse(JSON.stringify({ summary, bullets }));
