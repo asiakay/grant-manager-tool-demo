@@ -1119,19 +1119,17 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const sourceUrl = (url.searchParams.get("url") || "").trim();
       if (!sourceUrl) return jsonResponse(JSON.stringify({ error: "url param required" }), { status: 400 });
 
-      let hostname;
-      try { hostname = new URL(sourceUrl).hostname; } catch {
+      let parsedUrl;
+      try { parsedUrl = new URL(sourceUrl); } catch {
         return jsonResponse(JSON.stringify({ error: "Invalid url" }), { status: 400 });
       }
-      const ALLOWED_HOSTS = [
-        "grants.gov", "simpler.grants.gov", "sam.gov", "beta.sam.gov",
-        "grantsolutions.gov", "nih.gov", "nsf.gov", "sba.gov", "hud.gov",
-        "usda.gov", "ed.gov", "dot.gov", "epa.gov", "energy.gov",
-        "commerce.gov", "treasury.gov", "state.gov", "defense.gov",
-      ];
-      const allowed = ALLOWED_HOSTS.some(h => hostname === h || hostname.endsWith("." + h));
-      if (!allowed) {
-        return jsonResponse(JSON.stringify({ error: "URL domain not allowed for summarization" }), { status: 403 });
+      if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+        return jsonResponse(JSON.stringify({ error: "Only http/https URLs allowed" }), { status: 400 });
+      }
+      const hostname = parsedUrl.hostname;
+      const BLOCKED = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|fc00:|fd)/i;
+      if (BLOCKED.test(hostname)) {
+        return jsonResponse(JSON.stringify({ error: "Private addresses not allowed" }), { status: 400 });
       }
 
       const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
