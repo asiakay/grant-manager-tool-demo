@@ -1135,7 +1135,6 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const hasAI = env.AI || (env.CF_ACCOUNT_ID && env.CF_AI_TOKEN);
       if (!hasAI) return jsonResponse(JSON.stringify({ error: "AI not configured" }), { status: 503 });
 
-      // Fallback metadata fields passed by the frontend when page content may be unavailable
       const metaName        = (url.searchParams.get("name")        || "").trim().slice(0, 200);
       const metaSponsor     = (url.searchParams.get("sponsor")     || "").trim().slice(0, 200);
       const metaBenefits    = (url.searchParams.get("benefits")    || "").trim().slice(0, 300);
@@ -1181,7 +1180,7 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       try {
         if (env.AI) {
           const result = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, stream: false });
-          aiText = result.response || "";
+          aiText = result?.response || "";
         } else {
           const res = await fetch(
             `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-3b-instruct`,
