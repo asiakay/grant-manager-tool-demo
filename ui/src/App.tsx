@@ -4,6 +4,7 @@ import Signup from "./components/Signup";
 import Dashboard from "./components/Dashboard";
 import ProfileSetup from "./components/ProfileSetup";
 import WelcomePage from "./components/WelcomePage";
+import LandingPage from "./components/LandingPage";
 import ForgotPassword from "./components/ForgotPassword";
 import AdminPage from "./components/AdminPage";
 import ComplianceDashboard from "./components/ComplianceDashboard";
@@ -12,7 +13,7 @@ import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
 
-type AuthState = "loading" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin" | "compliance";
+type AuthState = "loading" | "landing" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin" | "compliance";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
@@ -23,7 +24,7 @@ export default function App() {
 
   useEffect(() => {
     checkAuth().then(async (ok) => {
-      if (!ok) { setAuth("unauthenticated"); return; }
+      if (!ok) { setAuth("landing"); return; }
       const [p, me] = await Promise.all([
         fetchProfile().catch(() => null),
         fetchMe(),
@@ -113,6 +114,10 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  if (auth === "landing") {
+    return <LandingPage onSignUp={() => setAuth("signup")} onLogin={() => setAuth("unauthenticated")} />;
   }
 
   if (auth === "signup") {
