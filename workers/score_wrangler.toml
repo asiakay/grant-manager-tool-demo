@@ -1,0 +1,32 @@
+name = "grant-score-worker"
+main = "score_worker.js"
+compatibility_date = "2024-05-29"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "PDF_BUCKET"
+bucket_name = "foundationplanner-pdf-uploads"
+
+[[d1_databases]]
+binding = "GRANT_MANAGER_DB"
+database_name = "grant-manager-db"
+database_id = "e99396be-8043-41f6-9762-07c2b6fc4d3f"
+migrations_dir = "../migrations"
+
+[[queues.consumers]]
+queue = "grant-score-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+
+# ── Deploy ───────────────────────────────────────────────────────────────────
+#
+#   npx wrangler deploy -c workers/score_wrangler.toml
+#
+# ── Local dev (requires miniflare R2 + Queue mocks) ─────────────────────────
+#
+#   npx wrangler dev -c workers/score_wrangler.toml --local
+#
+# ── Queue provisioning (one-time, before deploy) ────────────────────────────
+#
+#   wrangler queues create grant-score-queue
+#   wrangler r2 bucket create foundationplanner-pdf-uploads
