@@ -225,12 +225,13 @@ const DEFAULT_WEIGHTS = { Relevance: 0.3, Fit: 0.3, Ease: 0.2, StackAlignment: 0
 // Maps user-facing focus area labels to keywords searched in grant text fields.
 const FOCUS_AREA_KEYWORDS = {
   "Health & Medicine":        ["health", "medicine", "medical", "clinical", "biomedical", "disease", "drug", "therapeutics", "patient"],
-  "Education & Workforce":    ["education", "workforce", "training", "learning", "student", "school", "academic", "career"],
+  "Education & Workforce":    ["education", "workforce", "training", "learning", "student", "school", "academic", "career", "opportunity", "potential", "skill", "employment", "job", "credential", "diploma", "vocation", "apprenticeship"],
+  "Youth Development":        ["youth", "young people", "young person", "young adult", "teenager", "adolescent", "youthbuild", "afterschool", "mentorship", "mentor", "champion", "aspiration", "dream", "leader"],
   "Technology & Innovation":  ["technology", "innovation", "tech", "software", "digital", "engineering", "data", "ai", "computing"],
   "Housing & Community":      ["housing", "community", "neighborhood", "affordable", "urban", "rural", "infrastructure"],
   "Environment & Climate":    ["environment", "climate", "energy", "sustainability", "clean", "emissions", "carbon", "ecology", "conservation", "biodiversity", "water", "pollution", "resilience", "natural resources", "land use"],
   "Agriculture & Food":       ["agriculture", "food", "farm", "crop", "nutrition", "rural", "livestock"],
-  "Social Services":          ["social", "welfare", "poverty", "disability", "elderly", "child", "family", "services"],
+  "Social Services":          ["social", "welfare", "poverty", "disability", "elderly", "child", "family", "services", "youth", "young people", "young person", "support", "vulnerable", "underserved", "empowerment"],
   "Arts & Humanities":        ["arts", "humanities", "culture", "museum", "heritage", "creative", "media"],
   "International Development":["international", "global", "developing", "foreign", "overseas", "aid"],
   "Veterans & Military":      ["veteran", "military", "defense", "armed forces", "service member"],
