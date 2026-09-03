@@ -1,6 +1,6 @@
 export const FOCUS_AREA_KEYWORDS: Record<string, string[]> = {
   "Health & Medicine":         ["health", "medicine", "medical", "clinical", "biomedical", "disease", "drug", "therapeutics", "patient"],
-  "Education & Workforce":     ["education", "workforce", "training", "learning", "student", "school", "academic", "career", "opportunity", "potential", "skill", "employment", "job", "credential", "diploma", "ged", "vocation", "apprenticeship"],
+  "Education & Workforce":     ["education", "workforce", "training", "learning", "student", "school", "academic", "career", "opportunity", "potential", "skill", "employment", "job", "credential", "diploma", "vocation", "apprenticeship"],
   "Youth Development":         ["youth", "young people", "young person", "young adult", "teenager", "adolescent", "coming of age", "youthbuild", "afterschool", "mentorship", "mentor", "champion", "aspiration", "dream", "leader"],
   "Technology & Innovation":   ["technology", "innovation", "tech", "software", "digital", "engineering", "data", "ai", "computing"],
   "Housing & Community":       ["housing", "community", "neighborhood", "affordable", "urban", "rural", "infrastructure"],
