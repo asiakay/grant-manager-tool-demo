@@ -39,7 +39,7 @@ Run `npm test` before committing to verify repository checks pass.
 | GrantFinder    | Query Grants.gov with keywords and filters      | CLI args                                   | CSV/TSV file and printed summary       | `python search_grants.py education` | On demand           | `search_grants.py` |
 | WrangleAPI     | Serve wrangled grants via HTTP                  | `data/csvs/`                               | JSON master dataset                    | `python wrangle_api.py`             | On demand           | `wrangle_api.py` |
 | ExtractionWorker | Convert PDFs to summaries via grant_summarizer | Queue message `{key}` from `PDF_INGEST`    | CSV and Markdown files in `PDF_BUCKET` | `npx wrangler dev src/pdf_worker.ts --local` | On `PDF_INGEST` message | `worker/src/pdf_worker.ts` |
-| ScoringWorker  | Score extracted rows and persist results        | Queue message `{file}` from `SCORE_QUEUE`  | Scored CSV in `PDF_BUCKET`             | `npx wrangler dev src/score_worker.ts --local` | On `SCORE_QUEUE` message | `worker/src/score_worker.ts` |
+| ScoringWorker  | Score extracted rows and persist results        | Queue message `{file}` from `SCORE_QUEUE`  | Scored CSV in `PDF_BUCKET`             | `npx wrangler dev -c workers/score_wrangler.toml --local` | On `SCORE_QUEUE` message | `workers/score_worker.js` |
 
 # AGENTS.md (for `ui/` components)
 
