@@ -665,6 +665,188 @@ export interface GrantMeta {
   description?: string;
 }
 
+// ── Grant Tracker ─────────────────────────────────────────────────────────────
+
+export type Periodicity = "one-time" | "monthly" | "quarterly" | "annual" | "custom";
+export type LifecycleStatus = "applied" | "offered" | "funded" | "closed";
+export type KrStatus = "met" | "partial" | "missed";
+export type PeriodStatus = "upcoming" | "overdue" | "submitted";
+
+export interface GrantApplication {
+  id: number;
+  program_id: number | null;
+  grant_name: string;
+  funder: string | null;
+  total_awarded: number | null;
+  application_date: string | null;
+  offer_date: string | null;
+  funded_date: string | null;
+  lifecycle_status: LifecycleStatus;
+  periodicity: Periodicity;
+  custom_interval_days: number | null;
+  period_horizon: number;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  okr_count?: number;
+  overdue_count?: number;
+  upcoming_count?: number;
+}
+
+export interface GrantOkr {
+  id: number;
+  grant_application_id: number;
+  objective: string;
+  revision_count: number;
+  last_revised_at: string | null;
+  revision_notes: string | null;
+  created_at: string;
+  keyResults?: GrantKeyResult[];
+}
+
+export interface GrantKeyResult {
+  id: number;
+  okr_id: number;
+  description: string;
+  target_value: number;
+  unit: string;
+  created_at: string;
+  actual_value?: number | null;
+  computed_status?: KrStatus | null;
+  logged_at?: string | null;
+  reporting_period_id?: number | null;
+}
+
+export interface ReportingPeriod {
+  id: number;
+  grant_application_id: number;
+  period_number: number;
+  due_date: string;
+  status: PeriodStatus;
+  effective_status?: PeriodStatus;
+  submitted_at: string | null;
+  submitted_by: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface TrackerDetail {
+  application: GrantApplication;
+  okrs: GrantOkr[];
+  reportingPeriods: ReportingPeriod[];
+}
+
+export interface DashboardPeriod extends ReportingPeriod {
+  grant_name: string;
+  funder: string | null;
+  lifecycle_status: LifecycleStatus;
+  effective_status: PeriodStatus;
+}
+
+export async function fetchTrackerApplications(): Promise<GrantApplication[]> {
+  const res = await fetch(`${BASE}/api/tracker/applications`, { credentials: "include" });
+  return handleResponse<GrantApplication[]>(res);
+}
+
+export async function createTrackerApplication(data: {
+  grant_name: string;
+  funder?: string;
+  total_awarded?: number;
+  application_date?: string;
+  offer_date?: string;
+  funded_date?: string;
+  lifecycle_status?: LifecycleStatus;
+  periodicity?: Periodicity;
+  custom_interval_days?: number;
+  period_horizon?: number;
+  notes?: string;
+  program_id?: number;
+}): Promise<{ id: number }> {
+  const res = await fetch(`${BASE}/api/tracker/applications`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ id: number }>(res);
+}
+
+export async function fetchTrackerDetail(id: number): Promise<TrackerDetail> {
+  const res = await fetch(`${BASE}/api/tracker/applications/${id}`, { credentials: "include" });
+  return handleResponse<TrackerDetail>(res);
+}
+
+export async function updateTrackerApplication(
+  id: number,
+  data: Partial<Omit<GrantApplication, "id" | "created_by" | "created_at" | "updated_at">>
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/tracker/applications/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+export async function addTrackerOkr(
+  appId: number,
+  data: { objective: string; keyResults?: { description: string; target_value: number; unit?: string }[] }
+): Promise<{ id: number }> {
+  const res = await fetch(`${BASE}/api/tracker/applications/${appId}/okrs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ id: number }>(res);
+}
+
+export async function reviseOkr(
+  okrId: number,
+  data: { objective?: string; revision_notes?: string }
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/tracker/okrs/${okrId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+export async function addKeyResult(
+  okrId: number,
+  data: { description: string; target_value: number; unit?: string }
+): Promise<{ id: number }> {
+  const res = await fetch(`${BASE}/api/tracker/okrs/${okrId}/key-results`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ id: number }>(res);
+}
+
+export async function logActuals(
+  periodId: number,
+  actuals: { key_result_id: number; actual_value: number }[]
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/tracker/periods/${periodId}/actuals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ actuals }),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+export async function fetchTrackerDashboard(): Promise<DashboardPeriod[]> {
+  const res = await fetch(`${BASE}/api/tracker/dashboard`, { credentials: "include" });
+  return handleResponse<DashboardPeriod[]>(res);
+}
+
 export async function summarizeGrant(sourceUrl: string, meta?: GrantMeta): Promise<GrantSummary> {
   const params = new URLSearchParams({ url: sourceUrl });
   if (meta?.name)        params.set("name",        meta.name);

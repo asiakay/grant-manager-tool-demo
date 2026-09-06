@@ -8,12 +8,13 @@ import LandingPage from "./components/LandingPage";
 import ForgotPassword from "./components/ForgotPassword";
 import AdminPage from "./components/AdminPage";
 import ComplianceDashboard from "./components/ComplianceDashboard";
+import GrantTracker from "./components/GrantTracker";
 import FeedbackBar from "./components/FeedbackBar";
 import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
 
-type AuthState = "loading" | "landing" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin" | "compliance";
+type AuthState = "loading" | "landing" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin" | "compliance" | "tracker";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
@@ -212,6 +213,16 @@ export default function App() {
     );
   }
 
+  if (auth === "tracker") {
+    return (
+      <>
+        <GrantTracker onBack={() => setAuth("authenticated")} />
+        <FeedbackBar />
+        <AnonymousFeedbackWidget />
+      </>
+    );
+  }
+
   return (
     <>
       <Dashboard
@@ -219,6 +230,7 @@ export default function App() {
         onBackToProfile={profile ? () => setAuth("welcome") : undefined}
         onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
         onGoToCompliance={() => setAuth("compliance")}
+        onGoToTracker={() => setAuth("tracker")}
       />
       <FeedbackBar />
       <AnonymousFeedbackWidget />

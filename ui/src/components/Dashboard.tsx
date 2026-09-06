@@ -31,6 +31,7 @@ interface Props {
   onBackToProfile?: () => void;
   onGoToAdmin?: () => void;
   onGoToCompliance?: () => void;
+  onGoToTracker?: () => void;
 }
 
 const INITIAL_FILTERS: FilterState = {
@@ -44,7 +45,7 @@ const INITIAL_FILTERS: FilterState = {
   maxAward: "",
 };
 
-export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance }: Props) {
+export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance, onGoToTracker }: Props) {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [grantsTotal, setGrantsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -216,6 +217,19 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
             </button>
           )}
 
+          {onGoToTracker && (
+            <button
+              onClick={onGoToTracker}
+              className="btn-outline gap-1.5 hidden sm:flex border-emerald-700 text-emerald-300 hover:bg-emerald-900/30"
+              aria-label="Grant tracker"
+            >
+              <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+              Tracker
+            </button>
+          )}
+
           {onGoToCompliance && (
             <button
               onClick={onGoToCompliance}
@@ -295,6 +309,18 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
                       </svg>
                       {profile ? "My Profile" : "Set profile"}
                       {!profile && <span className="w-1.5 h-1.5 rounded-full bg-brand-400 ml-auto shrink-0" />}
+                    </button>
+                  )}
+                  {onGoToTracker && (
+                    <button
+                      role="menuitem"
+                      onClick={() => { onGoToTracker(); setMobileMenuOpen(false); }}
+                      className="w-full text-left px-4 py-3 text-sm text-emerald-300 hover:bg-gray-700 flex items-center gap-3 transition-colors border-t border-gray-700/50"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                      </svg>
+                      Tracker
                     </button>
                   )}
                   {onGoToCompliance && (
