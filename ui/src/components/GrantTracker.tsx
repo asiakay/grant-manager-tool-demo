@@ -5,9 +5,10 @@ import {
   fetchTrackerDashboard,
   createTrackerApplication,
   updateTrackerApplication,
-  addTrackerOkr,
-  reviseOkr,
-  addKeyResult,
+  addOutput,
+  updateOutput,
+  addOutcome,
+  updateOutcome,
   logActuals,
   type GrantApplication,
   type TrackerDetail,
@@ -15,7 +16,10 @@ import {
   type Periodicity,
   type LifecycleStatus,
   type ReportingPeriod,
-  type GrantOkr,
+  type GrantOutput,
+  type GrantOutcome,
+  type OutputStatus,
+  type OutcomeStatus,
 } from "../api";
 
 interface Props {
@@ -44,16 +48,20 @@ const PERIOD_COLORS: Record<string, string> = {
   submitted: "bg-green-900/40 text-green-300",
 };
 
-const KR_STATUS_COLORS: Record<string, string> = {
+const METRIC_STATUS_COLORS: Record<string, string> = {
   met: "text-green-400",
   partial: "text-yellow-400",
   missed: "text-red-400",
+  reported: "text-green-400",
+  "not yet reported": "text-gray-500",
 };
 
-const KR_STATUS_ICONS: Record<string, string> = {
+const METRIC_STATUS_ICONS: Record<string, string> = {
   met: "✓",
   partial: "~",
   missed: "✗",
+  reported: "✓",
+  "not yet reported": "·",
 };
 
 const PERIODICITY_LABELS: Record<Periodicity, string> = {
@@ -76,7 +84,22 @@ function daysUntil(due: string) {
   return `${diff}d away`;
 }
 
-// ── New/Edit Application Modal ────────────────────────────────────────────────
+function outputStatusPreview(actual: string, target: number): OutputStatus | null {
+  if (actual === "") return null;
+  const n = Number(actual);
+  if (n === 0) return "missed";
+  return n / target >= 1.0 ? "met" : "partial";
+}
+
+function outcomeStatusPreview(actual: string, target: number | null, isNarrative: boolean, narrativeActual: string): OutcomeStatus | null {
+  if (isNarrative) return narrativeActual.trim() ? "reported" : "not yet reported";
+  if (actual === "" || target == null) return null;
+  const n = Number(actual);
+  if (n === 0) return "missed";
+  return n / target >= 1.0 ? "met" : "partial";
+}
+
+// ── New/Edit Application Modal ─────────────────────────────────────────────────
 interface AppFormProps {
   initial?: Partial<GrantApplication>;
   onSave: (data: Partial<GrantApplication>) => Promise<void>;
@@ -96,6 +119,8 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
     custom_interval_days: initial?.custom_interval_days != null ? String(initial.custom_interval_days) : "",
     period_horizon: initial?.period_horizon != null ? String(initial.period_horizon) : "4",
     notes: initial?.notes ?? "",
+    logic_inputs: initial?.logic_inputs ?? "",
+    logic_activities: initial?.logic_activities ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -120,6 +145,8 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
         custom_interval_days: form.periodicity === "custom" && form.custom_interval_days ? Number(form.custom_interval_days) : undefined,
         period_horizon: form.period_horizon ? Number(form.period_horizon) : 4,
         notes: form.notes.trim() || undefined,
+        logic_inputs: form.logic_inputs.trim() || undefined,
+        logic_activities: form.logic_activities.trim() || undefined,
       });
     } catch (ex: unknown) {
       setErr(ex instanceof Error ? ex.message : "Save failed");
@@ -131,7 +158,7 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
       <form
         onSubmit={handleSubmit}
-        className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl p-6 shadow-2xl"
+        className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl p-6 shadow-2xl my-4"
       >
         <button
           type="button"
@@ -171,38 +198,19 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Application date</label>
-            <input
-              type="date"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.application_date}
-              onChange={(e) => update("application_date", e.target.value)}
-            />
+            <input type="date" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.application_date} onChange={(e) => update("application_date", e.target.value)} />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Offer date</label>
-            <input
-              type="date"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.offer_date}
-              onChange={(e) => update("offer_date", e.target.value)}
-            />
+            <input type="date" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.offer_date} onChange={(e) => update("offer_date", e.target.value)} />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Funded date</label>
-            <input
-              type="date"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.funded_date}
-              onChange={(e) => update("funded_date", e.target.value)}
-            />
+            <input type="date" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.funded_date} onChange={(e) => update("funded_date", e.target.value)} />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Lifecycle status</label>
-            <select
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.lifecycle_status}
-              onChange={(e) => update("lifecycle_status", e.target.value)}
-            >
+            <select className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.lifecycle_status} onChange={(e) => update("lifecycle_status", e.target.value)}>
               {(["applied", "offered", "funded", "closed"] as LifecycleStatus[]).map((s) => (
                 <option key={s} value={s}>{LIFECYCLE_LABELS[s]}</option>
               ))}
@@ -210,11 +218,7 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Reporting periodicity</label>
-            <select
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.periodicity}
-              onChange={(e) => update("periodicity", e.target.value)}
-            >
+            <select className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.periodicity} onChange={(e) => update("periodicity", e.target.value)}>
               {(["one-time", "monthly", "quarterly", "annual", "custom"] as Periodicity[]).map((p) => (
                 <option key={p} value={p}>{PERIODICITY_LABELS[p]}</option>
               ))}
@@ -223,50 +227,46 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
           {form.periodicity === "custom" && (
             <div>
               <label className="block text-xs text-gray-400 mb-1">Interval (days)</label>
-              <input
-                type="number"
-                min="1"
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-                value={form.custom_interval_days}
-                onChange={(e) => update("custom_interval_days", e.target.value)}
-              />
+              <input type="number" min="1" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.custom_interval_days} onChange={(e) => update("custom_interval_days", e.target.value)} />
             </div>
           )}
           {form.periodicity !== "one-time" && (
             <div>
               <label className="block text-xs text-gray-400 mb-1">Periods to generate</label>
-              <input
-                type="number"
-                min="1"
-                max="24"
-                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-                value={form.period_horizon}
-                onChange={(e) => update("period_horizon", e.target.value)}
-              />
+              <input type="number" min="1" max="24" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.period_horizon} onChange={(e) => update("period_horizon", e.target.value)} />
             </div>
           )}
           <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-400 mb-1">Notes</label>
+            <label className="block text-xs text-gray-400 mb-1">Inputs — funding amounts, resources committed</label>
             <textarea
               rows={2}
+              placeholder="e.g. $50,000 grant, 2 FTE program staff, in-kind meeting space"
               className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none"
-              value={form.notes}
-              onChange={(e) => update("notes", e.target.value)}
+              value={form.logic_inputs}
+              onChange={(e) => update("logic_inputs", e.target.value)}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs text-gray-400 mb-1">Activities — what will be done with the funding</label>
+            <textarea
+              rows={2}
+              placeholder="e.g. Host 12 workshops, conduct outreach in 3 zip codes, provide 1:1 coaching"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none"
+              value={form.logic_activities}
+              onChange={(e) => update("logic_activities", e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs text-gray-400 mb-1">Notes</label>
+            <textarea rows={2} className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none" value={form.notes} onChange={(e) => update("notes", e.target.value)} />
           </div>
         </div>
 
         {err && <p className="text-red-400 text-xs mt-3">{err}</p>}
 
         <div className="flex justify-end gap-3 mt-5">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-300 hover:text-white">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50"
-          >
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-300 hover:text-white">Cancel</button>
+          <button type="submit" disabled={saving} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50">
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -275,53 +275,112 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
   );
 }
 
-// ── OKR Modal ─────────────────────────────────────────────────────────────────
-interface OkrFormProps {
+// ── Add Output Modal ───────────────────────────────────────────────────────────
+interface AddOutputProps {
   appId: number;
-  existingOkr?: GrantOkr;
+  existing?: GrantOutput;
   onSave: () => void;
   onClose: () => void;
 }
 
-function OkrForm({ appId, existingOkr, onSave, onClose }: OkrFormProps) {
-  const [objective, setObjective] = useState(existingOkr?.objective ?? "");
-  const [revisionNotes, setRevisionNotes] = useState("");
-  const [krs, setKrs] = useState<{ description: string; target_value: string; unit: string }[]>(
-    existingOkr ? [] : [{ description: "", target_value: "", unit: "" }]
-  );
+function AddOutputModal({ appId, existing, onSave, onClose }: AddOutputProps) {
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [targetValue, setTargetValue] = useState(existing?.target_value != null ? String(existing.target_value) : "");
+  const [unit, setUnit] = useState(existing?.unit ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  function addKrRow() {
-    setKrs((prev) => [...prev, { description: "", target_value: "", unit: "" }]);
-  }
-  function updateKr(i: number, field: string, val: string) {
-    setKrs((prev) => prev.map((kr, idx) => idx === i ? { ...kr, [field]: val } : kr));
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!objective.trim()) { setErr("Objective is required."); return; }
+    if (!description.trim()) { setErr("Description is required."); return; }
+    if (!targetValue) { setErr("Target value is required."); return; }
     setSaving(true);
     setErr("");
     try {
-      if (existingOkr) {
-        await reviseOkr(existingOkr.id, { objective: objective.trim(), revision_notes: revisionNotes.trim() || undefined });
-        // Add any new key results
-        for (const kr of krs) {
-          if (!kr.description.trim() || !kr.target_value) continue;
-          await addKeyResult(existingOkr.id, {
-            description: kr.description.trim(),
-            target_value: Number(kr.target_value),
-            unit: kr.unit.trim(),
-          });
-        }
+      if (existing) {
+        await updateOutput(existing.id, { description: description.trim(), target_value: Number(targetValue), unit: unit.trim() });
       } else {
-        await addTrackerOkr(appId, {
-          objective: objective.trim(),
-          keyResults: krs
-            .filter((kr) => kr.description.trim() && kr.target_value)
-            .map((kr) => ({ description: kr.description.trim(), target_value: Number(kr.target_value), unit: kr.unit.trim() })),
+        await addOutput(appId, { description: description.trim(), target_value: Number(targetValue), unit: unit.trim() });
+      }
+      onSave();
+    } catch (ex: unknown) {
+      setErr(ex instanceof Error ? ex.message : "Save failed");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <form onSubmit={handleSubmit} className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button>
+        <h2 className="text-lg font-semibold text-white mb-4">{existing ? "Edit Output" : "Add Output"}</h2>
+        <p className="text-xs text-gray-400 mb-4">Outputs are immediate, countable deliverables (e.g. "12 workshops held").</p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Description *</label>
+            <input className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" placeholder="e.g. Workshops held" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-400 mb-1">Target value *</label>
+              <input type="number" min="0" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={targetValue} onChange={(e) => setTargetValue(e.target.value)} />
+            </div>
+            <div className="w-28">
+              <label className="block text-xs text-gray-400 mb-1">Unit</label>
+              <input className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" placeholder="workshops" value={unit} onChange={(e) => setUnit(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {err && <p className="text-red-400 text-xs mt-3">{err}</p>}
+        <div className="flex justify-end gap-3 mt-5">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-300 hover:text-white">Cancel</button>
+          <button type="submit" disabled={saving} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ── Add Outcome Modal ──────────────────────────────────────────────────────────
+interface AddOutcomeProps {
+  appId: number;
+  existing?: GrantOutcome;
+  onSave: () => void;
+  onClose: () => void;
+}
+
+function AddOutcomeModal({ appId, existing, onSave, onClose }: AddOutcomeProps) {
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [isNarrative, setIsNarrative] = useState(existing ? Boolean(existing.is_narrative) : false);
+  const [targetValue, setTargetValue] = useState(existing?.target_value != null ? String(existing.target_value) : "");
+  const [targetNarrative, setTargetNarrative] = useState(existing?.target_narrative ?? "");
+  const [unit, setUnit] = useState(existing?.unit ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!description.trim()) { setErr("Description is required."); return; }
+    if (!isNarrative && !targetValue) { setErr("Target value is required for numeric outcomes."); return; }
+    setSaving(true);
+    setErr("");
+    try {
+      if (existing) {
+        await updateOutcome(existing.id, {
+          description: description.trim(),
+          target_value: !isNarrative && targetValue ? Number(targetValue) : undefined,
+          target_narrative: isNarrative ? targetNarrative.trim() || undefined : undefined,
+          unit: unit.trim(),
+        });
+      } else {
+        await addOutcome(appId, {
+          description: description.trim(),
+          is_narrative: isNarrative,
+          target_value: !isNarrative && targetValue ? Number(targetValue) : undefined,
+          target_narrative: isNarrative ? targetNarrative.trim() || undefined : undefined,
+          unit: unit.trim(),
         });
       }
       onSave();
@@ -332,115 +391,108 @@ function OkrForm({ appId, existingOkr, onSave, onClose }: OkrFormProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
-      <form
-        onSubmit={handleSubmit}
-        className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-xl p-6 shadow-2xl"
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <form onSubmit={handleSubmit} className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
         <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button>
-        <h2 className="text-lg font-semibold text-white mb-4">
-          {existingOkr ? "Revise OKR" : "Add OKR"}
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-4">{existing ? "Edit Outcome" : "Add Outcome"}</h2>
+        <p className="text-xs text-gray-400 mb-4">Outcomes describe change in the target population (e.g. "60% of participants report increased income").</p>
 
-        <div className="mb-4">
-          <label className="block text-xs text-gray-400 mb-1">Objective *</label>
-          <textarea
-            rows={2}
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none"
-            value={objective}
-            onChange={(e) => setObjective(e.target.value)}
-          />
-        </div>
-
-        {existingOkr && (
-          <div className="mb-4">
-            <label className="block text-xs text-gray-400 mb-1">Revision notes</label>
-            <input
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={revisionNotes}
-              onChange={(e) => setRevisionNotes(e.target.value)}
-              placeholder="Why are you revising?"
-            />
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Description *</label>
+            <input className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" placeholder="e.g. Participants reporting increased income" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-        )}
 
-        <div className="mb-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400">{existingOkr ? "Add Key Results" : "Key Results"}</span>
-            <button type="button" onClick={addKrRow} className="text-xs text-brand-400 hover:text-brand-300">
-              + Add row
-            </button>
-          </div>
-          <div className="space-y-2">
-            {krs.map((kr, i) => (
-              <div key={i} className="grid grid-cols-5 gap-2 items-center">
-                <input
-                  className="col-span-3 bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-brand-500"
-                  placeholder="Description"
-                  value={kr.description}
-                  onChange={(e) => updateKr(i, "description", e.target.value)}
-                />
-                <input
-                  type="number"
-                  min="0"
-                  className="col-span-1 bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-brand-500"
-                  placeholder="Target"
-                  value={kr.target_value}
-                  onChange={(e) => updateKr(i, "target_value", e.target.value)}
-                />
-                <input
-                  className="col-span-1 bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-brand-500"
-                  placeholder="Unit"
-                  value={kr.unit}
-                  onChange={(e) => updateKr(i, "unit", e.target.value)}
-                />
+          {!existing && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsNarrative(false)}
+                className={`flex-1 py-2 text-xs rounded-lg border transition-colors ${!isNarrative ? "border-brand-500 bg-brand-900/30 text-brand-300" : "border-gray-600 text-gray-400 hover:text-white"}`}
+              >
+                Numeric target
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsNarrative(true)}
+                className={`flex-1 py-2 text-xs rounded-lg border transition-colors ${isNarrative ? "border-brand-500 bg-brand-900/30 text-brand-300" : "border-gray-600 text-gray-400 hover:text-white"}`}
+              >
+                Narrative only
+              </button>
+            </div>
+          )}
+
+          {!isNarrative ? (
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">Target value *</label>
+                <input type="number" min="0" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={targetValue} onChange={(e) => setTargetValue(e.target.value)} />
               </div>
-            ))}
-          </div>
+              <div className="w-28">
+                <label className="block text-xs text-gray-400 mb-1">Unit</label>
+                <input className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" placeholder="%" value={unit} onChange={(e) => setUnit(e.target.value)} />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Target description (optional)</label>
+              <textarea rows={2} className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none" placeholder="e.g. Participants demonstrate knowledge of financial tools" value={targetNarrative} onChange={(e) => setTargetNarrative(e.target.value)} />
+            </div>
+          )}
         </div>
 
         {err && <p className="text-red-400 text-xs mt-3">{err}</p>}
-
         <div className="flex justify-end gap-3 mt-5">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-300 hover:text-white">Cancel</button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
+          <button type="submit" disabled={saving} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
         </div>
       </form>
     </div>
   );
 }
 
-// ── Log Actuals Modal ─────────────────────────────────────────────────────────
+// ── Log Actuals Modal ──────────────────────────────────────────────────────────
 interface LogActualsProps {
   period: ReportingPeriod;
-  okrs: GrantOkr[];
+  outputs: GrantOutput[];
+  outcomes: GrantOutcome[];
   onSave: () => void;
   onClose: () => void;
 }
 
-function LogActualsModal({ period, okrs, onSave, onClose }: LogActualsProps) {
-  const allKrs = okrs.flatMap((o) => (o.keyResults ?? []).map((kr) => ({ ...kr, objective: o.objective })));
-  const [actuals, setActuals] = useState<Record<number, string>>(() =>
-    Object.fromEntries(allKrs.map((kr) => [kr.id, kr.actual_value != null ? String(kr.actual_value) : ""]))
+function LogActualsModal({ period, outputs, outcomes, onSave, onClose }: LogActualsProps) {
+  const [outputVals, setOutputVals] = useState<Record<number, string>>(() =>
+    Object.fromEntries(outputs.map((o) => [o.id, o.actual_value != null ? String(o.actual_value) : ""]))
+  );
+  const [outcomeNumericVals, setOutcomeNumericVals] = useState<Record<number, string>>(() =>
+    Object.fromEntries(outcomes.filter((o) => !o.is_narrative).map((o) => [o.id, o.actual_value != null ? String(o.actual_value) : ""]))
+  );
+  const [outcomeNarrVals, setOutcomeNarrVals] = useState<Record<number, string>>(() =>
+    Object.fromEntries(outcomes.filter((o) => o.is_narrative).map((o) => [o.id, o.actual_narrative ?? ""]))
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  const hasAny = outputs.length > 0 || outcomes.length > 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setErr("");
     try {
-      const payload = Object.entries(actuals)
-        .filter(([, v]) => v !== "")
-        .map(([id, v]) => ({ key_result_id: Number(id), actual_value: Number(v) }));
-      await logActuals(period.id, payload);
+      const outputActuals = outputs
+        .filter((o) => outputVals[o.id] !== "")
+        .map((o) => ({ output_id: o.id, actual_value: Number(outputVals[o.id]) }));
+      const outcomeActuals = outcomes.map((oc) => {
+        if (oc.is_narrative) {
+          return { outcome_id: oc.id, actual_narrative: outcomeNarrVals[oc.id] ?? "" };
+        } else {
+          const v = outcomeNumericVals[oc.id];
+          return v !== "" ? { outcome_id: oc.id, actual_value: Number(v) } : null;
+        }
+      }).filter(Boolean) as { outcome_id: number; actual_value?: number; actual_narrative?: string }[];
+
+      await logActuals(period.id, { output_actuals: outputActuals, outcome_actuals: outcomeActuals });
       onSave();
     } catch (ex: unknown) {
       setErr(ex instanceof Error ? ex.message : "Save failed");
@@ -450,50 +502,119 @@ function LogActualsModal({ period, okrs, onSave, onClose }: LogActualsProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
-      <form
-        onSubmit={handleSubmit}
-        className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-6 shadow-2xl"
-      >
+      <form onSubmit={handleSubmit} className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg p-6 shadow-2xl my-4">
         <button type="button" onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button>
         <h2 className="text-lg font-semibold text-white mb-1">Log Actuals</h2>
-        <p className="text-xs text-gray-400 mb-4">Reporting period {period.period_number} — due {fmt(period.due_date)}</p>
+        <p className="text-xs text-gray-400 mb-5">Reporting period {period.period_number} — due {fmt(period.due_date)}</p>
 
-        {allKrs.length === 0 ? (
-          <p className="text-gray-400 text-sm">No key results defined yet. Add OKRs first.</p>
+        {!hasAny ? (
+          <p className="text-gray-400 text-sm">No outputs or outcomes defined yet. Add them to the Logic Model first.</p>
         ) : (
-          <div className="space-y-3">
-            {allKrs.map((kr) => {
-              const val = actuals[kr.id] ?? "";
-              const pct = val !== "" && kr.target_value ? ((Number(val) / kr.target_value) * 100).toFixed(0) : null;
-              const status = val !== "" ? (Number(val) === 0 ? "missed" : Number(val) / kr.target_value >= 0.97 ? "met" : "partial") : null;
-              return (
-                <div key={kr.id} className="bg-gray-800 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 mb-0.5">{kr.objective}</p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <p className="text-sm text-white">{kr.description}</p>
-                      <p className="text-xs text-gray-500">Target: {kr.target_value} {kr.unit}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-brand-500"
-                        value={val}
-                        placeholder="Actual"
-                        onChange={(e) => setActuals((a) => ({ ...a, [kr.id]: e.target.value }))}
-                      />
-                      {status && (
-                        <span className={`text-sm font-medium ${KR_STATUS_COLORS[status]}`}>
-                          {KR_STATUS_ICONS[status]}
-                          {pct != null ? ` ${pct}%` : ""}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+          <div className="space-y-5">
+            {/* Outputs section */}
+            {outputs.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Outputs</h3>
+                <div className="space-y-3">
+                  {outputs.map((o) => {
+                    const val = outputVals[o.id] ?? "";
+                    const status = outputStatusPreview(val, o.target_value);
+                    const pct = val !== "" && o.target_value ? ((Number(val) / o.target_value) * 100).toFixed(0) : null;
+                    return (
+                      <div key={o.id} className="bg-gray-800 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <p className="text-sm text-white">{o.description}</p>
+                            <p className="text-xs text-gray-500">Target: {o.target_value} {o.unit} · Met = 100%</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-brand-500"
+                              value={val}
+                              placeholder="Actual"
+                              onChange={(e) => setOutputVals((v) => ({ ...v, [o.id]: e.target.value }))}
+                            />
+                            {status && (
+                              <span className={`text-sm font-medium ${METRIC_STATUS_COLORS[status]}`}>
+                                {METRIC_STATUS_ICONS[status]}{pct != null ? ` ${pct}%` : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            {/* Outcomes section */}
+            {outcomes.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3">Outcomes</h3>
+                <div className="space-y-3">
+                  {outcomes.map((oc) => {
+                    if (oc.is_narrative) {
+                      const narr = outcomeNarrVals[oc.id] ?? "";
+                      const status = outcomeStatusPreview("", null, true, narr);
+                      return (
+                        <div key={oc.id} className="bg-gray-800 rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1">
+                              <p className="text-sm text-white">{oc.description}</p>
+                              {oc.target_narrative && <p className="text-xs text-gray-500 mt-0.5">Target: {oc.target_narrative}</p>}
+                            </div>
+                            {status && (
+                              <span className={`text-xs font-medium ${METRIC_STATUS_COLORS[status]}`}>
+                                {status}
+                              </span>
+                            )}
+                          </div>
+                          <textarea
+                            rows={2}
+                            className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-brand-500 resize-none"
+                            placeholder="Describe what was observed or achieved…"
+                            value={narr}
+                            onChange={(e) => setOutcomeNarrVals((v) => ({ ...v, [oc.id]: e.target.value }))}
+                          />
+                        </div>
+                      );
+                    } else {
+                      const val = outcomeNumericVals[oc.id] ?? "";
+                      const status = outcomeStatusPreview(val, oc.target_value, false, "");
+                      const pct = val !== "" && oc.target_value ? ((Number(val) / oc.target_value) * 100).toFixed(0) : null;
+                      return (
+                        <div key={oc.id} className="bg-gray-800 rounded-lg p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <p className="text-sm text-white">{oc.description}</p>
+                              <p className="text-xs text-gray-500">Target: {oc.target_value} {oc.unit} · Met = 100%</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-brand-500"
+                                value={val}
+                                placeholder="Actual"
+                                onChange={(e) => setOutcomeNumericVals((v) => ({ ...v, [oc.id]: e.target.value }))}
+                              />
+                              {status && (
+                                <span className={`text-sm font-medium ${METRIC_STATUS_COLORS[status]}`}>
+                                  {METRIC_STATUS_ICONS[status]}{pct != null ? ` ${pct}%` : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -501,11 +622,7 @@ function LogActualsModal({ period, okrs, onSave, onClose }: LogActualsProps) {
 
         <div className="flex justify-end gap-3 mt-5">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-300 hover:text-white">Cancel</button>
-          <button
-            type="submit"
-            disabled={saving || allKrs.length === 0}
-            className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50"
-          >
+          <button type="submit" disabled={saving || !hasAny} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50">
             {saving ? "Saving…" : "Submit Report"}
           </button>
         </div>
@@ -514,7 +631,7 @@ function LogActualsModal({ period, okrs, onSave, onClose }: LogActualsProps) {
   );
 }
 
-// ── Detail View ───────────────────────────────────────────────────────────────
+// ── Detail View ────────────────────────────────────────────────────────────────
 interface DetailViewProps {
   appId: number;
   onBack: () => void;
@@ -525,8 +642,10 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
   const [detail, setDetail] = useState<TrackerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
-  const [okrModalOpen, setOkrModalOpen] = useState(false);
-  const [editingOkr, setEditingOkr] = useState<GrantOkr | undefined>();
+  const [addOutputOpen, setAddOutputOpen] = useState(false);
+  const [editingOutput, setEditingOutput] = useState<GrantOutput | undefined>();
+  const [addOutcomeOpen, setAddOutcomeOpen] = useState(false);
+  const [editingOutcome, setEditingOutcome] = useState<GrantOutcome | undefined>();
   const [logPeriod, setLogPeriod] = useState<ReportingPeriod | null>(null);
 
   async function load() {
@@ -543,7 +662,7 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>;
   if (!detail) return <p className="text-gray-400 text-center py-12">Grant not found.</p>;
 
-  const { application: app, okrs, reportingPeriods } = detail;
+  const { application: app, outputs, outcomes, reportingPeriods } = detail;
   const today = new Date().toISOString().slice(0, 10);
 
   const STEPS: LifecycleStatus[] = ["applied", "offered", "funded", "closed"];
@@ -554,12 +673,7 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
       <div className="flex items-center gap-3">
         <button onClick={onBack} className="text-gray-400 hover:text-white text-sm">← Back</button>
         <h2 className="text-xl font-bold text-white flex-1 truncate">{app.grant_name}</h2>
-        <button
-          onClick={() => setEditOpen(true)}
-          className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-        >
-          Edit
-        </button>
+        <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-lg">Edit</button>
       </div>
 
       {/* Timeline strip */}
@@ -568,7 +682,6 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
         <div className="flex items-center gap-0">
           {STEPS.map((step, i) => {
             const done = i <= currentStep;
-            const label = LIFECYCLE_LABELS[step];
             const dateMap: Record<LifecycleStatus, string | null | undefined> = {
               applied: app.application_date,
               offered: app.offer_date,
@@ -578,21 +691,13 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
             return (
               <div key={step} className="flex items-center flex-1 min-w-0">
                 <div className="flex flex-col items-center min-w-0">
-                  <div
-                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${
-                      done
-                        ? "border-brand-500 bg-brand-600 text-white"
-                        : "border-gray-600 bg-gray-800 text-gray-500"
-                    }`}
-                  >
+                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${done ? "border-brand-500 bg-brand-600 text-white" : "border-gray-600 bg-gray-800 text-gray-500"}`}>
                     {done ? "✓" : i + 1}
                   </div>
-                  <span className={`text-xs mt-1 font-medium ${done ? "text-white" : "text-gray-500"}`}>{label}</span>
+                  <span className={`text-xs mt-1 font-medium ${done ? "text-white" : "text-gray-500"}`}>{LIFECYCLE_LABELS[step]}</span>
                   <span className="text-xs text-gray-500">{fmt(dateMap[step])}</span>
                 </div>
-                {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-1 ${i < currentStep ? "bg-brand-600" : "bg-gray-700"}`} />
-                )}
+                {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-1 ${i < currentStep ? "bg-brand-600" : "bg-gray-700"}`} />}
               </div>
             );
           })}
@@ -612,7 +717,7 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
             <p className="text-white mt-0.5">{PERIODICITY_LABELS[app.periodicity]}{app.custom_interval_days ? ` (${app.custom_interval_days}d)` : ""}</p>
           </div>
           {app.notes && (
-            <div className="sm:col-span-1">
+            <div>
               <span className="text-gray-400">Notes</span>
               <p className="text-white mt-0.5 truncate">{app.notes}</p>
             </div>
@@ -628,7 +733,7 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
         ) : (
           <div className="space-y-2">
             {reportingPeriods.map((p) => {
-              const eff = p.status === "upcoming" && p.due_date < today ? "overdue" : p.status;
+              const eff = p.effective_status ?? (p.status === "upcoming" && p.due_date < today ? "overdue" : p.status);
               return (
                 <div key={p.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PERIOD_COLORS[eff]}`}>
@@ -639,10 +744,7 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
                     {eff !== "submitted" ? daysUntil(p.due_date) : `Submitted ${fmt(p.submitted_at)}`}
                   </span>
                   {eff !== "submitted" && (
-                    <button
-                      onClick={() => setLogPeriod(p)}
-                      className="text-xs px-3 py-1 bg-brand-700 hover:bg-brand-600 text-white rounded"
-                    >
+                    <button onClick={() => setLogPeriod(p)} className="text-xs px-3 py-1 bg-brand-700 hover:bg-brand-600 text-white rounded">
                       Log actuals
                     </button>
                   )}
@@ -653,69 +755,114 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
         )}
       </div>
 
-      {/* OKRs */}
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs text-gray-400 uppercase tracking-wider">OKRs</h3>
-          <button
-            onClick={() => { setEditingOkr(undefined); setOkrModalOpen(true); }}
-            className="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-          >
-            + Add OKR
-          </button>
+      {/* Logic Model */}
+      <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 space-y-5">
+        <h3 className="text-xs text-gray-400 uppercase tracking-wider">Logic Model</h3>
+
+        {/* Inputs */}
+        <div>
+          <p className="text-xs font-semibold text-gray-300 mb-1">Inputs</p>
+          {app.logic_inputs ? (
+            <p className="text-sm text-gray-200 whitespace-pre-wrap">{app.logic_inputs}</p>
+          ) : (
+            <p className="text-sm text-gray-500 italic">Not set — edit the grant to describe funding amounts and resources committed.</p>
+          )}
         </div>
 
-        {okrs.length === 0 ? (
-          <p className="text-gray-500 text-sm">No OKRs yet. Add one to track outcomes for this grant.</p>
-        ) : (
-          <div className="space-y-4">
-            {okrs.map((okr) => (
-              <div key={okr.id} className="border border-gray-700 rounded-lg p-4">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-white">{okr.objective}</p>
-                    {okr.revision_count > 0 && (
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Revised {okr.revision_count}× — last {fmt(okr.last_revised_at)}
-                        {okr.revision_notes ? ` · "${okr.revision_notes}"` : ""}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => { setEditingOkr(okr); setOkrModalOpen(true); }}
-                    className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded"
-                  >
-                    Revise
-                  </button>
-                </div>
-                {(okr.keyResults ?? []).length > 0 ? (
-                  <div className="mt-2 space-y-1.5">
-                    {(okr.keyResults ?? []).map((kr, ki) => {
-                      // Group actuals by reporting_period_id — show latest
-                      const pct = kr.actual_value != null && kr.target_value
-                        ? ((kr.actual_value / kr.target_value) * 100).toFixed(0)
-                        : null;
-                      return (
-                        <div key={ki} className="flex items-center gap-3 text-xs text-gray-300">
-                          <span className={`w-4 text-center font-bold ${kr.computed_status ? KR_STATUS_COLORS[kr.computed_status] : "text-gray-500"}`}>
-                            {kr.computed_status ? KR_STATUS_ICONS[kr.computed_status] : "·"}
-                          </span>
-                          <span className="flex-1">{kr.description}</span>
-                          <span className="text-gray-500">
-                            {kr.actual_value != null ? `${kr.actual_value}` : "—"} / {kr.target_value} {kr.unit}
-                            {pct != null ? ` (${pct}%)` : ""}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500 mt-1">No key results yet.</p>
-                )}
-              </div>
-            ))}
+        {/* Activities */}
+        <div>
+          <p className="text-xs font-semibold text-gray-300 mb-1">Activities</p>
+          {app.logic_activities ? (
+            <p className="text-sm text-gray-200 whitespace-pre-wrap">{app.logic_activities}</p>
+          ) : (
+            <p className="text-sm text-gray-500 italic">Not set — edit the grant to describe what will be done with the funding.</p>
+          )}
+        </div>
+
+        {/* Outputs */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <span className="text-xs font-semibold text-gray-300">Outputs</span>
+              <span className="text-xs text-gray-500 ml-1">— immediate, countable deliverables</span>
+            </div>
+            <button
+              onClick={() => { setEditingOutput(undefined); setAddOutputOpen(true); }}
+              className="text-xs px-2.5 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            >
+              + Add
+            </button>
           </div>
-        )}
+          {outputs.length === 0 ? (
+            <p className="text-sm text-gray-500">No outputs yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {outputs.map((o) => {
+                const pct = o.actual_value != null && o.target_value ? ((o.actual_value / o.target_value) * 100).toFixed(0) : null;
+                const st = o.computed_status;
+                return (
+                  <div key={o.id} className="flex items-center gap-3 text-xs text-gray-300 bg-gray-800/50 rounded px-3 py-2">
+                    <span className={`w-4 text-center font-bold ${st ? METRIC_STATUS_COLORS[st] : "text-gray-500"}`}>
+                      {st ? METRIC_STATUS_ICONS[st] : "·"}
+                    </span>
+                    <span className="flex-1">{o.description}</span>
+                    <span className="text-gray-500">
+                      {o.actual_value != null ? o.actual_value : "—"} / {o.target_value} {o.unit}
+                      {pct != null ? ` (${pct}%)` : ""}
+                    </span>
+                    <button onClick={() => { setEditingOutput(o); setAddOutputOpen(true); }} className="text-gray-500 hover:text-white ml-1">✎</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Outcomes */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <span className="text-xs font-semibold text-gray-300">Outcomes</span>
+              <span className="text-xs text-gray-500 ml-1">— change in target population</span>
+            </div>
+            <button
+              onClick={() => { setEditingOutcome(undefined); setAddOutcomeOpen(true); }}
+              className="text-xs px-2.5 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            >
+              + Add
+            </button>
+          </div>
+          {outcomes.length === 0 ? (
+            <p className="text-sm text-gray-500">No outcomes yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {outcomes.map((oc) => {
+                const st = oc.computed_status ?? (oc.is_narrative ? "not yet reported" : undefined);
+                const isNarr = Boolean(oc.is_narrative);
+                const pct = !isNarr && oc.actual_value != null && oc.target_value
+                  ? ((oc.actual_value / oc.target_value) * 100).toFixed(0)
+                  : null;
+                return (
+                  <div key={oc.id} className="flex items-start gap-3 text-xs text-gray-300 bg-gray-800/50 rounded px-3 py-2">
+                    <span className={`w-4 text-center font-bold mt-0.5 ${st ? METRIC_STATUS_COLORS[st] : "text-gray-500"}`}>
+                      {st ? METRIC_STATUS_ICONS[st] : "·"}
+                    </span>
+                    <span className="flex-1">{oc.description}</span>
+                    {isNarr ? (
+                      <span className={`italic ${st ? METRIC_STATUS_COLORS[st] : "text-gray-500"}`}>{st ?? "not yet reported"}</span>
+                    ) : (
+                      <span className="text-gray-500">
+                        {oc.actual_value != null ? oc.actual_value : "—"} / {oc.target_value} {oc.unit}
+                        {pct != null ? ` (${pct}%)` : ""}
+                      </span>
+                    )}
+                    <button onClick={() => { setEditingOutcome(oc); setAddOutcomeOpen(true); }} className="text-gray-500 hover:text-white ml-1">✎</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Modals */}
@@ -731,25 +878,28 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
           onClose={() => setEditOpen(false)}
         />
       )}
-      {okrModalOpen && (
-        <OkrForm
+      {addOutputOpen && (
+        <AddOutputModal
           appId={appId}
-          existingOkr={editingOkr}
-          onSave={async () => {
-            setOkrModalOpen(false);
-            await load();
-          }}
-          onClose={() => setOkrModalOpen(false)}
+          existing={editingOutput}
+          onSave={async () => { setAddOutputOpen(false); await load(); }}
+          onClose={() => setAddOutputOpen(false)}
+        />
+      )}
+      {addOutcomeOpen && (
+        <AddOutcomeModal
+          appId={appId}
+          existing={editingOutcome}
+          onSave={async () => { setAddOutcomeOpen(false); await load(); }}
+          onClose={() => setAddOutcomeOpen(false)}
         />
       )}
       {logPeriod && (
         <LogActualsModal
           period={logPeriod}
-          okrs={okrs}
-          onSave={async () => {
-            setLogPeriod(null);
-            await load();
-          }}
+          outputs={outputs}
+          outcomes={outcomes}
+          onSave={async () => { setLogPeriod(null); await load(); }}
           onClose={() => setLogPeriod(null)}
         />
       )}
@@ -757,7 +907,7 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
   );
 }
 
-// ── Dashboard Tab ─────────────────────────────────────────────────────────────
+// ── Dashboard Tab ──────────────────────────────────────────────────────────────
 function DashboardTab({ onSelectApp }: { onSelectApp: (id: number) => void }) {
   const [periods, setPeriods] = useState<DashboardPeriod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -770,7 +920,7 @@ function DashboardTab({ onSelectApp }: { onSelectApp: (id: number) => void }) {
 
   if (loading) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>;
 
-  const overdue = periods.filter((p) => p.effective_status === "overdue");
+  const overdue  = periods.filter((p) => p.effective_status === "overdue");
   const upcoming = periods.filter((p) => p.effective_status === "upcoming");
 
   return (
@@ -787,12 +937,7 @@ function DashboardTab({ onSelectApp }: { onSelectApp: (id: number) => void }) {
                   <p className="text-xs text-gray-400">Period {p.period_number} — due {fmt(p.due_date)}</p>
                 </div>
                 <span className="text-xs text-red-400">{daysUntil(p.due_date)}</span>
-                <button
-                  onClick={() => onSelectApp(p.grant_application_id)}
-                  className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded"
-                >
-                  View
-                </button>
+                <button onClick={() => onSelectApp(p.grant_application_id)} className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded">View</button>
               </div>
             ))}
           </div>
@@ -815,12 +960,7 @@ function DashboardTab({ onSelectApp }: { onSelectApp: (id: number) => void }) {
                 <p className="text-xs text-gray-400">Period {p.period_number} — due {fmt(p.due_date)}</p>
               </div>
               <span className="text-xs text-gray-400">{daysUntil(p.due_date)}</span>
-              <button
-                onClick={() => onSelectApp(p.grant_application_id)}
-                className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded"
-              >
-                View
-              </button>
+              <button onClick={() => onSelectApp(p.grant_application_id)} className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded">View</button>
             </div>
           ))}
         </div>
@@ -829,7 +969,7 @@ function DashboardTab({ onSelectApp }: { onSelectApp: (id: number) => void }) {
   );
 }
 
-// ── Applications List Tab ─────────────────────────────────────────────────────
+// ── Applications List Tab ──────────────────────────────────────────────────────
 interface AppsListTabProps {
   apps: GrantApplication[];
   loading: boolean;
@@ -843,22 +983,14 @@ function AppsListTab({ apps, loading, onSelect, onNew }: AppsListTabProps) {
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <button
-          onClick={onNew}
-          className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg"
-        >
+        <button onClick={onNew} className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg">
           + New Application
         </button>
       </div>
       {apps.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-gray-400 mb-4">No grant applications yet.</p>
-          <button
-            onClick={onNew}
-            className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg"
-          >
-            + New Application
-          </button>
+          <button onClick={onNew} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg">+ New Application</button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -888,7 +1020,7 @@ function AppsListTab({ apps, loading, onSelect, onNew }: AppsListTabProps) {
                   </p>
                 </div>
                 <div className="text-right text-xs text-gray-500 shrink-0">
-                  <p>{(app.okr_count ?? 0)} OKR{(app.okr_count ?? 0) !== 1 ? "s" : ""}</p>
+                  <p>{(app.logic_count ?? 0)} logic model item{(app.logic_count ?? 0) !== 1 ? "s" : ""}</p>
                   <p>{(app.upcoming_count ?? 0)} upcoming</p>
                 </div>
               </div>
@@ -900,7 +1032,7 @@ function AppsListTab({ apps, loading, onSelect, onNew }: AppsListTabProps) {
   );
 }
 
-// ── Main GrantTracker ─────────────────────────────────────────────────────────
+// ── Main GrantTracker ──────────────────────────────────────────────────────────
 export default function GrantTracker({ onBack }: Props) {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [apps, setApps] = useState<GrantApplication[]>([]);
@@ -938,11 +1070,7 @@ export default function GrantTracker({ onBack }: Props) {
               <button
                 key={t}
                 onClick={() => setTab(t as Tab)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  tab === t
-                    ? "border-brand-500 text-white"
-                    : "border-transparent text-gray-400 hover:text-white"
-                }`}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-brand-500 text-white" : "border-transparent text-gray-400 hover:text-white"}`}
               >
                 {label}
               </button>

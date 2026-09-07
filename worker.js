@@ -2858,12 +2858,18 @@ ${grantCards}
       return periods;
     }
 
-    // Computes KR status: met ≥97% of target, missed = 0, partial otherwise.
-    function computeKrStatus(actual, target) {
+    // Computes Output status: met ≥100% of target, missed = 0, partial otherwise.
+    function computeOutputStatus(actual, target) {
       if (!target || target === 0) return actual > 0 ? "met" : "missed";
       if (actual === 0) return "missed";
-      const pct = actual / target;
-      return pct >= 0.97 ? "met" : "partial";
+      return actual / target >= 1.0 ? "met" : "partial";
+    }
+
+    // Computes Outcome status. Narrative outcomes → reported/not yet reported.
+    // Numeric outcomes → met/partial/missed (same thresholds as computeOutputStatus).
+    function computeOutcomeStatus(actualValue, targetValue, isNarrative, actualNarrative) {
+      if (isNarrative) return actualNarrative && String(actualNarrative).trim() ? "reported" : "not yet reported";
+      return computeOutputStatus(actualValue ?? 0, targetValue);
     }
 
     // GET /api/tracker/applications
@@ -2871,7 +2877,8 @@ ${grantCards}
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
       const apps = await env.GRANT_MANAGER_DB.prepare(`
         SELECT ga.*,
-          (SELECT COUNT(*) FROM grant_okrs o WHERE o.grant_application_id = ga.id) AS okr_count,
+          (SELECT COUNT(*) FROM grant_outputs o  WHERE o.grant_application_id  = ga.id) +
+          (SELECT COUNT(*) FROM grant_outcomes oc WHERE oc.grant_application_id = ga.id) AS logic_count,
           (SELECT COUNT(*) FROM reporting_periods rp WHERE rp.grant_application_id = ga.id AND rp.status = 'upcoming' AND rp.due_date < date('now')) AS overdue_count,
           (SELECT COUNT(*) FROM reporting_periods rp WHERE rp.grant_application_id = ga.id AND rp.status = 'upcoming') AS upcoming_count
         FROM grant_applications ga
@@ -2943,31 +2950,40 @@ ${grantCards}
         ).bind(appId, username).first();
         if (!app) return new Response("Not found", { status: 404 });
 
-        const [okrsRaw, periods] = await Promise.all([
-          env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_okrs WHERE grant_application_id = ? ORDER BY id`).bind(appId).all(),
+        const [outputsRaw, outcomesRaw, periods] = await Promise.all([
+          env.GRANT_MANAGER_DB.prepare(`
+            SELECT o.*, oa.actual_value, oa.computed_status, oa.logged_at, oa.reporting_period_id
+            FROM grant_outputs o
+            LEFT JOIN output_actuals oa ON oa.id = (
+              SELECT id FROM output_actuals WHERE output_id = o.id ORDER BY reporting_period_id DESC LIMIT 1
+            )
+            WHERE o.grant_application_id = ?
+            ORDER BY o.id
+          `).bind(appId).all(),
+          env.GRANT_MANAGER_DB.prepare(`
+            SELECT oc.*, oca.actual_value, oca.actual_narrative, oca.computed_status, oca.logged_at, oca.reporting_period_id
+            FROM grant_outcomes oc
+            LEFT JOIN outcome_actuals oca ON oca.id = (
+              SELECT id FROM outcome_actuals WHERE outcome_id = oc.id ORDER BY reporting_period_id DESC LIMIT 1
+            )
+            WHERE oc.grant_application_id = ?
+            ORDER BY oc.id
+          `).bind(appId).all(),
           env.GRANT_MANAGER_DB.prepare(`SELECT * FROM reporting_periods WHERE grant_application_id = ? ORDER BY period_number`).bind(appId).all(),
         ]);
 
-        // For each OKR load its key results + actuals
-        const okrs = await Promise.all(okrsRaw.results.map(async (okr) => {
-          const krs = await env.GRANT_MANAGER_DB.prepare(
-            `SELECT kr.*, kra.actual_value, kra.computed_status, kra.logged_at, kra.reporting_period_id
-             FROM grant_key_results kr
-             LEFT JOIN key_result_actuals kra ON kra.key_result_id = kr.id
-             WHERE kr.okr_id = ?
-             ORDER BY kr.id, kra.reporting_period_id`
-          ).bind(okr.id).all();
-          return { ...okr, keyResults: krs.results };
-        }));
-
-        // Mark overdue periods
         const today = new Date().toISOString().slice(0, 10);
         const periodsWithStatus = periods.results.map((p) => ({
           ...p,
-          status: p.status === "upcoming" && p.due_date < today ? "overdue" : p.status,
+          effective_status: p.status === "upcoming" && p.due_date < today ? "overdue" : p.status,
         }));
 
-        return jsonResponse(JSON.stringify({ application: app, okrs, reportingPeriods: periodsWithStatus }));
+        return jsonResponse(JSON.stringify({
+          application: app,
+          outputs: outputsRaw.results,
+          outcomes: outcomesRaw.results,
+          reportingPeriods: periodsWithStatus,
+        }));
       }
 
       if (request.method === "PATCH") {
@@ -2984,24 +3000,28 @@ ${grantCards}
         const validPeriodicity = ["one-time", "monthly", "quarterly", "annual", "custom"];
         const validStatus = ["applied", "offered", "funded", "closed"];
 
-        const newGrantName   = (body.grant_name ?? prev.grant_name).trim();
-        const newFunder      = body.funder ?? prev.funder;
-        const newTotal       = body.total_awarded ?? prev.total_awarded;
-        const newAppDate     = body.application_date ?? prev.application_date;
-        const newOfferDate   = body.offer_date ?? prev.offer_date;
-        const newFundedDate  = body.funded_date ?? prev.funded_date;
-        const newStatus      = validStatus.includes(body.lifecycle_status) ? body.lifecycle_status : prev.lifecycle_status;
-        const newPeriodicity = validPeriodicity.includes(body.periodicity) ? body.periodicity : prev.periodicity;
-        const newCustomDays  = body.custom_interval_days ?? prev.custom_interval_days;
-        const newHorizon     = body.period_horizon ?? prev.period_horizon;
-        const newNotes       = body.notes ?? prev.notes;
+        const newGrantName       = (body.grant_name ?? prev.grant_name).trim();
+        const newFunder          = body.funder ?? prev.funder;
+        const newTotal           = body.total_awarded ?? prev.total_awarded;
+        const newAppDate         = body.application_date ?? prev.application_date;
+        const newOfferDate       = body.offer_date ?? prev.offer_date;
+        const newFundedDate      = body.funded_date ?? prev.funded_date;
+        const newStatus          = validStatus.includes(body.lifecycle_status) ? body.lifecycle_status : prev.lifecycle_status;
+        const newPeriodicity     = validPeriodicity.includes(body.periodicity) ? body.periodicity : prev.periodicity;
+        const newCustomDays      = body.custom_interval_days ?? prev.custom_interval_days;
+        const newHorizon         = body.period_horizon ?? prev.period_horizon;
+        const newNotes           = body.notes ?? prev.notes;
+        const newLogicInputs     = body.logic_inputs !== undefined ? body.logic_inputs : prev.logic_inputs;
+        const newLogicActivities = body.logic_activities !== undefined ? body.logic_activities : prev.logic_activities;
 
         await env.GRANT_MANAGER_DB.prepare(
           `UPDATE grant_applications SET grant_name=?, funder=?, total_awarded=?, application_date=?, offer_date=?, funded_date=?,
-           lifecycle_status=?, periodicity=?, custom_interval_days=?, period_horizon=?, notes=?, updated_at=datetime('now')
+           lifecycle_status=?, periodicity=?, custom_interval_days=?, period_horizon=?, notes=?,
+           logic_inputs=?, logic_activities=?, updated_at=datetime('now')
            WHERE id=?`
         ).bind(newGrantName, newFunder, newTotal, newAppDate, newOfferDate, newFundedDate,
-               newStatus, newPeriodicity, newCustomDays, newHorizon, newNotes, appId).run();
+               newStatus, newPeriodicity, newCustomDays, newHorizon, newNotes,
+               newLogicInputs, newLogicActivities, appId).run();
 
         // Regenerate reporting periods if funded_date or periodicity changed
         const fundingChanged = newFundedDate !== prev.funded_date || newPeriodicity !== prev.periodicity || newCustomDays !== prev.custom_interval_days || newHorizon !== prev.period_horizon;
@@ -3123,19 +3143,36 @@ ${grantCards}
       ).bind(period.grant_application_id, username).first();
       if (!app) return new Response("Forbidden", { status: 403 });
 
-      // body: { actuals: [{ key_result_id, actual_value }] }
+      // body: { output_actuals: [{ output_id, actual_value }], outcome_actuals: [{ outcome_id, actual_value?, actual_narrative? }] }
       const body = await request.json();
-      const actuals = Array.isArray(body.actuals) ? body.actuals : [];
+      const outputActuals  = Array.isArray(body.output_actuals)  ? body.output_actuals  : [];
+      const outcomeActuals = Array.isArray(body.outcome_actuals) ? body.outcome_actuals : [];
 
-      for (const a of actuals) {
-        const kr = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_key_results WHERE id = ?`).bind(a.key_result_id).first();
-        if (!kr) continue;
-        const status = computeKrStatus(Number(a.actual_value), kr.target_value);
+      for (const a of outputActuals) {
+        const output = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_outputs WHERE id = ?`).bind(a.output_id).first();
+        if (!output) continue;
+        const status = computeOutputStatus(Number(a.actual_value), output.target_value);
         await env.GRANT_MANAGER_DB.prepare(
-          `INSERT INTO key_result_actuals (key_result_id, reporting_period_id, actual_value, computed_status, logged_by)
+          `INSERT INTO output_actuals (output_id, reporting_period_id, actual_value, computed_status, logged_by)
            VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(key_result_id, reporting_period_id) DO UPDATE SET actual_value=excluded.actual_value, computed_status=excluded.computed_status, logged_by=excluded.logged_by, logged_at=datetime('now')`
-        ).bind(a.key_result_id, periodId, Number(a.actual_value), status, username).run();
+           ON CONFLICT(output_id, reporting_period_id) DO UPDATE SET actual_value=excluded.actual_value, computed_status=excluded.computed_status, logged_by=excluded.logged_by, logged_at=datetime('now')`
+        ).bind(a.output_id, periodId, Number(a.actual_value), status, username).run();
+      }
+
+      for (const a of outcomeActuals) {
+        const outcome = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_outcomes WHERE id = ?`).bind(a.outcome_id).first();
+        if (!outcome) continue;
+        const status = computeOutcomeStatus(
+          a.actual_value != null ? Number(a.actual_value) : null,
+          outcome.target_value,
+          outcome.is_narrative,
+          a.actual_narrative ?? null
+        );
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT INTO outcome_actuals (outcome_id, reporting_period_id, actual_value, actual_narrative, computed_status, logged_by)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(outcome_id, reporting_period_id) DO UPDATE SET actual_value=excluded.actual_value, actual_narrative=excluded.actual_narrative, computed_status=excluded.computed_status, logged_by=excluded.logged_by, logged_at=datetime('now')`
+        ).bind(a.outcome_id, periodId, a.actual_value ?? null, a.actual_narrative ?? null, status, username).run();
       }
 
       // Mark period as submitted
@@ -3161,6 +3198,132 @@ ${grantCards}
         LIMIT 50
       `).bind(today, username).all();
       return jsonResponse(JSON.stringify(rows.results));
+    }
+
+    // POST /api/tracker/applications/:id/outputs  (add an Output to a grant)
+    const trackerOutputAddMatch = url.pathname.match(/^\/api\/tracker\/applications\/(\d+)\/outputs$/);
+    if (trackerOutputAddMatch && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "tracker/outputs/add" });
+        return new Response("Forbidden", { status: 403 });
+      }
+      const appId = parseInt(trackerOutputAddMatch[1], 10);
+      const app = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT id FROM grant_applications WHERE id = ? AND created_by = ?`
+      ).bind(appId, username).first();
+      if (!app) return new Response("Not found", { status: 404 });
+
+      const body = await request.json();
+      const { description, target_value, unit } = body;
+      if (!description || target_value == null) return new Response("description and target_value required", { status: 400 });
+
+      const res = await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO grant_outputs (grant_application_id, description, target_value, unit) VALUES (?, ?, ?, ?)`
+      ).bind(appId, description.trim(), Number(target_value), unit ?? "").run();
+      await env.GRANT_MANAGER_DB.prepare(`UPDATE grant_applications SET updated_at=datetime('now') WHERE id=?`).bind(appId).run();
+      return jsonResponse(JSON.stringify({ id: res.meta?.last_row_id }), { status: 201 });
+    }
+
+    // PATCH /api/tracker/outputs/:id  (update an Output's description/target)
+    const trackerOutputPatchMatch = url.pathname.match(/^\/api\/tracker\/outputs\/(\d+)$/);
+    if (trackerOutputPatchMatch && request.method === "PATCH") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "tracker/outputs/patch" });
+        return new Response("Forbidden", { status: 403 });
+      }
+      const outputId = parseInt(trackerOutputPatchMatch[1], 10);
+      const output = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_outputs WHERE id = ?`).bind(outputId).first();
+      if (!output) return new Response("Not found", { status: 404 });
+      const app = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT id FROM grant_applications WHERE id = ? AND created_by = ?`
+      ).bind(output.grant_application_id, username).first();
+      if (!app) return new Response("Forbidden", { status: 403 });
+
+      const body = await request.json();
+      const newDesc   = body.description ? body.description.trim() : output.description;
+      const newTarget = body.target_value != null ? Number(body.target_value) : output.target_value;
+      const newUnit   = body.unit !== undefined ? body.unit : output.unit;
+      await env.GRANT_MANAGER_DB.prepare(
+        `UPDATE grant_outputs SET description=?, target_value=?, unit=? WHERE id=?`
+      ).bind(newDesc, newTarget, newUnit, outputId).run();
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // POST /api/tracker/applications/:id/outcomes  (add an Outcome to a grant)
+    const trackerOutcomeAddMatch = url.pathname.match(/^\/api\/tracker\/applications\/(\d+)\/outcomes$/);
+    if (trackerOutcomeAddMatch && request.method === "POST") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "tracker/outcomes/add" });
+        return new Response("Forbidden", { status: 403 });
+      }
+      const appId = parseInt(trackerOutcomeAddMatch[1], 10);
+      const app = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT id FROM grant_applications WHERE id = ? AND created_by = ?`
+      ).bind(appId, username).first();
+      if (!app) return new Response("Not found", { status: 404 });
+
+      const body = await request.json();
+      const { description, is_narrative, target_value, target_narrative, unit } = body;
+      if (!description) return new Response("description required", { status: 400 });
+      const isNarr = is_narrative ? 1 : 0;
+      if (!isNarr && target_value == null) return new Response("target_value required for numeric outcomes", { status: 400 });
+
+      const res = await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO grant_outcomes (grant_application_id, description, is_narrative, target_value, target_narrative, unit) VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(appId, description.trim(), isNarr, isNarr ? null : Number(target_value), target_narrative ?? null, unit ?? "").run();
+      await env.GRANT_MANAGER_DB.prepare(`UPDATE grant_applications SET updated_at=datetime('now') WHERE id=?`).bind(appId).run();
+      return jsonResponse(JSON.stringify({ id: res.meta?.last_row_id }), { status: 201 });
+    }
+
+    // PATCH /api/tracker/outcomes/:id  (update an Outcome)
+    const trackerOutcomePatchMatch = url.pathname.match(/^\/api\/tracker\/outcomes\/(\d+)$/);
+    if (trackerOutcomePatchMatch && request.method === "PATCH") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      if (!(await validateCsrf(request, env, username))) {
+        log("warn", "csrf_rejected", { ...reqCtx, endpoint: "tracker/outcomes/patch" });
+        return new Response("Forbidden", { status: 403 });
+      }
+      const outcomeId = parseInt(trackerOutcomePatchMatch[1], 10);
+      const outcome = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_outcomes WHERE id = ?`).bind(outcomeId).first();
+      if (!outcome) return new Response("Not found", { status: 404 });
+      const app = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT id FROM grant_applications WHERE id = ? AND created_by = ?`
+      ).bind(outcome.grant_application_id, username).first();
+      if (!app) return new Response("Forbidden", { status: 403 });
+
+      const body = await request.json();
+      const newDesc      = body.description ? body.description.trim() : outcome.description;
+      const newTarget    = body.target_value != null ? Number(body.target_value) : outcome.target_value;
+      const newNarrTgt   = body.target_narrative !== undefined ? body.target_narrative : outcome.target_narrative;
+      const newUnit      = body.unit !== undefined ? body.unit : outcome.unit;
+      await env.GRANT_MANAGER_DB.prepare(
+        `UPDATE grant_outcomes SET description=?, target_value=?, target_narrative=?, unit=? WHERE id=?`
+      ).bind(newDesc, newTarget, newNarrTgt, newUnit, outcomeId).run();
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // GET /api/tracker/applications/:id/outcomes  (matching pipeline: read outcomes for a grant)
+    const trackerOutcomesReadMatch = url.pathname.match(/^\/api\/tracker\/applications\/(\d+)\/outcomes$/);
+    if (trackerOutcomesReadMatch && request.method === "GET") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      const appId = parseInt(trackerOutcomesReadMatch[1], 10);
+      const app = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT id FROM grant_applications WHERE id = ? AND created_by = ?`
+      ).bind(appId, username).first();
+      if (!app) return new Response("Not found", { status: 404 });
+      const outcomes = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT oc.*, oca.actual_value, oca.actual_narrative, oca.computed_status, oca.logged_at
+         FROM grant_outcomes oc
+         LEFT JOIN outcome_actuals oca ON oca.id = (
+           SELECT id FROM outcome_actuals WHERE outcome_id = oc.id ORDER BY reporting_period_id DESC LIMIT 1
+         )
+         WHERE oc.grant_application_id = ?
+         ORDER BY oc.id`
+      ).bind(appId).all();
+      return jsonResponse(JSON.stringify(outcomes.results));
     }
 
     // ── End Grant Tracker ──────────────────────────────────────────────────────
