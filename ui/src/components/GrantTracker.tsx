@@ -107,6 +107,7 @@ interface AppFormProps {
 }
 
 function AppForm({ initial, onSave, onClose }: AppFormProps) {
+  const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState({
     grant_name: initial?.grant_name ?? "",
     funder: initial?.funder ?? "",
@@ -124,7 +125,6 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function handleSubmit(e: React.FormEvent) {
@@ -154,120 +154,142 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
     }
   }
 
+  const inputCls = "w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-500";
+
+  // ── New grant: just a name ────────────────────────────────────────────────
+  if (!isEdit) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-gray-900 border-t sm:border border-gray-700 rounded-t-2xl sm:rounded-xl w-full sm:max-w-md p-6 shadow-2xl"
+        >
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-white">New grant</h2>
+            <button type="button" onClick={onClose} className="text-gray-400 hover:text-white w-8 h-8 flex items-center justify-center text-xl">✕</button>
+          </div>
+          <label className="block text-xs text-gray-400 mb-1.5">Grant name</label>
+          <input
+            autoFocus
+            className={inputCls}
+            placeholder="e.g. Community Workforce Initiative"
+            value={form.grant_name}
+            onChange={(e) => update("grant_name", e.target.value)}
+          />
+          <p className="text-xs text-gray-500 mt-2">Add funder, dates, and logic model from the grant detail page after creating.</p>
+          {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
+          <div className="flex gap-3 mt-5">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm text-gray-400 border border-gray-700 rounded-lg">Cancel</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+              {saving ? "Creating…" : "Create grant"}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  // ── Edit: scrollable bottom sheet with sections ───────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70">
       <form
         onSubmit={handleSubmit}
-        className="relative bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl p-6 shadow-2xl my-4"
+        className="bg-gray-900 border-t sm:border border-gray-700 rounded-t-2xl sm:rounded-xl w-full sm:max-w-2xl shadow-2xl flex flex-col max-h-[92dvh]"
       >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl"
-        >✕</button>
-        <h2 className="text-lg font-semibold text-white mb-5">
-          {initial?.id ? "Edit Grant Application" : "New Grant Application"}
-        </h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-400 mb-1">Grant name *</label>
-            <input
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.grant_name}
-              onChange={(e) => update("grant_name", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Funder / Sponsor</label>
-            <input
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.funder}
-              onChange={(e) => update("funder", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Total awarded ($)</label>
-            <input
-              type="number"
-              min="0"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500"
-              value={form.total_awarded}
-              onChange={(e) => update("total_awarded", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Application date</label>
-            <input type="date" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.application_date} onChange={(e) => update("application_date", e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Offer date</label>
-            <input type="date" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.offer_date} onChange={(e) => update("offer_date", e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Funded date</label>
-            <input type="date" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.funded_date} onChange={(e) => update("funded_date", e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Lifecycle status</label>
-            <select className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.lifecycle_status} onChange={(e) => update("lifecycle_status", e.target.value)}>
-              {(["applied", "offered", "funded", "closed"] as LifecycleStatus[]).map((s) => (
-                <option key={s} value={s}>{LIFECYCLE_LABELS[s]}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Reporting periodicity</label>
-            <select className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.periodicity} onChange={(e) => update("periodicity", e.target.value)}>
-              {(["one-time", "monthly", "quarterly", "annual", "custom"] as Periodicity[]).map((p) => (
-                <option key={p} value={p}>{PERIODICITY_LABELS[p]}</option>
-              ))}
-            </select>
-          </div>
-          {form.periodicity === "custom" && (
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Interval (days)</label>
-              <input type="number" min="1" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.custom_interval_days} onChange={(e) => update("custom_interval_days", e.target.value)} />
-            </div>
-          )}
-          {form.periodicity !== "one-time" && (
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Periods to generate</label>
-              <input type="number" min="1" max="24" className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500" value={form.period_horizon} onChange={(e) => update("period_horizon", e.target.value)} />
-            </div>
-          )}
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-400 mb-1">Inputs — funding amounts, resources committed</label>
-            <textarea
-              rows={2}
-              placeholder="e.g. $50,000 grant, 2 FTE program staff, in-kind meeting space"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none"
-              value={form.logic_inputs}
-              onChange={(e) => update("logic_inputs", e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-400 mb-1">Activities — what will be done with the funding</label>
-            <textarea
-              rows={2}
-              placeholder="e.g. Host 12 workshops, conduct outreach in 3 zip codes, provide 1:1 coaching"
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none"
-              value={form.logic_activities}
-              onChange={(e) => update("logic_activities", e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-400 mb-1">Notes</label>
-            <textarea rows={2} className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500 resize-none" value={form.notes} onChange={(e) => update("notes", e.target.value)} />
-          </div>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
+          <h2 className="text-base font-semibold text-white">Edit grant</h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-white w-8 h-8 flex items-center justify-center text-xl">✕</button>
         </div>
 
-        {err && <p className="text-red-400 text-xs mt-3">{err}</p>}
+        <div className="overflow-y-auto flex-1 p-5 space-y-6">
+          <section className="space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Basic</p>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Grant name *</label>
+              <input className={inputCls} value={form.grant_name} onChange={(e) => update("grant_name", e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Funder</label>
+                <input className={inputCls} value={form.funder} onChange={(e) => update("funder", e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Total awarded ($)</label>
+                <input type="number" min="0" className={inputCls} value={form.total_awarded} onChange={(e) => update("total_awarded", e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Status</label>
+                <select className={inputCls} value={form.lifecycle_status} onChange={(e) => update("lifecycle_status", e.target.value)}>
+                  {(["applied", "offered", "funded", "closed"] as LifecycleStatus[]).map((s) => (
+                    <option key={s} value={s}>{LIFECYCLE_LABELS[s]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Reporting schedule</label>
+                <select className={inputCls} value={form.periodicity} onChange={(e) => update("periodicity", e.target.value)}>
+                  {(["one-time", "monthly", "quarterly", "annual", "custom"] as Periodicity[]).map((p) => (
+                    <option key={p} value={p}>{PERIODICITY_LABELS[p]}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </section>
 
-        <div className="flex justify-end gap-3 mt-5">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-300 hover:text-white">Cancel</button>
-          <button type="submit" disabled={saving} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg disabled:opacity-50">
-            {saving ? "Saving…" : "Save"}
+          <section className="space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Dates</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Application date</label>
+                <input type="date" className={inputCls} value={form.application_date} onChange={(e) => update("application_date", e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Offer date</label>
+                <input type="date" className={inputCls} value={form.offer_date} onChange={(e) => update("offer_date", e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Funded date</label>
+                <input type="date" className={inputCls} value={form.funded_date} onChange={(e) => update("funded_date", e.target.value)} />
+              </div>
+              {form.periodicity === "custom" && (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Interval (days)</label>
+                  <input type="number" min="1" className={inputCls} value={form.custom_interval_days} onChange={(e) => update("custom_interval_days", e.target.value)} />
+                </div>
+              )}
+              {form.periodicity !== "one-time" && (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Periods to generate</label>
+                  <input type="number" min="1" max="24" className={inputCls} value={form.period_horizon} onChange={(e) => update("period_horizon", e.target.value)} />
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Logic model</p>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Inputs</label>
+              <textarea rows={2} placeholder="Funding amounts and resources committed" className={`${inputCls} resize-none`} value={form.logic_inputs} onChange={(e) => update("logic_inputs", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Activities</label>
+              <textarea rows={2} placeholder="What will be done with the funding" className={`${inputCls} resize-none`} value={form.logic_activities} onChange={(e) => update("logic_activities", e.target.value)} />
+            </div>
+          </section>
+
+          <section>
+            <label className="block text-xs text-gray-400 mb-1">Notes</label>
+            <textarea rows={2} className={`${inputCls} resize-none`} value={form.notes} onChange={(e) => update("notes", e.target.value)} />
+          </section>
+        </div>
+
+        {err && <p className="text-red-400 text-xs px-5 py-1">{err}</p>}
+
+        <div className="flex gap-3 px-5 py-4 border-t border-gray-800 shrink-0">
+          <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm text-gray-400 border border-gray-700 rounded-lg">Cancel</button>
+          <button type="submit" disabled={saving} className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+            {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
       </form>
@@ -691,11 +713,11 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
             return (
               <div key={step} className="flex items-center flex-1 min-w-0">
                 <div className="flex flex-col items-center min-w-0">
-                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${done ? "border-brand-500 bg-brand-600 text-white" : "border-gray-600 bg-gray-800 text-gray-500"}`}>
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center text-xs sm:text-sm font-bold transition-colors ${done ? "border-brand-500 bg-brand-600 text-white" : "border-gray-600 bg-gray-800 text-gray-500"}`}>
                     {done ? "✓" : i + 1}
                   </div>
-                  <span className={`text-xs mt-1 font-medium ${done ? "text-white" : "text-gray-500"}`}>{LIFECYCLE_LABELS[step]}</span>
-                  <span className="text-xs text-gray-500">{fmt(dateMap[step])}</span>
+                  <span className={`text-xs mt-1 font-medium truncate max-w-full px-0.5 ${done ? "text-white" : "text-gray-500"}`}>{LIFECYCLE_LABELS[step]}</span>
+                  <span className="text-xs text-gray-500 hidden sm:block">{fmt(dateMap[step])}</span>
                 </div>
                 {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-1 ${i < currentStep ? "bg-brand-600" : "bg-gray-700"}`} />}
               </div>
