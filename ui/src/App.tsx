@@ -13,6 +13,7 @@ import FeedbackBar from "./components/FeedbackBar";
 import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import type { UserProfile } from "./api";
+import type { Grant } from "./types";
 
 type AuthState = "loading" | "landing" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin" | "compliance" | "tracker";
 
@@ -22,6 +23,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [username, setUsername] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [trackerPrefill, setTrackerPrefill] = useState<Grant | null>(null);
 
   useEffect(() => {
     checkAuth().then(async (ok) => {
@@ -216,7 +218,10 @@ export default function App() {
   if (auth === "tracker") {
     return (
       <>
-        <GrantTracker onBack={() => setAuth("authenticated")} />
+        <GrantTracker
+          onBack={() => { setTrackerPrefill(null); setAuth("authenticated"); }}
+          prefill={trackerPrefill ?? undefined}
+        />
         <FeedbackBar />
         <AnonymousFeedbackWidget />
       </>
@@ -230,7 +235,8 @@ export default function App() {
         onBackToProfile={profile ? () => setAuth("welcome") : undefined}
         onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
         onGoToCompliance={() => setAuth("compliance")}
-        onGoToTracker={() => setAuth("tracker")}
+        onGoToTracker={() => { setTrackerPrefill(null); setAuth("tracker"); }}
+        onTrackGrant={(g) => { setTrackerPrefill(g); setAuth("tracker"); }}
       />
       <FeedbackBar />
       <AnonymousFeedbackWidget />

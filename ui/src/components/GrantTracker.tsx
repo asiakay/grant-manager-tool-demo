@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Grant } from "../types";
 import {
   fetchTrackerApplications,
   fetchTrackerDetail,
@@ -24,6 +25,7 @@ import {
 
 interface Props {
   onBack: () => void;
+  prefill?: Grant;
 }
 
 type Tab = "dashboard" | "applications" | "detail";
@@ -156,8 +158,9 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
 
   const inputCls = "w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-500";
 
-  // ── New grant: just a name ────────────────────────────────────────────────
+  // ── New grant ─────────────────────────────────────────────────────────────
   if (!isEdit) {
+    const fromMatch = Boolean(initial?.funder || initial?.total_awarded != null);
     return (
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70">
         <form
@@ -165,18 +168,40 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
           className="bg-gray-900 border-t sm:border border-gray-700 rounded-t-2xl sm:rounded-xl w-full sm:max-w-md p-6 shadow-2xl"
         >
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-white">New grant</h2>
+            <h2 className="text-base font-semibold text-white">{fromMatch ? "Start application" : "New grant"}</h2>
             <button type="button" onClick={onClose} className="text-gray-400 hover:text-white w-8 h-8 flex items-center justify-center text-xl">✕</button>
           </div>
-          <label className="block text-xs text-gray-400 mb-1.5">Grant name</label>
-          <input
-            autoFocus
-            className={inputCls}
-            placeholder="e.g. Community Workforce Initiative"
-            value={form.grant_name}
-            onChange={(e) => update("grant_name", e.target.value)}
-          />
-          <p className="text-xs text-gray-500 mt-2">Add funder, dates, and logic model from the grant detail page after creating.</p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5">Grant name</label>
+              <input
+                autoFocus
+                className={inputCls}
+                placeholder="e.g. Community Workforce Initiative"
+                value={form.grant_name}
+                onChange={(e) => update("grant_name", e.target.value)}
+              />
+            </div>
+            {fromMatch && (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Funder</label>
+                  <input className={inputCls} value={form.funder} onChange={(e) => update("funder", e.target.value)} />
+                </div>
+                {form.total_awarded !== "" && (
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1.5">Award amount ($)</label>
+                    <input type="number" min="0" className={inputCls} value={form.total_awarded} onChange={(e) => update("total_awarded", e.target.value)} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-3">
+            {fromMatch
+              ? "Pre-filled from the grant match — edit if needed. Add dates and logic model from the detail page."
+              : "Add funder, dates, and logic model from the grant detail page after creating."}
+          </p>
           {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
           <div className="flex gap-3 mt-5">
             <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm text-gray-400 border border-gray-700 rounded-lg">Cancel</button>
@@ -1055,12 +1080,20 @@ function AppsListTab({ apps, loading, onSelect, onNew }: AppsListTabProps) {
 }
 
 // ── Main GrantTracker ──────────────────────────────────────────────────────────
-export default function GrantTracker({ onBack }: Props) {
+export default function GrantTracker({ onBack, prefill }: Props) {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [apps, setApps] = useState<GrantApplication[]>([]);
   const [appsLoading, setAppsLoading] = useState(true);
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
-  const [newAppOpen, setNewAppOpen] = useState(false);
+  const [newAppOpen, setNewAppOpen] = useState(Boolean(prefill));
+  const prefillRef = useRef(prefill);
+
+  const prefillInitial: Partial<GrantApplication> | undefined = prefillRef.current ? {
+    grant_name: String(prefillRef.current.Name || ""),
+    funder: String(prefillRef.current.Sponsor || "") || undefined,
+    total_awarded: typeof prefillRef.current["Award Ceiling"] === "number" ? (prefillRef.current["Award Ceiling"] ?? undefined) : undefined,
+    notes: prefillRef.current["Source URL"] ? `Source: ${String(prefillRef.current["Source URL"])}` : undefined,
+  } : undefined;
 
   async function loadApps() {
     setAppsLoading(true);
@@ -1124,11 +1157,12 @@ export default function GrantTracker({ onBack }: Props) {
       {/* New application modal */}
       {newAppOpen && (
         <AppForm
+          initial={prefillInitial}
           onSave={async (data) => {
-            await createTrackerApplication(data as Parameters<typeof createTrackerApplication>[0]);
+            const { id } = await createTrackerApplication(data as Parameters<typeof createTrackerApplication>[0]);
             setNewAppOpen(false);
             await loadApps();
-            setTab("applications");
+            openApp(id);
           }}
           onClose={() => setNewAppOpen(false)}
         />
