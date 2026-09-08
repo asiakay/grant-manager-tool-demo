@@ -73,6 +73,14 @@ const PRESETS: { label: string; weights: UserProfile["weights"] }[] = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Word/phrase-boundary match: the keyword must not be immediately preceded or
+// followed by a letter or digit.  Prevents "ai" matching inside "training",
+// "tech" inside "biotechnology", etc.  Works on already-lowercased text.
+function kwMatch(text: string, kw: string): boolean {
+  const esc = kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z\\d])${esc}(?![a-z\\d])`).test(text);
+}
+
 function normalize(raw: UserProfile["weights"]): UserProfile["weights"] {
   const total = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
   return {
@@ -111,6 +119,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
   const [mission, setMission]           = useState(initial?.mission ?? "");
   const [analyzeError, setAnalyzeError] = useState("");
   const [rationale, setRationale]       = useState("");
+  const [keywords, setKeywords]         = useState<string[]>(initial?.keywords ?? []);
 
   // Step 1 state
   const [focusAreas, setFocusAreas] = useState<string[]>(initial?.focusAreas ?? []);
@@ -144,7 +153,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
     // Score each focus area by counting keyword hits in the mission text
     const areaScores = Object.entries(FOCUS_AREA_KEYWORDS).map(([area, kws]) => {
-      const hits = kws.filter((kw) => text.includes(kw));
+      const hits = kws.filter((kw) => kwMatch(text, kw));
       return { area, hits };
     }).filter(({ hits }) => hits.length > 0)
       .sort((a, b) => b.hits.length - a.hits.length);
@@ -155,7 +164,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     const orgScores = Object.entries(ORG_TYPE_KEYWORDS).map(([label, kws]) => ({
       label,
       value: ORG_TYPE_LABEL_TO_VALUE[label] ?? "",
-      hits: kws.filter((kw) => text.includes(kw)).length,
+      hits: kws.filter((kw) => kwMatch(text, kw)).length,
     })).sort((a, b) => b.hits - a.hits);
     const suggestedOrg = orgScores[0]?.hits > 0 ? orgScores[0].value : "";
 
@@ -163,7 +172,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     const stageScores = Object.entries(STAGE_KEYWORDS).map(([label, kws]) => ({
       label,
       value: STAGE_LABEL_TO_VALUE[label] ?? "",
-      hits: kws.filter((kw) => text.includes(kw)).length,
+      hits: kws.filter((kw) => kwMatch(text, kw)).length,
     })).sort((a, b) => b.hits - a.hits);
     const suggestedStage = stageScores[0]?.hits > 0 ? stageScores[0].value : "";
 
@@ -175,6 +184,14 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     if (suggestedAreas.length) setFocusAreas(suggestedAreas);
     if (suggestedOrg)          setOrgType(suggestedOrg);
     if (suggestedStage)        setStage(suggestedStage);
+
+    // Extract top keyword hits as specific search terms for Discovery
+    const extractedKeywords = areaScores
+      .slice(0, 3)
+      .flatMap(({ hits }) => hits.slice(0, 3))
+      .filter((kw, i, arr) => arr.indexOf(kw) === i) // dedupe
+      .slice(0, 6);
+    setKeywords(extractedKeywords);
 
     // Build a rationale showing what matched
     const topHits = areaScores.slice(0, 3).map(({ area, hits }) =>
@@ -188,7 +205,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ focusAreas, orgType, stage, mission: mission.trim() || undefined, weights: normalize(sliders) });
+    onSave({ focusAreas, orgType, stage, mission: mission.trim() || undefined, keywords: keywords.length ? keywords : undefined, weights: normalize(sliders) });
   }
 
   // ── Step indicator ──────────────────────────────────────────────────────
@@ -238,7 +255,12 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
                   id="mission-input"
                   className="input resize-none h-24 leading-relaxed text-sm"
                   value={mission}
-                  onChange={(e) => setMission(e.target.value)}
+                  onChange={(e) => {
+                    setMission(e.target.value);
+                    // Invalidate keywords and rationale — they belong to the previous mission text
+                    if (keywords.length) setKeywords([]);
+                    if (rationale) setRationale("");
+                  }}
                   placeholder="e.g. We are a nonprofit that advances health equity through community-based clinical research and workforce training…"
                 />
               </div>

@@ -255,6 +255,15 @@ const STAGE_KEYWORDS = {
   "Established Program":        ["established", "sustained", "continuation", "operational", "ongoing"],
 };
 
+// Word/phrase-boundary match on already-lowercased text.
+// Prevents short tokens like "ai" matching inside "training", or
+// "tech" inside "biotechnology".  Trims keywords first so entries
+// like "pi " (legacy trailing-space workaround) still work correctly.
+function kwMatch(text, kw) {
+  const esc = kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z\\d])${esc}(?![a-z\\d])`).test(text);
+}
+
 // Returns 0-1 profile match score based on how well a grant's text matches the user profile.
 function computeProfileMatch(r, profile) {
   const focusAreas = Array.isArray(profile.focusAreas) ? profile.focusAreas : [];
@@ -284,7 +293,7 @@ function computeProfileMatch(r, profile) {
     let areaHits = 0;
     for (const fa of focusAreas) {
       const kws = FOCUS_AREA_KEYWORDS[fa] || [];
-      if (kws.some(kw => text.includes(kw))) areaHits++;
+      if (kws.some(kw => kwMatch(text, kw))) areaHits++;
     }
     checks += focusAreas.length;
     hits += areaHits;
@@ -294,14 +303,14 @@ function computeProfileMatch(r, profile) {
   const orgKeywords = ORG_TYPE_KEYWORDS[orgType] || [];
   if (orgKeywords.length) {
     checks++;
-    if (orgKeywords.some(kw => text.includes(kw))) hits++;
+    if (orgKeywords.some(kw => kwMatch(text, kw))) hits++;
   }
 
   // Stage match
   const stageKeywords = STAGE_KEYWORDS[stage] || [];
   if (stageKeywords.length) {
     checks++;
-    if (stageKeywords.some(kw => text.includes(kw))) hits++;
+    if (stageKeywords.some(kw => kwMatch(text, kw))) hits++;
   }
 
   return checks ? hits / checks : 0;
@@ -1068,8 +1077,9 @@ Return ONLY a JSON object with these exact keys:
 - "orgType": one string chosen ONLY from: ${JSON.stringify(ORG_TYPE_OPTIONS)}
 - "stage": one string chosen ONLY from: ${JSON.stringify(STAGE_OPTIONS)}
 - "rationale": one sentence explaining your choices
+- "keywords": array of 3-6 specific grant-search terms derived directly from the mission (short phrases like "community health", "workforce training", "clean energy", "rural broadband" — not generic words)
 
-Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Nonprofit/NGO","stage":"Growth / Scaling","rationale":"The mission focuses on clinical health research delivered by an established nonprofit."}`;
+Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Nonprofit/NGO","stage":"Growth / Scaling","rationale":"The mission focuses on clinical health research delivered by an established nonprofit.","keywords":["community health","clinical research","health equity","workforce training"]}`;
 
       const messages = [{ role: "user", content: prompt }];
       let text = "";
@@ -1104,9 +1114,21 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const orgType = ORG_TYPE_OPTIONS.includes(parsed.orgType) ? parsed.orgType : "";
       const stage = STAGE_OPTIONS.includes(parsed.stage) ? parsed.stage : "";
       const rationale = typeof parsed.rationale === "string" ? parsed.rationale.slice(0, 300) : "";
+      const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
+        .filter(v => typeof v === "string" && v.trim().length > 1 && v.trim().length <= 60)
+        .map(v => v.trim().toLowerCase())
+        .slice(0, 6);
+
+      // Merge keywords + mission into the user's saved profile so live-search can use them
+      if (env.USER_PROFILES) {
+        const existingRaw = await env.USER_PROFILES.get(`profile:${username}`);
+        const existingProfile = existingRaw ? (() => { try { return JSON.parse(existingRaw); } catch { return {}; } })() : {};
+        const updatedProfile = { ...existingProfile, mission: mission.trim().slice(0, 2000), keywords };
+        await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(updatedProfile));
+      }
 
       log("info", "mission_analyzed", reqCtx);
-      return jsonResponse(JSON.stringify({ focusAreas, orgType, stage, rationale }));
+      return jsonResponse(JSON.stringify({ focusAreas, orgType, stage, rationale, keywords }));
     }
 
     if (url.pathname === "/api/ai-status") {
@@ -1422,9 +1444,7 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
       const pageSize = Math.min(25, Math.max(1, parseInt(url.searchParams.get("pageSize") || "25", 10)));
 
-      if (!q) return jsonResponse(JSON.stringify({ data: [], total: 0, page: 1, pageSize, configured: true }));
-
-      // Load user profile for scoring
+      // Load user profile for scoring AND baseline keyword set
       let lsProfile = {};
       if (env.USER_PROFILES) {
         const raw = await env.USER_PROFILES.get(`profile:${username}`);
@@ -1432,10 +1452,18 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       }
       const lsWeights = (lsProfile.weights && typeof lsProfile.weights === "object") ? lsProfile.weights : null;
 
+      // Combine profile keywords (baseline) with the user-entered query (alternative keyword)
+      const profileKeywords = Array.isArray(lsProfile.keywords)
+        ? lsProfile.keywords.filter(k => typeof k === "string" && k.trim())
+        : [];
+      const effectiveQ = [...profileKeywords, q].filter(Boolean).join(" ").trim();
+
+      if (!effectiveQ) return jsonResponse(JSON.stringify({ data: [], total: 0, page: 1, pageSize, configured: true }));
+
       const searchStart = Date.now();
       let apiData;
       try {
-        apiData = await fetchFromSimplerGrants(env, q, page, pageSize);
+        apiData = await fetchFromSimplerGrants(env, effectiveQ, page, pageSize);
       } catch (err) {
         log("error", "live_search_fetch_failed", { ...reqCtx, error: String(err) });
         return jsonResponse(JSON.stringify({ error: err.message || "Failed to reach Simpler Grants API." }), { status: 502 });

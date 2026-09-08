@@ -198,6 +198,7 @@ export interface UserProfile {
   orgType: string;
   stage: string;
   mission?: string;
+  keywords?: string[];
   // Step 2: scoring weights
   weights: {
     Relevance: number;
@@ -237,6 +238,7 @@ export interface MissionAnalysis {
   orgType: string;
   stage: string;
   rationale: string;
+  keywords?: string[];
 }
 
 export async function analyzeMission(mission: string): Promise<MissionAnalysis> {
