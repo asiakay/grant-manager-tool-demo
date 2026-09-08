@@ -509,13 +509,22 @@ interface LogActualsProps {
 
 function LogActualsModal({ period, outputs, outcomes, onSave, onClose }: LogActualsProps) {
   const [outputVals, setOutputVals] = useState<Record<number, string>>(() =>
-    Object.fromEntries(outputs.map((o) => [o.id, o.actual_value != null ? String(o.actual_value) : ""]))
+    Object.fromEntries(outputs.map((o) => [
+      o.id,
+      o.reporting_period_id === period.id && o.actual_value != null ? String(o.actual_value) : "",
+    ]))
   );
   const [outcomeNumericVals, setOutcomeNumericVals] = useState<Record<number, string>>(() =>
-    Object.fromEntries(outcomes.filter((o) => !o.is_narrative).map((o) => [o.id, o.actual_value != null ? String(o.actual_value) : ""]))
+    Object.fromEntries(outcomes.filter((o) => !o.is_narrative).map((o) => [
+      o.id,
+      o.reporting_period_id === period.id && o.actual_value != null ? String(o.actual_value) : "",
+    ]))
   );
   const [outcomeNarrVals, setOutcomeNarrVals] = useState<Record<number, string>>(() =>
-    Object.fromEntries(outcomes.filter((o) => o.is_narrative).map((o) => [o.id, o.actual_narrative ?? ""]))
+    Object.fromEntries(outcomes.filter((o) => o.is_narrative).map((o) => [
+      o.id,
+      o.reporting_period_id === period.id ? (o.actual_narrative ?? "") : "",
+    ]))
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
