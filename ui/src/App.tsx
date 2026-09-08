@@ -9,13 +9,16 @@ import ForgotPassword from "./components/ForgotPassword";
 import AdminPage from "./components/AdminPage";
 import ComplianceDashboard from "./components/ComplianceDashboard";
 import GrantTracker from "./components/GrantTracker";
+import Onboarding from "./components/Onboarding";
+import OnboardingChecklist from "./components/OnboardingChecklist";
 import FeedbackBar from "./components/FeedbackBar";
 import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
+import { markChecklist } from "./components/Onboarding";
 import type { UserProfile } from "./api";
 import type { Grant } from "./types";
 
-type AuthState = "loading" | "landing" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "welcome" | "authenticated" | "admin" | "compliance" | "tracker";
+type AuthState = "loading" | "landing" | "unauthenticated" | "signup" | "forgot-password" | "profile-setup" | "onboarding" | "welcome" | "authenticated" | "admin" | "compliance" | "tracker";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
@@ -24,6 +27,7 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [trackerPrefill, setTrackerPrefill] = useState<Grant | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   useEffect(() => {
     checkAuth().then(async (ok) => {
@@ -46,6 +50,7 @@ export default function App() {
       await login(user, password);
       await fetchCsrfToken();
       setUsername(user);
+      setIsNewUser(true);
       setAuth("profile-setup");
     } catch {
       setAuth("unauthenticated");
@@ -87,10 +92,12 @@ export default function App() {
     try {
       await saveProfile(p);
       setProfile(p);
-      setAuth("welcome");
+      if (username) markChecklist(username, "profile");
+      setAuth(isNewUser ? "onboarding" : "welcome");
     } catch {
       setProfile(p);
-      setAuth("welcome");
+      if (username) markChecklist(username, "profile");
+      setAuth(isNewUser ? "onboarding" : "welcome");
     } finally {
       setProfileSaving(false);
     }
@@ -167,10 +174,24 @@ export default function App() {
         <ProfileSetup
           initial={profile}
           onSave={handleProfileSave}
-          onSkip={() => setAuth("authenticated")}
+          onSkip={() => setAuth(isNewUser ? "onboarding" : "authenticated")}
           saving={profileSaving}
         />
         <FeedbackBar />
+        <AnonymousFeedbackWidget />
+      </>
+    );
+  }
+
+  if (auth === "onboarding") {
+    return (
+      <>
+        <Onboarding
+          username={username || "there"}
+          hasProfile={!!profile}
+          onFinish={() => { setIsNewUser(false); setAuth("authenticated"); }}
+          onGoToProfile={() => setAuth("profile-setup")}
+        />
         <AnonymousFeedbackWidget />
       </>
     );
@@ -228,6 +249,18 @@ export default function App() {
     );
   }
 
+  function goToTracker() {
+    if (username) markChecklist(username, "track");
+    setTrackerPrefill(null);
+    setAuth("tracker");
+  }
+
+  function trackGrant(g: Grant) {
+    if (username) markChecklist(username, "track");
+    setTrackerPrefill(g);
+    setAuth("tracker");
+  }
+
   return (
     <>
       <Dashboard
@@ -235,9 +268,10 @@ export default function App() {
         onBackToProfile={profile ? () => setAuth("welcome") : undefined}
         onGoToAdmin={isAdmin ? () => setAuth("admin") : undefined}
         onGoToCompliance={() => setAuth("compliance")}
-        onGoToTracker={() => { setTrackerPrefill(null); setAuth("tracker"); }}
-        onTrackGrant={(g) => { setTrackerPrefill(g); setAuth("tracker"); }}
+        onGoToTracker={goToTracker}
+        onTrackGrant={trackGrant}
       />
+      {username && <OnboardingChecklist username={username} onGoToTracker={goToTracker} />}
       <FeedbackBar />
       <AnonymousFeedbackWidget />
     </>
