@@ -3039,19 +3039,19 @@ ${grantCards}
         const validPeriodicity = ["one-time", "monthly", "quarterly", "annual", "custom"];
         const validStatus = ["applied", "offered", "funded", "closed"];
 
-        const newGrantName       = (body.grant_name ?? prev.grant_name).trim();
-        const newFunder          = body.funder ?? prev.funder;
-        const newTotal           = body.total_awarded ?? prev.total_awarded;
-        const newAppDate         = body.application_date ?? prev.application_date;
-        const newOfferDate       = body.offer_date ?? prev.offer_date;
-        const newFundedDate      = body.funded_date ?? prev.funded_date;
+        const newGrantName       = body.grant_name !== undefined ? String(body.grant_name).trim() : prev.grant_name;
+        const newFunder          = body.funder !== undefined ? (body.funder || null) : prev.funder;
+        const newTotal           = body.total_awarded !== undefined ? (body.total_awarded ?? null) : prev.total_awarded;
+        const newAppDate         = body.application_date !== undefined ? (body.application_date || null) : prev.application_date;
+        const newOfferDate       = body.offer_date !== undefined ? (body.offer_date || null) : prev.offer_date;
+        const newFundedDate      = body.funded_date !== undefined ? (body.funded_date || null) : prev.funded_date;
         const newStatus          = validStatus.includes(body.lifecycle_status) ? body.lifecycle_status : prev.lifecycle_status;
         const newPeriodicity     = validPeriodicity.includes(body.periodicity) ? body.periodicity : prev.periodicity;
-        const newCustomDays      = body.custom_interval_days ?? prev.custom_interval_days;
+        const newCustomDays      = body.custom_interval_days !== undefined ? (body.custom_interval_days ?? null) : prev.custom_interval_days;
         const newHorizon         = body.period_horizon ?? prev.period_horizon;
-        const newNotes           = body.notes ?? prev.notes;
-        const newLogicInputs     = body.logic_inputs !== undefined ? body.logic_inputs : prev.logic_inputs;
-        const newLogicActivities = body.logic_activities !== undefined ? body.logic_activities : prev.logic_activities;
+        const newNotes           = body.notes !== undefined ? (body.notes || null) : prev.notes;
+        const newLogicInputs     = body.logic_inputs !== undefined ? (body.logic_inputs || null) : prev.logic_inputs;
+        const newLogicActivities = body.logic_activities !== undefined ? (body.logic_activities || null) : prev.logic_activities;
 
         await env.GRANT_MANAGER_DB.prepare(
           `UPDATE grant_applications SET grant_name=?, funder=?, total_awarded=?, application_date=?, offer_date=?, funded_date=?,
@@ -3062,15 +3062,18 @@ ${grantCards}
                newStatus, newPeriodicity, newCustomDays, newHorizon, newNotes,
                newLogicInputs, newLogicActivities, appId).run();
 
-        // Regenerate reporting periods if funded_date or periodicity changed
+        // Regenerate reporting periods if funded_date or periodicity changed.
+        // If funded_date was cleared, delete upcoming periods without regenerating.
         const fundingChanged = newFundedDate !== prev.funded_date || newPeriodicity !== prev.periodicity || newCustomDays !== prev.custom_interval_days || newHorizon !== prev.period_horizon;
-        if (fundingChanged && newFundedDate) {
+        if (fundingChanged) {
           await env.GRANT_MANAGER_DB.prepare(`DELETE FROM reporting_periods WHERE grant_application_id = ? AND status = 'upcoming'`).bind(appId).run();
-          const periods = generateReportingPeriods(newFundedDate, newPeriodicity, newCustomDays, newHorizon ?? 4);
-          for (const p of periods) {
-            await env.GRANT_MANAGER_DB.prepare(
-              `INSERT OR IGNORE INTO reporting_periods (grant_application_id, period_number, due_date) VALUES (?, ?, ?)`
-            ).bind(appId, p.period_number, p.due_date).run();
+          if (newFundedDate) {
+            const periods = generateReportingPeriods(newFundedDate, newPeriodicity, newCustomDays, newHorizon ?? 4);
+            for (const p of periods) {
+              await env.GRANT_MANAGER_DB.prepare(
+                `INSERT OR IGNORE INTO reporting_periods (grant_application_id, period_number, due_date) VALUES (?, ?, ?)`
+              ).bind(appId, p.period_number, p.due_date).run();
+            }
           }
         }
         log("info", "tracker_application_updated", { ...reqCtx, appId });

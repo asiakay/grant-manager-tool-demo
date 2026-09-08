@@ -137,18 +137,18 @@ function AppForm({ initial, onSave, onClose }: AppFormProps) {
     try {
       await onSave({
         grant_name: form.grant_name.trim(),
-        funder: form.funder.trim() || undefined,
-        total_awarded: form.total_awarded ? Number(form.total_awarded) : undefined,
-        application_date: form.application_date || undefined,
-        offer_date: form.offer_date || undefined,
-        funded_date: form.funded_date || undefined,
+        funder: form.funder.trim() || null,
+        total_awarded: form.total_awarded !== "" ? Number(form.total_awarded) : null,
+        application_date: form.application_date || null,
+        offer_date: form.offer_date || null,
+        funded_date: form.funded_date || null,
         lifecycle_status: form.lifecycle_status as LifecycleStatus,
         periodicity: form.periodicity as Periodicity,
-        custom_interval_days: form.periodicity === "custom" && form.custom_interval_days ? Number(form.custom_interval_days) : undefined,
+        custom_interval_days: form.periodicity === "custom" && form.custom_interval_days ? Number(form.custom_interval_days) : null,
         period_horizon: form.period_horizon ? Number(form.period_horizon) : 4,
-        notes: form.notes.trim() || undefined,
-        logic_inputs: form.logic_inputs.trim() || undefined,
-        logic_activities: form.logic_activities.trim() || undefined,
+        notes: form.notes.trim() || null,
+        logic_inputs: form.logic_inputs.trim() || null,
+        logic_activities: form.logic_activities.trim() || null,
       });
     } catch (ex: unknown) {
       setErr(ex instanceof Error ? ex.message : "Save failed");
