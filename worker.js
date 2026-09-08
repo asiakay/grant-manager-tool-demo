@@ -255,6 +255,15 @@ const STAGE_KEYWORDS = {
   "Established Program":        ["established", "sustained", "continuation", "operational", "ongoing"],
 };
 
+// Word/phrase-boundary match on already-lowercased text.
+// Prevents short tokens like "ai" matching inside "training", or
+// "tech" inside "biotechnology".  Trims keywords first so entries
+// like "pi " (legacy trailing-space workaround) still work correctly.
+function kwMatch(text, kw) {
+  const esc = kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z\\d])${esc}(?![a-z\\d])`).test(text);
+}
+
 // Returns 0-1 profile match score based on how well a grant's text matches the user profile.
 function computeProfileMatch(r, profile) {
   const focusAreas = Array.isArray(profile.focusAreas) ? profile.focusAreas : [];
@@ -284,7 +293,7 @@ function computeProfileMatch(r, profile) {
     let areaHits = 0;
     for (const fa of focusAreas) {
       const kws = FOCUS_AREA_KEYWORDS[fa] || [];
-      if (kws.some(kw => text.includes(kw))) areaHits++;
+      if (kws.some(kw => kwMatch(text, kw))) areaHits++;
     }
     checks += focusAreas.length;
     hits += areaHits;
@@ -294,14 +303,14 @@ function computeProfileMatch(r, profile) {
   const orgKeywords = ORG_TYPE_KEYWORDS[orgType] || [];
   if (orgKeywords.length) {
     checks++;
-    if (orgKeywords.some(kw => text.includes(kw))) hits++;
+    if (orgKeywords.some(kw => kwMatch(text, kw))) hits++;
   }
 
   // Stage match
   const stageKeywords = STAGE_KEYWORDS[stage] || [];
   if (stageKeywords.length) {
     checks++;
-    if (stageKeywords.some(kw => text.includes(kw))) hits++;
+    if (stageKeywords.some(kw => kwMatch(text, kw))) hits++;
   }
 
   return checks ? hits / checks : 0;

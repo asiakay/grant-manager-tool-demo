@@ -73,6 +73,14 @@ const PRESETS: { label: string; weights: UserProfile["weights"] }[] = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Word/phrase-boundary match: the keyword must not be immediately preceded or
+// followed by a letter or digit.  Prevents "ai" matching inside "training",
+// "tech" inside "biotechnology", etc.  Works on already-lowercased text.
+function kwMatch(text: string, kw: string): boolean {
+  const esc = kw.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z\\d])${esc}(?![a-z\\d])`).test(text);
+}
+
 function normalize(raw: UserProfile["weights"]): UserProfile["weights"] {
   const total = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
   return {
@@ -145,7 +153,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
     // Score each focus area by counting keyword hits in the mission text
     const areaScores = Object.entries(FOCUS_AREA_KEYWORDS).map(([area, kws]) => {
-      const hits = kws.filter((kw) => text.includes(kw));
+      const hits = kws.filter((kw) => kwMatch(text, kw));
       return { area, hits };
     }).filter(({ hits }) => hits.length > 0)
       .sort((a, b) => b.hits.length - a.hits.length);
@@ -156,7 +164,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     const orgScores = Object.entries(ORG_TYPE_KEYWORDS).map(([label, kws]) => ({
       label,
       value: ORG_TYPE_LABEL_TO_VALUE[label] ?? "",
-      hits: kws.filter((kw) => text.includes(kw)).length,
+      hits: kws.filter((kw) => kwMatch(text, kw)).length,
     })).sort((a, b) => b.hits - a.hits);
     const suggestedOrg = orgScores[0]?.hits > 0 ? orgScores[0].value : "";
 
@@ -164,7 +172,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     const stageScores = Object.entries(STAGE_KEYWORDS).map(([label, kws]) => ({
       label,
       value: STAGE_LABEL_TO_VALUE[label] ?? "",
-      hits: kws.filter((kw) => text.includes(kw)).length,
+      hits: kws.filter((kw) => kwMatch(text, kw)).length,
     })).sort((a, b) => b.hits - a.hits);
     const suggestedStage = stageScores[0]?.hits > 0 ? stageScores[0].value : "";
 
