@@ -96,7 +96,7 @@ function GrantCard({ grant, isCandidate, isWatchlisted, onRowClick, onToggleCand
   return (
     <div
       onClick={() => onRowClick(grant)}
-      className={`px-4 py-3.5 border-b border-gray-800/50 cursor-pointer transition-colors active:bg-gray-800/70 ${
+      className={`px-5 py-4 border-b border-gray-800/50 cursor-pointer transition-colors active:bg-gray-800/70 ${
         isCandidate
           ? "bg-brand-900/10 hover:bg-brand-900/20"
           : isWatchlisted
@@ -365,7 +365,7 @@ export default function GrantTable({
   }
 
   const pagination = (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800 text-xs text-gray-500">
+    <div className="flex items-center justify-between px-5 py-4 border-t border-gray-800 text-xs text-gray-500">
       <span aria-live="polite" aria-atomic="true">
         {filtered.length === grants.length
           ? `${grants.length} grants`
@@ -432,7 +432,7 @@ export default function GrantTable({
                       key={header.id}
                       style={{ width: header.getSize() }}
                       aria-sort={ariaSort}
-                      className={`sticky top-0 bg-gray-900 px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
+                      className={`sticky top-0 bg-gray-900 px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b border-gray-800 whitespace-nowrap ${header.column.getCanSort() ? "cursor-pointer select-none hover:text-gray-200" : ""} ${(header.column.columnDef.meta as { className?: string })?.className ?? ""}`}
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       <span className="inline-flex items-center gap-1">
@@ -458,7 +458,7 @@ export default function GrantTable({
                   className={`cursor-pointer transition-colors border-b border-gray-800/50 hover:bg-gray-800/60 ${isCandidate ? "bg-brand-900/10" : isWatchlisted ? "bg-blue-900/10" : ""}`}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className={`px-3 py-2.5 align-middle max-w-xs ${(cell.column.columnDef.meta as { className?: string })?.className ?? ""}`}>
+                    <td key={cell.id} className={`px-4 py-3 align-middle max-w-xs ${(cell.column.columnDef.meta as { className?: string })?.className ?? ""}`}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
