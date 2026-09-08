@@ -26,6 +26,7 @@ import {
 interface Props {
   onBack: () => void;
   prefill?: Grant;
+  onCreateApp?: () => void;
 }
 
 type Tab = "dashboard" | "applications" | "detail";
@@ -1089,7 +1090,7 @@ function AppsListTab({ apps, loading, onSelect, onNew }: AppsListTabProps) {
 }
 
 // ── Main GrantTracker ──────────────────────────────────────────────────────────
-export default function GrantTracker({ onBack, prefill }: Props) {
+export default function GrantTracker({ onBack, prefill, onCreateApp }: Props) {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [apps, setApps] = useState<GrantApplication[]>([]);
   const [appsLoading, setAppsLoading] = useState(true);
@@ -1170,6 +1171,7 @@ export default function GrantTracker({ onBack, prefill }: Props) {
           onSave={async (data) => {
             const { id } = await createTrackerApplication(data as Parameters<typeof createTrackerApplication>[0]);
             setNewAppOpen(false);
+            onCreateApp?.();
             await loadApps();
             openApp(id);
           }}

@@ -242,6 +242,7 @@ export default function App() {
         <GrantTracker
           onBack={() => { setTrackerPrefill(null); setAuth("authenticated"); }}
           prefill={trackerPrefill ?? undefined}
+          onCreateApp={username ? () => markChecklist(username, "track") : undefined}
         />
         <FeedbackBar />
         <AnonymousFeedbackWidget />
@@ -250,13 +251,11 @@ export default function App() {
   }
 
   function goToTracker() {
-    if (username) markChecklist(username, "track");
     setTrackerPrefill(null);
     setAuth("tracker");
   }
 
   function trackGrant(g: Grant) {
-    if (username) markChecklist(username, "track");
     setTrackerPrefill(g);
     setAuth("tracker");
   }
