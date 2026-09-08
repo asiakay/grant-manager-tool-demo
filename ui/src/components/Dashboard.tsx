@@ -33,6 +33,7 @@ interface Props {
   onGoToCompliance?: () => void;
   onGoToTracker?: () => void;
   onTrackGrant?: (grant: import("../types").Grant) => void;
+  onStartTour?: () => void;
 }
 
 const INITIAL_FILTERS: FilterState = {
@@ -46,7 +47,7 @@ const INITIAL_FILTERS: FilterState = {
   maxAward: "",
 };
 
-export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance, onGoToTracker, onTrackGrant }: Props) {
+export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance, onGoToTracker, onTrackGrant, onStartTour }: Props) {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [grantsTotal, setGrantsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -218,11 +219,25 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
             </button>
           )}
 
+          {onStartTour && (
+            <button
+              onClick={onStartTour}
+              className="btn-ghost px-2.5 gap-1.5 hidden sm:flex"
+              title="Take a tour"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-xs">Tour</span>
+            </button>
+          )}
+
           {onGoToTracker && (
             <button
               onClick={onGoToTracker}
               className="btn-outline gap-1.5 hidden sm:flex border-emerald-700 text-emerald-300 hover:bg-emerald-900/30"
               aria-label="Grant tracker"
+              data-tour="tracker-btn"
             >
               <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -377,6 +392,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
             onClick={() => setChatOpen(true)}
             className="btn-primary gap-1.5"
             aria-label="Open AI chat"
+            data-tour="chat-btn"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -423,10 +439,12 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
                 <span>Grants are sorted by <strong>personalized match score</strong> based on your profile.</span>
               </div>
             )}
-            <SummaryCards grants={grants} />
+            <div data-tour="summary-cards">
+              <SummaryCards grants={grants} />
+            </div>
 
             {/* Filters */}
-            <div className="card space-y-4">
+            <div className="card space-y-4" data-tour="filters">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-white">
                   Filters
@@ -594,7 +612,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
             )}
 
             {/* Table */}
-            <div className="card p-0 overflow-hidden">
+            <div className="card p-0 overflow-hidden" data-tour="grant-table">
               <GrantTable
                 grants={grants}
                 filters={filters}

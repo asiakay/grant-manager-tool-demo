@@ -11,6 +11,7 @@ import ComplianceDashboard from "./components/ComplianceDashboard";
 import GrantTracker from "./components/GrantTracker";
 import Onboarding from "./components/Onboarding";
 import OnboardingChecklist from "./components/OnboardingChecklist";
+import Tour from "./components/Tour";
 import FeedbackBar from "./components/FeedbackBar";
 import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
@@ -28,6 +29,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [trackerPrefill, setTrackerPrefill] = useState<Grant | null>(null);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   useEffect(() => {
     checkAuth().then(async (ok) => {
@@ -127,7 +129,7 @@ export default function App() {
   }
 
   if (auth === "landing") {
-    return <LandingPage onSignUp={() => setAuth("signup")} onLogin={() => setAuth("unauthenticated")} />;
+    return <LandingPage onSignUp={() => setAuth("signup")} onLogin={() => setAuth("unauthenticated")} onDemo={handleDemoLoginSuccess} />;
   }
 
   if (auth === "signup") {
@@ -189,7 +191,7 @@ export default function App() {
         <Onboarding
           username={username || "there"}
           hasProfile={!!profile}
-          onFinish={() => { setIsNewUser(false); setAuth("authenticated"); }}
+          onFinish={() => { setIsNewUser(false); setShowTour(true); setAuth("authenticated"); }}
           onGoToProfile={() => setAuth("profile-setup")}
         />
         <AnonymousFeedbackWidget />
@@ -269,8 +271,10 @@ export default function App() {
         onGoToCompliance={() => setAuth("compliance")}
         onGoToTracker={goToTracker}
         onTrackGrant={trackGrant}
+        onStartTour={() => setShowTour(true)}
       />
       {username && <OnboardingChecklist username={username} onGoToTracker={goToTracker} />}
+      {showTour && <Tour onFinish={() => setShowTour(false)} />}
       <FeedbackBar />
       <AnonymousFeedbackWidget />
     </>

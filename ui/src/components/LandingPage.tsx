@@ -1,9 +1,10 @@
 interface Props {
   onSignUp: () => void;
   onLogin: () => void;
+  onDemo?: () => void;
 }
 
-export default function LandingPage({ onSignUp, onLogin }: Props) {
+export default function LandingPage({ onSignUp, onLogin, onDemo }: Props) {
   return (
     <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", background: "#f8fafc", color: "#0f172a", lineHeight: "1.6", minHeight: "100vh" }}>
 
@@ -36,8 +37,13 @@ export default function LandingPage({ onSignUp, onLogin }: Props) {
           <button onClick={onSignUp} style={{ background: "#2563eb", color: "#fff", border: "none", cursor: "pointer", padding: "0.75rem 1.75rem", borderRadius: 8, fontSize: "1rem", fontWeight: 600, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
             Get started free
           </button>
-          <button onClick={onLogin} style={{ background: "transparent", color: "#2563eb", border: "2px solid #2563eb", cursor: "pointer", padding: "0.75rem 1.75rem", borderRadius: 8, fontSize: "1rem", fontWeight: 600 }}>
-            Log in to your account
+          {onDemo && (
+            <button onClick={onDemo} style={{ background: "transparent", color: "#2563eb", border: "2px solid #2563eb", cursor: "pointer", padding: "0.75rem 1.75rem", borderRadius: 8, fontSize: "1rem", fontWeight: 600 }}>
+              Try the demo
+            </button>
+          )}
+          <button onClick={onLogin} style={{ background: "transparent", color: "#64748b", border: "2px solid #e2e8f0", cursor: "pointer", padding: "0.75rem 1.75rem", borderRadius: 8, fontSize: "1rem", fontWeight: 600 }}>
+            Log in
           </button>
         </div>
       </section>
