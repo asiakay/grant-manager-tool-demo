@@ -32,6 +32,7 @@ interface Props {
   onGoToAdmin?: () => void;
   onGoToCompliance?: () => void;
   onGoToTracker?: () => void;
+  onTrackGrant?: (grant: import("../types").Grant) => void;
 }
 
 const INITIAL_FILTERS: FilterState = {
@@ -45,7 +46,7 @@ const INITIAL_FILTERS: FilterState = {
   maxAward: "",
 };
 
-export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance, onGoToTracker }: Props) {
+export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGoToCompliance, onGoToTracker, onTrackGrant }: Props) {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [grantsTotal, setGrantsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -619,6 +620,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
         onToggleCandidate={toggleCandidate}
         profile={profile}
         username={username}
+        onTrack={onTrackGrant ? (g) => { setSelectedGrant(null); onTrackGrant(g); } : undefined}
       />
 
       {/* Chat panel */}

@@ -47,6 +47,7 @@ interface Props {
   onToggleCandidate: (name: string) => void;
   profile?: UserProfile | null;
   username?: string;
+  onTrack?: (grant: Grant) => void;
 }
 
 const COLUMNS: (keyof Grant)[] = [
@@ -236,7 +237,7 @@ function ScoreBadge({ value }: { value: string | number }) {
   );
 }
 
-export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate, profile, username }: Props) {
+export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist, candidates, onToggleWatchlist, onToggleCandidate, profile, username, onTrack }: Props) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -388,7 +389,19 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
               <DrawerErrorBoundary>
-              {/* Source URL + Summarize */}
+              {/* Track + Source URL + Summarize */}
+              {onTrack && (
+                <button
+                  type="button"
+                  onClick={() => onTrack(grant)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Start application
+                </button>
+              )}
               {grant["Source URL"] && (
                 <div className="flex items-center gap-3 flex-wrap">
                   <a

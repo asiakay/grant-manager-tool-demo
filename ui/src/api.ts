@@ -671,7 +671,8 @@ export interface GrantMeta {
 
 export type Periodicity = "one-time" | "monthly" | "quarterly" | "annual" | "custom";
 export type LifecycleStatus = "applied" | "offered" | "funded" | "closed";
-export type KrStatus = "met" | "partial" | "missed";
+export type OutputStatus = "met" | "partial" | "missed";
+export type OutcomeStatus = "met" | "partial" | "missed" | "reported" | "not yet reported";
 export type PeriodStatus = "upcoming" | "overdue" | "submitted";
 
 export interface GrantApplication {
@@ -688,34 +689,41 @@ export interface GrantApplication {
   custom_interval_days: number | null;
   period_horizon: number;
   notes: string | null;
+  logic_inputs: string | null;
+  logic_activities: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
-  okr_count?: number;
+  logic_count?: number;
   overdue_count?: number;
   upcoming_count?: number;
 }
 
-export interface GrantOkr {
+export interface GrantOutput {
   id: number;
   grant_application_id: number;
-  objective: string;
-  revision_count: number;
-  last_revised_at: string | null;
-  revision_notes: string | null;
-  created_at: string;
-  keyResults?: GrantKeyResult[];
-}
-
-export interface GrantKeyResult {
-  id: number;
-  okr_id: number;
   description: string;
   target_value: number;
   unit: string;
   created_at: string;
   actual_value?: number | null;
-  computed_status?: KrStatus | null;
+  computed_status?: OutputStatus | null;
+  logged_at?: string | null;
+  reporting_period_id?: number | null;
+}
+
+export interface GrantOutcome {
+  id: number;
+  grant_application_id: number;
+  description: string;
+  is_narrative: number;
+  target_value: number | null;
+  target_narrative: string | null;
+  unit: string;
+  created_at: string;
+  actual_value?: number | null;
+  actual_narrative?: string | null;
+  computed_status?: OutcomeStatus | null;
   logged_at?: string | null;
   reporting_period_id?: number | null;
 }
@@ -726,7 +734,7 @@ export interface ReportingPeriod {
   period_number: number;
   due_date: string;
   status: PeriodStatus;
-  effective_status?: PeriodStatus;
+  effective_status: PeriodStatus;
   submitted_at: string | null;
   submitted_by: string | null;
   notes: string | null;
@@ -735,7 +743,8 @@ export interface ReportingPeriod {
 
 export interface TrackerDetail {
   application: GrantApplication;
-  okrs: GrantOkr[];
+  outputs: GrantOutput[];
+  outcomes: GrantOutcome[];
   reportingPeriods: ReportingPeriod[];
 }
 
@@ -764,6 +773,8 @@ export async function createTrackerApplication(data: {
   period_horizon?: number;
   notes?: string;
   program_id?: number;
+  logic_inputs?: string;
+  logic_activities?: string;
 }): Promise<{ id: number }> {
   const res = await fetch(`${BASE}/api/tracker/applications`, {
     method: "POST",
@@ -792,11 +803,11 @@ export async function updateTrackerApplication(
   await handleResponse<{ ok: boolean }>(res);
 }
 
-export async function addTrackerOkr(
+export async function addOutput(
   appId: number,
-  data: { objective: string; keyResults?: { description: string; target_value: number; unit?: string }[] }
+  data: { description: string; target_value: number; unit?: string }
 ): Promise<{ id: number }> {
-  const res = await fetch(`${BASE}/api/tracker/applications/${appId}/okrs`, {
+  const res = await fetch(`${BASE}/api/tracker/applications/${appId}/outputs`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
@@ -805,11 +816,11 @@ export async function addTrackerOkr(
   return handleResponse<{ id: number }>(res);
 }
 
-export async function reviseOkr(
-  okrId: number,
-  data: { objective?: string; revision_notes?: string }
+export async function updateOutput(
+  outputId: number,
+  data: { description?: string; target_value?: number; unit?: string }
 ): Promise<void> {
-  const res = await fetch(`${BASE}/api/tracker/okrs/${okrId}`, {
+  const res = await fetch(`${BASE}/api/tracker/outputs/${outputId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
@@ -818,11 +829,17 @@ export async function reviseOkr(
   await handleResponse<{ ok: boolean }>(res);
 }
 
-export async function addKeyResult(
-  okrId: number,
-  data: { description: string; target_value: number; unit?: string }
+export async function addOutcome(
+  appId: number,
+  data: {
+    description: string;
+    is_narrative?: boolean;
+    target_value?: number;
+    target_narrative?: string;
+    unit?: string;
+  }
 ): Promise<{ id: number }> {
-  const res = await fetch(`${BASE}/api/tracker/okrs/${okrId}/key-results`, {
+  const res = await fetch(`${BASE}/api/tracker/applications/${appId}/outcomes`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
@@ -831,15 +848,31 @@ export async function addKeyResult(
   return handleResponse<{ id: number }>(res);
 }
 
+export async function updateOutcome(
+  outcomeId: number,
+  data: { description?: string; target_value?: number; target_narrative?: string; unit?: string }
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/tracker/outcomes/${outcomeId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
 export async function logActuals(
   periodId: number,
-  actuals: { key_result_id: number; actual_value: number }[]
+  data: {
+    output_actuals?: { output_id: number; actual_value: number }[];
+    outcome_actuals?: { outcome_id: number; actual_value?: number; actual_narrative?: string }[];
+  }
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/tracker/periods/${periodId}/actuals`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...csrfHeaders() },
     credentials: "include",
-    body: JSON.stringify({ actuals }),
+    body: JSON.stringify(data),
   });
   await handleResponse<{ ok: boolean }>(res);
 }
@@ -847,6 +880,11 @@ export async function logActuals(
 export async function fetchTrackerDashboard(): Promise<DashboardPeriod[]> {
   const res = await fetch(`${BASE}/api/tracker/dashboard`, { credentials: "include" });
   return handleResponse<DashboardPeriod[]>(res);
+}
+
+export async function fetchGrantOutcomesForMatching(appId: number): Promise<GrantOutcome[]> {
+  const res = await fetch(`${BASE}/api/tracker/applications/${appId}/outcomes`, { credentials: "include" });
+  return handleResponse<GrantOutcome[]>(res);
 }
 
 export async function summarizeGrant(sourceUrl: string, meta?: GrantMeta): Promise<GrantSummary> {
