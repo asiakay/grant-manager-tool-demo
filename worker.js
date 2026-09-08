@@ -2863,7 +2863,8 @@ ${grantCards}
       const periods = [];
       const base = new Date(fundedDate);
       if (isNaN(base.getTime())) return periods;
-      const count = horizon ?? 4;
+      const MAX_HORIZON = 24;
+      const count = Math.min(Math.max(1, Number(horizon) || 4), MAX_HORIZON);
 
       if (periodicity === "one-time") {
         const d = new Date(base);
@@ -2958,7 +2959,7 @@ ${grantCards}
         lStatus,
         pType,
         custom_interval_days ?? null,
-        period_horizon ?? 4,
+        Math.min(Math.max(1, Number(period_horizon) || 4), 24),
         notes ?? null,
         username,
       ).run();
@@ -2966,7 +2967,7 @@ ${grantCards}
 
       // Auto-generate reporting periods if funded_date is set
       if (funded_date && appId) {
-        const periods = generateReportingPeriods(funded_date, pType, custom_interval_days, period_horizon ?? 4);
+        const periods = generateReportingPeriods(funded_date, pType, custom_interval_days, period_horizon);
         for (const p of periods) {
           await env.GRANT_MANAGER_DB.prepare(
             `INSERT OR IGNORE INTO reporting_periods (grant_application_id, period_number, due_date) VALUES (?, ?, ?)`
@@ -3048,7 +3049,7 @@ ${grantCards}
         const newStatus          = validStatus.includes(body.lifecycle_status) ? body.lifecycle_status : prev.lifecycle_status;
         const newPeriodicity     = validPeriodicity.includes(body.periodicity) ? body.periodicity : prev.periodicity;
         const newCustomDays      = body.custom_interval_days !== undefined ? (body.custom_interval_days ?? null) : prev.custom_interval_days;
-        const newHorizon         = body.period_horizon ?? prev.period_horizon;
+        const newHorizon         = Math.min(Math.max(1, Number(body.period_horizon ?? prev.period_horizon) || 4), 24);
         const newNotes           = body.notes !== undefined ? (body.notes || null) : prev.notes;
         const newLogicInputs     = body.logic_inputs !== undefined ? (body.logic_inputs || null) : prev.logic_inputs;
         const newLogicActivities = body.logic_activities !== undefined ? (body.logic_activities || null) : prev.logic_activities;
