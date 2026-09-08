@@ -9,6 +9,7 @@ import GrantTable from "./GrantTable";
 import GrantDrawer from "./GrantDrawer";
 import ChatPanel from "./ChatPanel";
 import ProfileSetup from "./ProfileSetup";
+import NotificationPrefsModal from "./NotificationPrefs";
 
 const WATCHLIST_KEY = "gm_watchlist";
 const CANDIDATES_KEY = "gm_candidates";
@@ -69,6 +70,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showForecast, setShowForecast] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     const profilePromise = fetchProfile().then((p) => { setProfile(p); return p; }).catch(() => null);
@@ -274,6 +276,17 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
           )}
 
           <button
+            onClick={() => setNotifOpen(true)}
+            className="btn-ghost px-2.5 hidden sm:flex"
+            title="Deadline reminders"
+            aria-label="Deadline reminders"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          </button>
+
+          <button
             onClick={handleExport}
             className="btn-outline hidden sm:flex gap-1.5"
             aria-label="Export grants to CSV"
@@ -363,6 +376,16 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
                       Admin Panel
                     </button>
                   )}
+                  <button
+                    role="menuitem"
+                    onClick={() => { setNotifOpen(true); setMobileMenuOpen(false); }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors border-t border-gray-700/50"
+                  >
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    Deadline Reminders
+                  </button>
                   <button
                     role="menuitem"
                     onClick={() => { handleExport(); setMobileMenuOpen(false); }}
@@ -643,6 +666,9 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
 
       {/* Chat panel */}
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} onGrantLink={openGrantByName} />
+
+      {/* Notification prefs modal */}
+      {notifOpen && <NotificationPrefsModal onClose={() => setNotifOpen(false)} />}
 
       {/* Profile modal */}
       {profileOpen && (

@@ -245,6 +245,7 @@ export default function App() {
           onBack={() => { setTrackerPrefill(null); setAuth("authenticated"); }}
           prefill={trackerPrefill ?? undefined}
           onCreateApp={username ? () => markChecklist(username, "track") : undefined}
+          username={username || undefined}
         />
         <FeedbackBar />
         <AnonymousFeedbackWidget />

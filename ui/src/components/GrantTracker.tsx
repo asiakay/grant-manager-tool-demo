@@ -11,6 +11,8 @@ import {
   addOutcome,
   updateOutcome,
   logActuals,
+  fetchReminderOverride,
+  saveReminderOverride,
   type GrantApplication,
   type TrackerDetail,
   type DashboardPeriod,
@@ -27,6 +29,7 @@ interface Props {
   onBack: () => void;
   prefill?: Grant;
   onCreateApp?: () => void;
+  username?: string;
 }
 
 type Tab = "dashboard" | "applications" | "detail";
@@ -689,13 +692,58 @@ function LogActualsModal({ period, outputs, outcomes, onSave, onClose }: LogActu
 }
 
 // ── Detail View ────────────────────────────────────────────────────────────────
+function PeriodRow({ period: p, eff, username, onLog }: { period: ReportingPeriod; eff: string; username?: string; onLog: () => void }) {
+  const [override, setOverride] = useState<0 | 1 | null>(null);
+  useEffect(() => {
+    if (username) fetchReminderOverride("period", String(p.id)).then((r) => setOverride(r.enabled));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.id, username]);
+
+  async function cycleOverride() {
+    const next = override === null ? 1 : override === 1 ? 0 : null;
+    setOverride(next);
+    await saveReminderOverride("period", String(p.id), next);
+  }
+
+  return (
+    <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3 flex-wrap">
+      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PERIOD_COLORS[eff]}`}>
+        {eff.charAt(0).toUpperCase() + eff.slice(1)}
+      </span>
+      <span className="text-sm text-white flex-1">Period {p.period_number} — due {fmt(p.due_date)}</span>
+      <span className={`text-xs ${eff === "overdue" ? "text-red-400" : "text-gray-400"}`}>
+        {eff !== "submitted" ? daysUntil(p.due_date) : `Submitted ${fmt(p.submitted_at)}`}
+      </span>
+      {username && (
+        <button
+          onClick={cycleOverride}
+          title="Cycle reminder: default → on → muted"
+          className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+            override === 1 ? "bg-brand-900/40 border-brand-600 text-brand-300" :
+            override === 0 ? "bg-gray-700 border-gray-600 text-gray-500 line-through" :
+            "bg-gray-700 border-gray-600 text-gray-400"
+          }`}
+        >
+          {override === 1 ? "Remind on" : override === 0 ? "Muted" : "Default"}
+        </button>
+      )}
+      {eff !== "submitted" && (
+        <button onClick={onLog} className="text-xs px-3 py-1 bg-brand-700 hover:bg-brand-600 text-white rounded">
+          Log actuals
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface DetailViewProps {
   appId: number;
   onBack: () => void;
   onRefreshList: () => void;
+  username?: string;
 }
 
-function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
+function DetailView({ appId, onBack, onRefreshList, username }: DetailViewProps) {
   const [detail, setDetail] = useState<TrackerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
@@ -792,20 +840,13 @@ function DetailView({ appId, onBack, onRefreshList }: DetailViewProps) {
             {reportingPeriods.map((p) => {
               const eff = p.effective_status ?? (p.status === "upcoming" && p.due_date < today ? "overdue" : p.status);
               return (
-                <div key={p.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PERIOD_COLORS[eff]}`}>
-                    {eff.charAt(0).toUpperCase() + eff.slice(1)}
-                  </span>
-                  <span className="text-sm text-white flex-1">Period {p.period_number} — due {fmt(p.due_date)}</span>
-                  <span className={`text-xs ${eff === "overdue" ? "text-red-400" : "text-gray-400"}`}>
-                    {eff !== "submitted" ? daysUntil(p.due_date) : `Submitted ${fmt(p.submitted_at)}`}
-                  </span>
-                  {eff !== "submitted" && (
-                    <button onClick={() => setLogPeriod(p)} className="text-xs px-3 py-1 bg-brand-700 hover:bg-brand-600 text-white rounded">
-                      Log actuals
-                    </button>
-                  )}
-                </div>
+                <PeriodRow
+                  key={p.id}
+                  period={p}
+                  eff={eff}
+                  username={username}
+                  onLog={() => setLogPeriod(p)}
+                />
               );
             })}
           </div>
@@ -1090,7 +1131,7 @@ function AppsListTab({ apps, loading, onSelect, onNew }: AppsListTabProps) {
 }
 
 // ── Main GrantTracker ──────────────────────────────────────────────────────────
-export default function GrantTracker({ onBack, prefill, onCreateApp }: Props) {
+export default function GrantTracker({ onBack, prefill, onCreateApp, username }: Props) {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [apps, setApps] = useState<GrantApplication[]>([]);
   const [appsLoading, setAppsLoading] = useState(true);
@@ -1160,6 +1201,7 @@ export default function GrantTracker({ onBack, prefill, onCreateApp }: Props) {
             appId={selectedAppId}
             onBack={() => { setTab("applications"); setSelectedAppId(null); }}
             onRefreshList={loadApps}
+            username={username}
           />
         )}
       </div>

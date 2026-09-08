@@ -2,7 +2,7 @@ import { Component, useEffect, useRef, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import type { Grant } from "../types";
 import type { UserProfile } from "../api";
-import { updateNotes, summarizeGrant, type GrantSummary, type GrantMeta } from "../api";
+import { updateNotes, summarizeGrant, fetchReminderOverride, saveReminderOverride, type GrantSummary, type GrantMeta } from "../api";
 
 class DrawerErrorBoundary extends Component<{ children: ReactNode }, { caught: boolean; message: string }> {
   constructor(props: { children: ReactNode }) {
@@ -245,8 +245,11 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
   const [summarizing, setSummarizing] = useState(false);
   const [liveSummary, setLiveSummary] = useState<GrantSummary | null>(null);
   const [summarizeError, setSummarizeError] = useState("");
+  const [reminderOverride, setReminderOverride] = useState<0 | 1 | null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+
+  const grantRefId = grant ? String((grant as Record<string, unknown>).rowid ?? grant.Name) : "";
 
   useEffect(() => {
     if (grant) {
@@ -255,10 +258,21 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
       setSaveError("");
       setLiveSummary(null);
       setSummarizeError("");
+      setReminderOverride(null);
       // Move focus into the drawer when it opens
       setTimeout(() => closeBtnRef.current?.focus(), 50);
+      if (username) {
+        fetchReminderOverride("deadline", grantRefId).then((r) => setReminderOverride(r.enabled));
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grant]);
+
+  async function cycleReminderOverride() {
+    const next = reminderOverride === null ? 1 : reminderOverride === 1 ? 0 : null;
+    setReminderOverride(next);
+    await saveReminderOverride("deadline", grantRefId, next);
+  }
 
   async function handleSummarize() {
     if (!grant || !grant["Source URL"]) return;
@@ -578,6 +592,31 @@ export default function GrantDrawer({ grant, onClose, onGrantUpdated, watchlist,
                   <p className="text-red-400 text-xs mt-1">{saveError}</p>
                 )}
               </div>
+
+              {/* Reminder override (only shown when logged in) */}
+              {username && (
+                <div className="flex items-center justify-between py-2 border-t border-gray-800">
+                  <div>
+                    <p className="text-sm text-gray-300">Deadline reminder</p>
+                    <p className="text-xs text-gray-500">
+                      {reminderOverride === null ? "Using global preference" : reminderOverride === 1 ? "Forced on for this grant" : "Muted for this grant"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={cycleReminderOverride}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      reminderOverride === 1
+                        ? "bg-brand-900/40 border-brand-600 text-brand-300"
+                        : reminderOverride === 0
+                        ? "bg-gray-800 border-gray-600 text-gray-500 line-through"
+                        : "bg-gray-800 border-gray-700 text-gray-400"
+                    }`}
+                    title="Cycle: default → on → off"
+                  >
+                    {reminderOverride === 1 ? "On" : reminderOverride === 0 ? "Muted" : "Default"}
+                  </button>
+                </div>
+              )}
               </DrawerErrorBoundary>
             </div>
 
