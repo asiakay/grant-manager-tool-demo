@@ -2872,12 +2872,23 @@ ${grantCards}
         return periods;
       }
 
+      // Adds months without overflowing — clamps day to the last valid day
+      // of the target month so e.g. Jan 31 + 1 month → Feb 28, not Mar 3.
+      function addMonthsClamped(base, months) {
+        const targetMonth = base.getMonth() + months;
+        const y = base.getFullYear() + Math.floor(targetMonth / 12);
+        const m = ((targetMonth % 12) + 12) % 12;
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        return new Date(y, m, Math.min(base.getDate(), lastDay));
+      }
+
       for (let i = 1; i <= count; i++) {
-        const d = new Date(base);
-        if (periodicity === "monthly")        d.setMonth(d.getMonth() + i);
-        else if (periodicity === "quarterly") d.setMonth(d.getMonth() + i * 3);
-        else if (periodicity === "annual")    d.setFullYear(d.getFullYear() + i);
+        let d;
+        if (periodicity === "monthly")        d = addMonthsClamped(base, i);
+        else if (periodicity === "quarterly") d = addMonthsClamped(base, i * 3);
+        else if (periodicity === "annual")    d = addMonthsClamped(base, i * 12);
         else if (periodicity === "custom") {
+          d = new Date(base);
           const days = Number(customIntervalDays) || 90;
           d.setDate(d.getDate() + days * i);
         } else break;
