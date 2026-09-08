@@ -3177,7 +3177,9 @@ ${grantCards}
       const outcomeActuals = Array.isArray(body.outcome_actuals) ? body.outcome_actuals : [];
 
       for (const a of outputActuals) {
-        const output = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_outputs WHERE id = ?`).bind(a.output_id).first();
+        const output = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT * FROM grant_outputs WHERE id = ? AND grant_application_id = ?`
+        ).bind(a.output_id, period.grant_application_id).first();
         if (!output) continue;
         const status = computeOutputStatus(Number(a.actual_value), output.target_value);
         await env.GRANT_MANAGER_DB.prepare(
@@ -3188,7 +3190,9 @@ ${grantCards}
       }
 
       for (const a of outcomeActuals) {
-        const outcome = await env.GRANT_MANAGER_DB.prepare(`SELECT * FROM grant_outcomes WHERE id = ?`).bind(a.outcome_id).first();
+        const outcome = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT * FROM grant_outcomes WHERE id = ? AND grant_application_id = ?`
+        ).bind(a.outcome_id, period.grant_application_id).first();
         if (!outcome) continue;
         const status = computeOutcomeStatus(
           a.actual_value != null ? Number(a.actual_value) : null,
