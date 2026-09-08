@@ -247,7 +247,12 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
                   id="mission-input"
                   className="input resize-none h-24 leading-relaxed text-sm"
                   value={mission}
-                  onChange={(e) => setMission(e.target.value)}
+                  onChange={(e) => {
+                    setMission(e.target.value);
+                    // Invalidate keywords and rationale — they belong to the previous mission text
+                    if (keywords.length) setKeywords([]);
+                    if (rationale) setRationale("");
+                  }}
                   placeholder="e.g. We are a nonprofit that advances health equity through community-based clinical research and workforce training…"
                 />
               </div>
