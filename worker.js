@@ -802,9 +802,141 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(syncGrantsWithD1(env, ""));
+    ctx.waitUntil(
+      Promise.all([
+        syncGrantsWithD1(env, ""),
+        sendDeadlineReminders(env),
+      ])
+    );
   },
 };
+
+async function sendDeadlineReminders(env) {
+  if (!env.GRANT_MANAGER_DB || !env.RESEND_API_KEY) return;
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Users who have enabled reminders
+  const { results: users } = await env.GRANT_MANAGER_DB.prepare(
+    `SELECT username, days_before, remind_deadlines, remind_periods
+     FROM user_notification_prefs WHERE reminders_enabled = 1`
+  ).all();
+
+  for (const user of users) {
+    const { username, days_before, remind_deadlines, remind_periods } = user;
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + days_before);
+    const targetDateStr = targetDate.toISOString().slice(0, 10);
+    const items = [];
+
+    // ── Application deadlines ──────────────────────────────────────────────────
+    if (remind_deadlines) {
+      const { results: grants } = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT rowid, name, sponsor, deadline FROM programs
+         WHERE deadline >= ? AND deadline <= ? AND deadline != ''`
+      ).bind(today, targetDateStr).all();
+
+      for (const g of grants) {
+        const refId = String(g.rowid);
+        const override = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT enabled FROM reminder_overrides WHERE username = ? AND type = 'deadline' AND reference_id = ?`
+        ).bind(username, refId).first();
+        // skip if explicitly disabled
+        if (override && override.enabled === 0) continue;
+        // skip if already sent today
+        const alreadySent = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT 1 FROM reminder_log WHERE username = ? AND type = 'deadline' AND reference_id = ? AND window_key = ?`
+        ).bind(username, refId, today).first();
+        if (alreadySent) continue;
+
+        items.push({ type: "deadline", refId, label: g.name, sponsor: g.sponsor || "", date: g.deadline });
+      }
+    }
+
+    // ── Reporting period due dates ─────────────────────────────────────────────
+    if (remind_periods) {
+      const { results: periods } = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT rp.id, rp.due_date, rp.period_number, ga.grant_name
+         FROM reporting_periods rp
+         JOIN grant_applications ga ON ga.id = rp.grant_application_id
+         WHERE ga.created_by = ? AND rp.status = 'upcoming'
+           AND rp.due_date >= ? AND rp.due_date <= ?`
+      ).bind(username, today, targetDateStr).all();
+
+      for (const p of periods) {
+        const refId = String(p.id);
+        const override = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT enabled FROM reminder_overrides WHERE username = ? AND type = 'period' AND reference_id = ?`
+        ).bind(username, refId).first();
+        if (override && override.enabled === 0) continue;
+        const alreadySent = await env.GRANT_MANAGER_DB.prepare(
+          `SELECT 1 FROM reminder_log WHERE username = ? AND type = 'period' AND reference_id = ? AND window_key = ?`
+        ).bind(username, refId, today).first();
+        if (alreadySent) continue;
+
+        items.push({ type: "period", refId, label: p.grant_name, sponsor: "", date: p.due_date, period: p.period_number });
+      }
+    }
+
+    if (!items.length) continue;
+
+    // ── Build email ────────────────────────────────────────────────────────────
+    const rows = items.map((it) => {
+      const daysLeft = Math.round((new Date(it.date).getTime() - Date.now()) / 86400000);
+      const dayLabel = daysLeft <= 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
+      if (it.type === "deadline") {
+        return `<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0"><strong>${escapeHtml(it.label)}</strong>${it.sponsor ? ` — ${escapeHtml(it.sponsor)}` : ""}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap">Application deadline <strong>${escapeHtml(it.date)}</strong> (${dayLabel})</td></tr>`;
+      }
+      return `<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0"><strong>${escapeHtml(it.label)}</strong> — Period ${it.period}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap">Report due <strong>${escapeHtml(it.date)}</strong> (${dayLabel})</td></tr>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;margin:0;padding:24px">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden">
+  <div style="background:#2563eb;padding:20px 24px">
+    <h1 style="color:#fff;font-size:18px;margin:0">Upcoming Deadlines</h1>
+    <p style="color:#bfdbfe;font-size:13px;margin:4px 0 0">Your Grant Manager reminder</p>
+  </div>
+  <div style="padding:20px 24px">
+    <p style="color:#475569;font-size:14px;margin:0 0 16px">
+      You have ${items.length} upcoming deadline${items.length !== 1 ? "s" : ""} within the next ${days_before} day${days_before !== 1 ? "s" : ""}:
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;color:#1e293b">
+      <thead><tr style="background:#f1f5f9">
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Grant / Application</th>
+        <th style="padding:8px 12px;text-align:left;font-weight:600">Due date</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="font-size:12px;color:#94a3b8;margin:16px 0 0">
+      Manage your notification preferences at <a href="https://grantmatch.dev" style="color:#2563eb">grantmatch.dev</a>.
+      To stop these emails, turn off reminders in your notification settings.
+    </p>
+  </div>
+</div>
+</body></html>`;
+
+    try {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "Grant Manager <reminders@grantmatch.dev>",
+          to: [username],
+          subject: `${items.length} deadline${items.length !== 1 ? "s" : ""} coming up — Grant Manager`,
+          html,
+        }),
+      });
+      // Log all sent items
+      for (const it of items) {
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT OR IGNORE INTO reminder_log (username, type, reference_id, window_key) VALUES (?, ?, ?, ?)`
+        ).bind(username, it.type, it.refId, today).run();
+      }
+    } catch (err) {
+      log("error", "reminder_send_failed", { username, error: String(err) });
+    }
+  }
+}
 
 async function handleRequest(request, env, ctx) {
     const requestId = crypto.randomUUID();
@@ -3374,6 +3506,74 @@ ${grantCards}
     }
 
     // ── End Grant Tracker ──────────────────────────────────────────────────────
+
+    // ── Notification Preferences ───────────────────────────────────────────────
+
+    // GET /api/notification-prefs
+    if (url.pathname === "/api/notification-prefs" && request.method === "GET") {
+      if (!loggedIn) return jsonResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      const row = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT reminders_enabled, days_before, remind_deadlines, remind_periods FROM user_notification_prefs WHERE username = ?`
+      ).bind(username).first();
+      return jsonResponse(JSON.stringify(row ?? {
+        reminders_enabled: 0, days_before: 7, remind_deadlines: 1, remind_periods: 1,
+      }));
+    }
+
+    // PUT /api/notification-prefs
+    if (url.pathname === "/api/notification-prefs" && request.method === "PUT") {
+      if (!loggedIn) return jsonResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      const body = await request.json().catch(() => ({}));
+      const enabled = body.reminders_enabled ? 1 : 0;
+      const daysBefore = Math.min(Math.max(1, Number(body.days_before) || 7), 90);
+      const remindDeadlines = body.remind_deadlines !== false ? 1 : 0;
+      const remindPeriods = body.remind_periods !== false ? 1 : 0;
+      await env.GRANT_MANAGER_DB.prepare(
+        `INSERT INTO user_notification_prefs (username, reminders_enabled, days_before, remind_deadlines, remind_periods, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(username) DO UPDATE SET
+           reminders_enabled = excluded.reminders_enabled,
+           days_before = excluded.days_before,
+           remind_deadlines = excluded.remind_deadlines,
+           remind_periods = excluded.remind_periods,
+           updated_at = excluded.updated_at`
+      ).bind(username, enabled, daysBefore, remindDeadlines, remindPeriods).run();
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // GET /api/reminder-override/:type/:refId
+    if (url.pathname.startsWith("/api/reminder-override/") && request.method === "GET") {
+      if (!loggedIn) return jsonResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      const parts = url.pathname.split("/");  // ["","api","reminder-override",type,refId]
+      const type = parts[3]; const refId = parts.slice(4).join("/");
+      const row = await env.GRANT_MANAGER_DB.prepare(
+        `SELECT enabled FROM reminder_overrides WHERE username = ? AND type = ? AND reference_id = ?`
+      ).bind(username, type, refId).first();
+      return jsonResponse(JSON.stringify({ enabled: row ? row.enabled : null }));
+    }
+
+    // PUT /api/reminder-override/:type/:refId
+    if (url.pathname.startsWith("/api/reminder-override/") && request.method === "PUT") {
+      if (!loggedIn) return jsonResponse(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      const parts = url.pathname.split("/");
+      const type = parts[3]; const refId = parts.slice(4).join("/");
+      const body = await request.json().catch(() => ({}));
+      const enabled = body.enabled === null ? null : (body.enabled ? 1 : 0);
+      if (enabled === null) {
+        await env.GRANT_MANAGER_DB.prepare(
+          `DELETE FROM reminder_overrides WHERE username = ? AND type = ? AND reference_id = ?`
+        ).bind(username, type, refId).run();
+      } else {
+        await env.GRANT_MANAGER_DB.prepare(
+          `INSERT INTO reminder_overrides (username, type, reference_id, enabled)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(username, type, reference_id) DO UPDATE SET enabled = excluded.enabled`
+        ).bind(username, type, refId, enabled).run();
+      }
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }
+
+    // ── End Notification Preferences ───────────────────────────────────────────
 
     if (url.pathname === "/logout") {
       const match = cookie.match(/session=([^;]+)/);

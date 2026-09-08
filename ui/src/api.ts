@@ -897,3 +897,42 @@ export async function summarizeGrant(sourceUrl: string, meta?: GrantMeta): Promi
   const res = await fetch(`${BASE}/api/summarize?${params}`, { credentials: "include" });
   return handleResponse<GrantSummary>(res);
 }
+
+// ── Notification Preferences ─────────────────────────────────────────────────
+
+export interface NotificationPrefs {
+  reminders_enabled: 0 | 1;
+  days_before: number;
+  remind_deadlines: 0 | 1;
+  remind_periods: 0 | 1;
+}
+
+export async function fetchNotificationPrefs(): Promise<NotificationPrefs> {
+  const res = await fetch(`${BASE}/api/notification-prefs`, { credentials: "include" });
+  return handleResponse<NotificationPrefs>(res);
+}
+
+export async function saveNotificationPrefs(prefs: Partial<NotificationPrefs>): Promise<void> {
+  const res = await fetch(`${BASE}/api/notification-prefs`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify(prefs),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
+
+export async function fetchReminderOverride(type: "deadline" | "period", refId: string): Promise<{ enabled: 0 | 1 | null }> {
+  const res = await fetch(`${BASE}/api/reminder-override/${type}/${refId}`, { credentials: "include" });
+  return handleResponse<{ enabled: 0 | 1 | null }>(res);
+}
+
+export async function saveReminderOverride(type: "deadline" | "period", refId: string, enabled: 0 | 1 | null): Promise<void> {
+  const res = await fetch(`${BASE}/api/reminder-override/${type}/${refId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    credentials: "include",
+    body: JSON.stringify({ enabled }),
+  });
+  await handleResponse<{ ok: boolean }>(res);
+}
