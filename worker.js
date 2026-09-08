@@ -1068,8 +1068,9 @@ Return ONLY a JSON object with these exact keys:
 - "orgType": one string chosen ONLY from: ${JSON.stringify(ORG_TYPE_OPTIONS)}
 - "stage": one string chosen ONLY from: ${JSON.stringify(STAGE_OPTIONS)}
 - "rationale": one sentence explaining your choices
+- "keywords": array of 3-6 specific grant-search terms derived directly from the mission (short phrases like "community health", "workforce training", "clean energy", "rural broadband" — not generic words)
 
-Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Nonprofit/NGO","stage":"Growth / Scaling","rationale":"The mission focuses on clinical health research delivered by an established nonprofit."}`;
+Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Nonprofit/NGO","stage":"Growth / Scaling","rationale":"The mission focuses on clinical health research delivered by an established nonprofit.","keywords":["community health","clinical research","health equity","workforce training"]}`;
 
       const messages = [{ role: "user", content: prompt }];
       let text = "";
@@ -1104,9 +1105,21 @@ Example: {"focusAreas":["Health & Medicine","Research & Science"],"orgType":"Non
       const orgType = ORG_TYPE_OPTIONS.includes(parsed.orgType) ? parsed.orgType : "";
       const stage = STAGE_OPTIONS.includes(parsed.stage) ? parsed.stage : "";
       const rationale = typeof parsed.rationale === "string" ? parsed.rationale.slice(0, 300) : "";
+      const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
+        .filter(v => typeof v === "string" && v.trim().length > 1 && v.trim().length <= 60)
+        .map(v => v.trim().toLowerCase())
+        .slice(0, 6);
+
+      // Merge keywords + mission into the user's saved profile so live-search can use them
+      if (env.USER_PROFILES) {
+        const existingRaw = await env.USER_PROFILES.get(`profile:${username}`);
+        const existingProfile = existingRaw ? (() => { try { return JSON.parse(existingRaw); } catch { return {}; } })() : {};
+        const updatedProfile = { ...existingProfile, mission: mission.trim().slice(0, 2000), keywords };
+        await env.USER_PROFILES.put(`profile:${username}`, JSON.stringify(updatedProfile));
+      }
 
       log("info", "mission_analyzed", reqCtx);
-      return jsonResponse(JSON.stringify({ focusAreas, orgType, stage, rationale }));
+      return jsonResponse(JSON.stringify({ focusAreas, orgType, stage, rationale, keywords }));
     }
 
     if (url.pathname === "/api/ai-status") {
@@ -1422,9 +1435,7 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
       const pageSize = Math.min(25, Math.max(1, parseInt(url.searchParams.get("pageSize") || "25", 10)));
 
-      if (!q) return jsonResponse(JSON.stringify({ data: [], total: 0, page: 1, pageSize, configured: true }));
-
-      // Load user profile for scoring
+      // Load user profile for scoring AND baseline keyword set
       let lsProfile = {};
       if (env.USER_PROFILES) {
         const raw = await env.USER_PROFILES.get(`profile:${username}`);
@@ -1432,10 +1443,18 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       }
       const lsWeights = (lsProfile.weights && typeof lsProfile.weights === "object") ? lsProfile.weights : null;
 
+      // Combine profile keywords (baseline) with the user-entered query (alternative keyword)
+      const profileKeywords = Array.isArray(lsProfile.keywords)
+        ? lsProfile.keywords.filter(k => typeof k === "string" && k.trim())
+        : [];
+      const effectiveQ = [...profileKeywords, q].filter(Boolean).join(" ").trim();
+
+      if (!effectiveQ) return jsonResponse(JSON.stringify({ data: [], total: 0, page: 1, pageSize, configured: true }));
+
       const searchStart = Date.now();
       let apiData;
       try {
-        apiData = await fetchFromSimplerGrants(env, q, page, pageSize);
+        apiData = await fetchFromSimplerGrants(env, effectiveQ, page, pageSize);
       } catch (err) {
         log("error", "live_search_fetch_failed", { ...reqCtx, error: String(err) });
         return jsonResponse(JSON.stringify({ error: err.message || "Failed to reach Simpler Grants API." }), { status: 502 });

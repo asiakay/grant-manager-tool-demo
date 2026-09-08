@@ -111,6 +111,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
   const [mission, setMission]           = useState(initial?.mission ?? "");
   const [analyzeError, setAnalyzeError] = useState("");
   const [rationale, setRationale]       = useState("");
+  const [keywords, setKeywords]         = useState<string[]>(initial?.keywords ?? []);
 
   // Step 1 state
   const [focusAreas, setFocusAreas] = useState<string[]>(initial?.focusAreas ?? []);
@@ -176,6 +177,14 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
     if (suggestedOrg)          setOrgType(suggestedOrg);
     if (suggestedStage)        setStage(suggestedStage);
 
+    // Extract top keyword hits as specific search terms for Discovery
+    const extractedKeywords = areaScores
+      .slice(0, 3)
+      .flatMap(({ hits }) => hits.slice(0, 3))
+      .filter((kw, i, arr) => arr.indexOf(kw) === i) // dedupe
+      .slice(0, 6);
+    setKeywords(extractedKeywords);
+
     // Build a rationale showing what matched
     const topHits = areaScores.slice(0, 3).map(({ area, hits }) =>
       `${area} (${hits.slice(0, 3).join(", ")})`
@@ -188,7 +197,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ focusAreas, orgType, stage, mission: mission.trim() || undefined, weights: normalize(sliders) });
+    onSave({ focusAreas, orgType, stage, mission: mission.trim() || undefined, keywords: keywords.length ? keywords : undefined, weights: normalize(sliders) });
   }
 
   // ── Step indicator ──────────────────────────────────────────────────────

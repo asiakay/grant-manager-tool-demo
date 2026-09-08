@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import React from "react";
 import type { Grant } from "../types";
 import { mergedSearch, type SearchSource } from "../api";
@@ -61,6 +61,13 @@ export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, o
     label: fa,
     query: FOCUS_AREA_QUERIES[fa] ?? fa,
   }));
+
+  // Pre-populate the search bar with profile keywords when the profile loads and the user hasn't searched yet
+  useEffect(() => {
+    if (!searched && !query && profile?.keywords?.length) {
+      setQuery(profile.keywords.join(" "));
+    }
+  }, [profile?.keywords?.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const PAGE_SIZE = 25;
 
