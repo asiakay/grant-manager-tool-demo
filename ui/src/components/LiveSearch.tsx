@@ -110,7 +110,7 @@ export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, o
   const pageCount = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <section aria-label="Live grant search" className="card space-y-4">
+    <section aria-label="Live grant search" className="card space-y-5">
       <div className="flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" aria-hidden="true" />
         <h2 className="text-sm font-semibold text-white">Live Search</h2>
@@ -217,7 +217,7 @@ export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, o
             )}
           </div>
 
-          <ul className="space-y-2" aria-label="Search results">
+          <ul className="space-y-3" aria-label="Search results">
             {results.map((grant) => {
               const name = String(grant.Name);
               const isCandidate = candidates.has(name);
@@ -227,7 +227,7 @@ export default function LiveSearch({ watchlist, candidates, onToggleWatchlist, o
               return (
                 <li
                   key={name}
-                  className="flex items-start gap-3 rounded-lg bg-gray-800/50 hover:bg-gray-800 transition-colors px-3 py-3 cursor-pointer"
+                  className="flex items-start gap-3 rounded-lg bg-gray-800/50 hover:bg-gray-800 transition-colors px-4 py-4 cursor-pointer"
                   onClick={() => onRowClick(grant)}
                 >
                   <div className="flex-1 min-w-0">

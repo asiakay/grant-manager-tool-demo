@@ -183,7 +183,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       {/* Topbar */}
-      <header className="bg-gray-900 border-b border-gray-800 px-4 lg:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+      <header className="bg-gray-900 border-b border-gray-800 px-4 lg:px-8 py-4 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-xl shrink-0">💰</span>
           <div className="min-w-0">
@@ -396,7 +396,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
       </header>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-5 space-y-5">
+      <main className="flex-1 overflow-y-auto px-4 lg:px-8 py-8 space-y-6">
         {loading && (
           <div className="flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-3">
@@ -425,7 +425,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
             <SummaryCards grants={grants} />
 
             {/* Filters */}
-            <div className="card space-y-3">
+            <div className="card space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-white">
                   Filters
@@ -457,8 +457,8 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
                 </div>
               </div>
 
-              <div className={`${filtersOpen ? "block" : "hidden"} sm:block space-y-3`}>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className={`${filtersOpen ? "block" : "hidden"} sm:block space-y-4`}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="col-span-2 sm:col-span-3 lg:col-span-1">
                   <label htmlFor="filter-search" className="sr-only">Search by name or sponsor</label>
                   <input
