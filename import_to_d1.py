@@ -237,6 +237,8 @@ def run_wrangler(sql_file: str, env: str, wrangler: str) -> int:
     cmd = [wrangler, "d1", "execute", D1_DATABASE, "--file", sql_file]
     if env == "local":
         cmd.append("--local")
+    else:
+        cmd.append("--remote")
     print(f"INFO: Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=False)
     return result.returncode
@@ -297,6 +299,8 @@ def main() -> None:
         cmd = wrangler_cmd + ["d1", "execute", D1_DATABASE, "--file", tmp_path]
         if args.env == "local":
             cmd.append("--local")
+        else:
+            cmd.append("--remote")
         print(f"INFO: Running: {' '.join(cmd)}")
         result = subprocess.run(cmd)
         if result.returncode != 0:
