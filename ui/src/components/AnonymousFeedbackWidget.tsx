@@ -160,7 +160,7 @@ export default function AnonymousFeedbackWidget({ initialFile, defaultOpen, onCl
       {/* Modal backdrop + dialog */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 pb-14 sm:pb-4"
           role="dialog"
           aria-modal="true"
           aria-label="Submit feedback"
