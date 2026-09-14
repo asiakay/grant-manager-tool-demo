@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Category = "bug" | "feature" | "general";
 
@@ -9,11 +9,20 @@ interface FormState {
   email: string;
 }
 
+interface Props {
+  /** Pre-load a screenshot and open the widget immediately */
+  initialFile?: File | null;
+  /** Open the modal on mount */
+  defaultOpen?: boolean;
+  /** Called when the modal closes, so the parent can clear initialFile */
+  onClose?: () => void;
+}
+
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"]);
 
-export default function AnonymousFeedbackWidget() {
-  const [open, setOpen] = useState(false);
+export default function AnonymousFeedbackWidget({ initialFile, defaultOpen, onClose }: Props = {}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
   const [form, setForm] = useState<FormState>({
     message: "",
     category: "general",
@@ -22,6 +31,17 @@ export default function AnonymousFeedbackWidget() {
   });
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+
+  // When a screenshot is passed in from the nav trigger, load it and open the modal
+  useEffect(() => {
+    if (initialFile) {
+      acceptFile(initialFile);
+      setOpen(true);
+      setError("");
+      setFileError("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -42,9 +62,7 @@ export default function AnonymousFeedbackWidget() {
 
   function handleClose() {
     setOpen(false);
-    if (!success) {
-      // keep form state if not submitted so user doesn't lose work
-    }
+    onClose?.();
   }
 
   function handleOpen() {

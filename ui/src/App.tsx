@@ -12,8 +12,7 @@ import GrantTracker from "./components/GrantTracker";
 import Onboarding from "./components/Onboarding";
 import OnboardingChecklist from "./components/OnboardingChecklist";
 import Tour from "./components/Tour";
-import FeedbackBar from "./components/FeedbackBar";
-import AnonymousFeedbackWidget from "./components/AnonymousFeedbackWidget";
+import StickyNav from "./components/StickyNav";
 import { checkAuth, login, fetchProfile, saveProfile, fetchMe, fetchCsrfToken } from "./api";
 import { markChecklist } from "./components/Onboarding";
 import type { UserProfile } from "./api";
@@ -139,7 +138,7 @@ export default function App() {
           onSuccess={(user, password) => handleSignupSuccess(user, password)}
           onBackToLogin={() => setAuth("unauthenticated")}
         />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -151,7 +150,7 @@ export default function App() {
           onBack={() => setAuth("unauthenticated")}
           onSuccess={() => setAuth("unauthenticated")}
         />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -165,7 +164,7 @@ export default function App() {
           onSignUp={() => setAuth("signup")}
           onForgotPassword={() => setAuth("forgot-password")}
         />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -179,8 +178,7 @@ export default function App() {
           onSkip={() => setAuth(isNewUser ? "onboarding" : "authenticated")}
           saving={profileSaving}
         />
-        <FeedbackBar />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -194,7 +192,7 @@ export default function App() {
           onFinish={() => { setIsNewUser(false); setShowTour(true); setAuth("authenticated"); }}
           onGoToProfile={() => setAuth("profile-setup")}
         />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -209,8 +207,7 @@ export default function App() {
           onSaveProfile={handleWelcomeProfileSave}
           saving={profileSaving}
         />
-        <FeedbackBar />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -222,8 +219,7 @@ export default function App() {
           isAdmin={isAdmin}
           onBack={() => setAuth("authenticated")}
         />
-        <FeedbackBar />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -232,8 +228,7 @@ export default function App() {
     return (
       <>
         <ComplianceDashboard onBack={() => setAuth("authenticated")} />
-        <FeedbackBar />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -247,8 +242,7 @@ export default function App() {
           onCreateApp={username ? () => markChecklist(username, "track") : undefined}
           username={username || undefined}
         />
-        <FeedbackBar />
-        <AnonymousFeedbackWidget />
+        <StickyNav />
       </>
     );
   }
@@ -276,8 +270,7 @@ export default function App() {
       />
       {username && <OnboardingChecklist username={username} onGoToTracker={goToTracker} />}
       {showTour && <Tour onFinish={() => setShowTour(false)} />}
-      <FeedbackBar />
-      <AnonymousFeedbackWidget />
+      <StickyNav />
     </>
   );
 }
