@@ -2574,28 +2574,43 @@ ${grantCards}
     // To configure secrets, run:
     //   npx wrangler secret put RESEND_API_KEY
     //   npx wrangler secret put NOTIFICATION_EMAIL
+    //   npx wrangler secret put GITHUB_TOKEN   (fine-grained PAT, Issues: write)
     if (url.pathname === "/api/feedback" && request.method === "POST") {
-      let body;
+      let form;
       try {
-        body = await request.json();
+        form = await request.formData();
       } catch {
-        return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ error: "Invalid form data" }), { status: 400, headers: { "Content-Type": "application/json" } });
       }
 
-      const rating = Number(body.rating);
+      const rating = Number(form.get("rating"));
       if (!rating || rating < 1 || rating > 5) {
         return new Response(JSON.stringify({ error: "rating must be 1–5" }), { status: 400, headers: { "Content-Type": "application/json" } });
       }
 
-      const comment = body.comment ? String(body.comment).slice(0, 2000) : null;
-      const email = body.email ? String(body.email).slice(0, 255) : null;
-      const optedIn = email && body.opted_in ? 1 : 0;
+      const comment = form.get("comment") ? String(form.get("comment")).slice(0, 2000) : null;
+      const email = form.get("email") ? String(form.get("email")).slice(0, 255) : null;
+      const optedIn = email && form.get("opted_in") === "1" ? 1 : 0;
       const submittedAt = new Date().toISOString();
       const userAgent = request.headers.get("User-Agent") || null;
 
+      // Read screenshot if provided (max 4 MB enforced on client; re-check here)
+      const screenshotFile = form.get("screenshot");
+      let screenshotBytes = null;
+      let screenshotMime = null;
+      let screenshotName = null;
+      if (screenshotFile && screenshotFile instanceof File && screenshotFile.size > 0) {
+        if (screenshotFile.size <= 4 * 1024 * 1024) {
+          screenshotBytes = await screenshotFile.arrayBuffer();
+          screenshotMime = screenshotFile.type || "image/png";
+          screenshotName = screenshotFile.name || "screenshot.png";
+        }
+      }
+      const screenshotProvided = screenshotBytes ? 1 : 0;
+
       await env.GRANT_MANAGER_DB.prepare(
-        `INSERT INTO feedback (rating, comment, email, opted_in, submitted_at, user_agent) VALUES (?, ?, ?, ?, ?, ?)`
-      ).bind(rating, comment, email, optedIn, submittedAt, userAgent).run();
+        `INSERT INTO feedback (rating, comment, email, opted_in, submitted_at, user_agent, screenshot_provided) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(rating, comment, email, optedIn, submittedAt, userAgent, screenshotProvided).run();
 
       if (email && optedIn) {
         await env.GRANT_MANAGER_DB.prepare(
@@ -2603,30 +2618,93 @@ ${grantCards}
         ).bind(email, submittedAt).run();
       }
 
+      // Create GitHub issue — failure is non-blocking
+      let issueUrl = null;
+      if (env.GITHUB_TOKEN) {
+        const stars = "⭐".repeat(rating);
+        const issueBody = [
+          `## User Feedback`,
+          ``,
+          `**Rating:** ${stars} ${rating}/5`,
+          `**Comment:** ${comment || "_No comment left_"}`,
+          `**Email:** ${email || "_Not provided_"}`,
+          `**Opted in to updates:** ${optedIn ? "Yes" : "No"}`,
+          `**Submitted at:** ${submittedAt}`,
+          `**User agent:** ${userAgent || "Unknown"}`,
+          screenshotProvided ? `\n_Screenshot attached — see notification email._` : "",
+        ].filter(Boolean).join("\n");
+
+        try {
+          const ghRes = await fetch("https://api.github.com/repos/asiakay/grant-manager-tool-demo/issues", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.GITHUB_TOKEN}`,
+              "Accept": "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "grant-manager-worker",
+            },
+            body: JSON.stringify({
+              title: `User Feedback — ${stars} ${rating}/5`,
+              body: issueBody,
+              labels: ["feedback"],
+            }),
+          });
+          if (ghRes.ok) {
+            const ghData = await ghRes.json();
+            issueUrl = ghData.html_url || null;
+            // Store issue URL back in feedback row
+            if (issueUrl) {
+              await env.GRANT_MANAGER_DB.prepare(
+                `UPDATE feedback SET github_issue_url = ? WHERE submitted_at = ? AND rating = ?`
+              ).bind(issueUrl, submittedAt, rating).run();
+            }
+          } else {
+            const errText = await ghRes.text();
+            console.error("GitHub Issues error:", ghRes.status, errText);
+          }
+        } catch (err) {
+          console.error("GitHub Issues fetch failed:", err);
+        }
+      }
+
       // Send notification email via Resend — failure is non-blocking
       if (env.RESEND_API_KEY && env.NOTIFICATION_EMAIL) {
-        const emailBody = [
+        const emailText = [
           `Star Rating: ⭐ ${rating} / 5`,
           `Comment: ${comment || "No comment left"}`,
           `Email: ${email || "Not provided"}`,
           `Opted in to updates: ${optedIn ? "Yes" : "No"}`,
           `Submitted at: ${submittedAt}`,
           `User agent: ${userAgent || "Unknown"}`,
-        ].join("\n");
+          issueUrl ? `GitHub Issue: ${issueUrl}` : "",
+        ].filter(Boolean).join("\n");
 
         try {
+          const payload = {
+            from: "onboarding@resend.dev",
+            to: env.NOTIFICATION_EMAIL,
+            subject: "New Feedback — Grant Manager Tool",
+            text: emailText,
+          };
+
+          // Attach screenshot if present
+          if (screenshotBytes) {
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(screenshotBytes)));
+            payload.attachments = [{
+              filename: screenshotName,
+              content: base64,
+              type: screenshotMime,
+            }];
+          }
+
           const res = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${env.RESEND_API_KEY}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              from: "onboarding@resend.dev",
-              to: env.NOTIFICATION_EMAIL,
-              subject: "New Feedback — Grant Manager Tool",
-              text: emailBody,
-            }),
+            body: JSON.stringify(payload),
           });
           if (!res.ok) {
             const errText = await res.text();
@@ -2637,7 +2715,7 @@ ${grantCards}
         }
       }
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ success: true, issue_url: issueUrl }), {
         headers: { "Content-Type": "application/json" },
       });
     }
