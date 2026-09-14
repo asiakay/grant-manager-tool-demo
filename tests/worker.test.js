@@ -1275,11 +1275,16 @@ describe("POST /api/admin/set-admin", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/feedback", () => {
+  function feedbackForm(fields) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.append(k, String(v));
+    return fd;
+  }
+
   it("does not require authentication", async () => {
     const res = await fetch(new Request("http://localhost/api/feedback", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating: 4 }),
+      body: feedbackForm({ rating: 4 }),
     }));
     expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(true);
@@ -1288,12 +1293,11 @@ describe("POST /api/feedback", () => {
   it("accepts feedback with all optional fields", async () => {
     const res = await fetch(new Request("http://localhost/api/feedback", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: feedbackForm({
         rating: 5,
         comment: "Extremely helpful tool",
         email: "happy@test.example",
-        opted_in: true,
+        opted_in: "1",
       }),
     }));
     expect(res.status).toBe(200);
@@ -1303,8 +1307,7 @@ describe("POST /api/feedback", () => {
   it("rejects rating of 0 with 400", async () => {
     const res = await fetch(new Request("http://localhost/api/feedback", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating: 0 }),
+      body: feedbackForm({ rating: 0 }),
     }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/rating/i);
@@ -1313,17 +1316,15 @@ describe("POST /api/feedback", () => {
   it("rejects rating above 5 with 400", async () => {
     const res = await fetch(new Request("http://localhost/api/feedback", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating: 6 }),
+      body: feedbackForm({ rating: 6 }),
     }));
     expect(res.status).toBe(400);
   });
 
-  it("rejects invalid JSON with 400", async () => {
+  it("rejects missing rating with 400", async () => {
     const res = await fetch(new Request("http://localhost/api/feedback", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "not valid json{",
+      body: feedbackForm({ comment: "no rating" }),
     }));
     expect(res.status).toBe(400);
   });
@@ -1331,8 +1332,7 @@ describe("POST /api/feedback", () => {
   it("accepts feedback without optional fields", async () => {
     const res = await fetch(new Request("http://localhost/api/feedback", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating: 3 }),
+      body: feedbackForm({ rating: 3 }),
     }));
     expect(res.status).toBe(200);
   });
