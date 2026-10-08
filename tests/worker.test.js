@@ -399,6 +399,7 @@ describe("Protected endpoints reject unauthenticated requests", () => {
   it.each([
     ["GET",  "/api/grants"],
     ["GET",  "/api/me"],
+    ["GET",  "/api/geo"],
     ["GET",  "/api/profile"],
     ["GET",  "/api/csrf"],
     ["POST", "/api/notes"],
@@ -477,6 +478,37 @@ describe("GET /api/me", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.username).toBe("henry@test.example");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /api/geo
+// ---------------------------------------------------------------------------
+
+describe("GET /api/geo", () => {
+  async function geoFor(token, cf) {
+    const res = await fetch(new Request("http://localhost/api/geo", {
+      headers: { Cookie: `session=${token}` },
+      cf,
+    }));
+    expect(res.status).toBe(200);
+    return (await res.json()).state;
+  }
+
+  it("returns the US state code from Cloudflare geolocation", async () => {
+    const { token } = await createAndLoginUser("geo1@test.example", "password1x");
+    expect(await geoFor(token, { country: "US", regionCode: "MA" })).toBe("MA");
+  });
+
+  it("returns null outside the US", async () => {
+    const { token } = await createAndLoginUser("geo2@test.example", "password1x");
+    expect(await geoFor(token, { country: "CA", regionCode: "ON" })).toBeNull();
+  });
+
+  it("returns null when geolocation is missing or malformed", async () => {
+    const { token } = await createAndLoginUser("geo3@test.example", "password1x");
+    expect(await geoFor(token, undefined)).toBeNull();
+    expect(await geoFor(token, { country: "US", regionCode: "<script>" })).toBeNull();
   });
 });
 

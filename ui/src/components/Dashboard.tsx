@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Grant, FilterState } from "../types";
-import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile, fetchMe, fetchLiveGrantsForDashboard } from "../api";
+import { fetchGrants, logout, exportCsv, fetchProfile, saveProfile, fetchMe, fetchLiveGrantsForDashboard, fetchGeoState } from "../api";
 import type { PagedGrants } from "../api";
 import LiveSearch from "./LiveSearch";
 import type { UserProfile } from "../api";
 import SummaryCards from "./SummaryCards";
+import StateResourcesCard from "./StateResourcesCard";
 import GrantTable from "./GrantTable";
 import GrantDrawer from "./GrantDrawer";
 import ChatPanel from "./ChatPanel";
@@ -60,6 +61,7 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [detectedState, setDetectedState] = useState<string | null>(null);
 
   const [watchlist, setWatchlist] = useState<Set<string>>(() => loadSet(WATCHLIST_KEY));
   const [candidates, setCandidates] = useState<Set<string>>(() => loadSet(CANDIDATES_KEY));
@@ -74,6 +76,8 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
 
   useEffect(() => {
     const profilePromise = fetchProfile().then((p) => { setProfile(p); return p; }).catch(() => null);
+    // Fall back to IP-detected state for the state resources card when the profile has none.
+    profilePromise.then((p) => { if (!p?.state) fetchGeoState().then(setDetectedState); });
 
     setLoading(true);
     fetchGrants(1, 500, { includeForecast: showForecast })
@@ -465,6 +469,12 @@ export default function Dashboard({ onLogout, onBackToProfile, onGoToAdmin, onGo
             <div data-tour="summary-cards">
               <SummaryCards grants={grants} />
             </div>
+
+            <StateResourcesCard
+              state={profile?.state || detectedState}
+              detected={!profile?.state}
+              onChangeState={() => setProfileOpen(true)}
+            />
 
             {/* Filters */}
             <div className="card space-y-4" data-tour="filters">
