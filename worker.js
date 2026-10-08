@@ -1508,6 +1508,15 @@ Respond with JSON only — no markdown, no explanation, no extra text:
       return jsonResponse(JSON.stringify({ username, isAdmin: await isAdminUser(env, username) }));
     }
 
+    // Best-guess US state from Cloudflare's edge geolocation (IP-based, so it can be
+    // wrong behind VPNs). Used only to pre-fill the profile's state field.
+    if (url.pathname === "/api/geo") {
+      if (!loggedIn) return new Response("Unauthorized", { status: 401 });
+      const cf = request.cf || {};
+      const state = cf.country === "US" && /^[A-Z]{2}$/.test(cf.regionCode || "") ? cf.regionCode : null;
+      return jsonResponse(JSON.stringify({ state }));
+    }
+
     if (url.pathname === "/api/admin/users" && request.method === "GET") {
       if (!loggedIn) return new Response("Unauthorized", { status: 401 });
       if (!(await isAdminUser(env, username))) return new Response("Forbidden", { status: 403 });

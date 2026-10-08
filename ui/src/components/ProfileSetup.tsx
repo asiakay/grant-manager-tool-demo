@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { UserProfile } from "../api";
-import { DEFAULT_WEIGHTS } from "../api";
+import { DEFAULT_WEIGHTS, fetchGeoState } from "../api";
+import { US_STATES } from "../stateResources";
 import { FOCUS_AREA_KEYWORDS, ORG_TYPE_KEYWORDS, STAGE_KEYWORDS } from "../rankingKeywords";
 
 // ── Step 1 data ────────────────────────────────────────────────────────────
@@ -125,6 +126,22 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
   const [focusAreas, setFocusAreas] = useState<string[]>(initial?.focusAreas ?? []);
   const [orgType, setOrgType]       = useState(initial?.orgType ?? "");
   const [stage, setStage]           = useState(initial?.stage ?? "");
+  const [usState, setUsState]       = useState(initial?.state ?? "");
+  const [stateDetected, setStateDetected] = useState(false);
+  const statePicked = useRef(false);
+
+  // No saved state yet: pre-fill from IP geolocation; the user can change it.
+  useEffect(() => {
+    if (initial?.state) return;
+    let cancelled = false;
+    fetchGeoState().then((code) => {
+      // Don't override a choice the user made while the lookup was in flight.
+      if (cancelled || !code || statePicked.current) return;
+      setUsState(code);
+      setStateDetected(true);
+    });
+    return () => { cancelled = true; };
+  }, [initial?.state]);
 
   // Step 2 state (sliders 0-100)
   const [sliders, setSliders] = useState<UserProfile["weights"]>(
@@ -205,7 +222,7 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ focusAreas, orgType, stage, mission: mission.trim() || undefined, keywords: keywords.length ? keywords : undefined, weights: normalize(sliders) });
+    onSave({ focusAreas, orgType, stage, state: usState || undefined, mission: mission.trim() || undefined, keywords: keywords.length ? keywords : undefined, weights: normalize(sliders) });
   }
 
   // ── Step indicator ──────────────────────────────────────────────────────
@@ -347,6 +364,30 @@ export default function ProfileSetup({ initial, onSave, onSkip, saving }: Props)
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* State */}
+            <div>
+              <label htmlFor="state-select" className="block text-sm font-semibold text-white mb-1">
+                State
+                <span className="ml-2 text-xs font-normal text-gray-400">optional</span>
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                {stateDetected
+                  ? "Detected from your location. Change it if that's not right."
+                  : "Used to feature state business resources on your dashboard."}
+              </p>
+              <select
+                id="state-select"
+                className="input text-sm"
+                value={usState}
+                onChange={(e) => { statePicked.current = true; setUsState(e.target.value); setStateDetected(false); }}
+              >
+                <option value="">Not specified</option>
+                {US_STATES.map(({ code, name }) => (
+                  <option key={code} value={code}>{name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex gap-3 pt-1">

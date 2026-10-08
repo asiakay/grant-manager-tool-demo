@@ -199,6 +199,7 @@ export interface UserProfile {
   stage: string;
   mission?: string;
   keywords?: string[];
+  state?: string; // two-letter US state code, e.g. "MA"
   // Step 2: scoring weights
   weights: {
     Relevance: number;
@@ -231,6 +232,18 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
     body: JSON.stringify(profile),
   });
   if (!res.ok) throw new Error("Failed to save profile");
+}
+
+// Returns the visitor's US state as guessed from their IP, or null if unknown.
+export async function fetchGeoState(): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/api/geo`, { credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json() as { state?: string | null };
+    return data.state ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface MissionAnalysis {
